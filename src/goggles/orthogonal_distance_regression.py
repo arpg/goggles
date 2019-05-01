@@ -138,6 +138,9 @@ class OrthogonalDistanceRegression2D:
     def getWeights(self):
         pass
 
+    def getCovariance(self):
+        pass
+
 def test_odr():
     import pylab
 
