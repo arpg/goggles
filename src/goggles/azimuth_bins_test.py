@@ -6,7 +6,7 @@ import scipy as sp
 from goggles.radar_utilities import RadarUtilities
 
 def main():
-    radar_azimuth_bins = np.genfromtxt('1642_azimuth_bins.csv', delimiter=',')
+    radar_azimuth_bins = np.genfromtxt('../../data/1642_azimuth_bins.csv', delimiter=',')
     # print(radar_azimuth_bins)
 
     utils = RadarUtilities()

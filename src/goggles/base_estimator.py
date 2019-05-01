@@ -39,8 +39,8 @@ class dopplerRANSAC(BaseEstimator, RegressorMixin):
         Ntargets = radar_azimuth.shape[0]
 
         doppler_predicted = self.model.simulateRadarDoppler(self.param_vec_, \
-                                radar_azimuth, np.zeros((Ntargets,), dtype=float), \
-                                np.zeros((Ntargets,), dtype=float))
+                                radar_azimuth, np.zeros((Ntargets,), dtype=np.float32), \
+                                np.zeros((Ntargets,), dtype=np.float32))
 
         # rospy.loginfo("predict: doppler_predicted = \n" + str(doppler_predicted))
         return doppler_predicted

@@ -11,12 +11,13 @@ Description:
 import rospy
 import numpy as np
 from scipy.linalg import fractional_matrix_power
+from scipy.linalg.blas import sgemm
 from scipy.optimize import minimize
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 
 class OrthogonalDistanceRegression2D:
 
-    def __init__(self):
+    def __init__(self, debug=False):
         self.model = RadarDopplerModel2D()
 
         self.sigma_vr = 0.044
@@ -25,7 +26,7 @@ class OrthogonalDistanceRegression2D:
 
         self.converge_thres = 0.0002    # ODR convergence threshold on step s
         self.maxIterations = 100        # max number of ODR iterations
-        self.debug = False              # for comparison to MATLAB implementation
+        self.debug = debug              # for comparison to MATLAB implementation
 
 
     def odr(self, radar_doppler, radar_azimuth, d, beta0, delta0, weights):
@@ -42,7 +43,7 @@ class OrthogonalDistanceRegression2D:
         ## initialize
         beta = beta0
         delta = delta0
-        s = np.ones((p,), dtype=float)
+        s = np.ones((p,), dtype=np.float32)
 
         iter = 0
         while (np.abs(s[0]) > self.converge_thres) or (np.abs(s[1]) > self.converge_thres):
@@ -50,10 +51,11 @@ class OrthogonalDistanceRegression2D:
             G, V, D = self.getJacobian(radar_azimuth, delta, beta, weights, d)
 
             ## defined to simplify the notation in objectiveFunc
+            # P0 = sgemm(1.0,V.conj().T,V) + sgemm(1.0,D,D) + alpha*sgemm(1,0,T,T)
             P = np.matmul(V.conj().T,V) + np.matmul(D,D) + alpha*np.matmul(T,T)
 
             doppler_predicted = self.model.simulateRadarDoppler(beta, \
-                    radar_azimuth, np.zeros((Ntargets,), dtype=float), delta)
+                    radar_azimuth, np.zeros((Ntargets,), dtype=np.float32), delta)
 
             ## re-calculate epsilon
             eps = doppler_predicted - radar_doppler
@@ -119,9 +121,9 @@ class OrthogonalDistanceRegression2D:
         p = beta.shape[0]
 
         # initialize
-        G = np.zeros((Ntargets,p), dtype=float)
-        V = np.zeros((Ntargets,Ntargets), dtype=float)
-        D = np.zeros((Ntargets,Ntargets), dtype=float)
+        G = np.zeros((Ntargets,p), dtype=np.float32)
+        V = np.zeros((Ntargets,Ntargets), dtype=np.float32)
+        D = np.zeros((Ntargets,Ntargets), dtype=np.float32)
 
         for i in range(Ntargets):
             G[i,:] = np.array([np.cos(X[i] + delta[i]), np.sin(X[i] + delta[i])])
@@ -140,7 +142,7 @@ def test_odr():
     import pylab
 
     # init instance of ODR class
-    odr = OrthogonalDistanceRegression2D()
+    odr = OrthogonalDistanceRegression2D(debug=False)
 
     # number of simulated targets
     Ntargets = 10
@@ -184,9 +186,9 @@ def test_odr():
     # get Orthogonal Distance Regression (ODR) estimate - MLESAC seed
 
     # get Orthogonal Distance Regression (ODR) estimate - brute-force seed
-    weights = (1/odr.sigma_vr)*np.ones((Ntargets,), dtype=float)
+    weights = (1/odr.sigma_vr)*np.ones((Ntargets,), dtype=np.float32)
     if odr.debug:
-        delta = np.ones((Ntargets,), dtype=float)*odr.sigma_theta
+        delta = np.ones((Ntargets,), dtype=np.float32)*odr.sigma_theta
     else:
         delta = np.random.normal(0,odr.sigma_theta,(Ntargets,))
     model_odr = odr.odr( radar_doppler, radar_azimuth, odr.d, \
@@ -194,6 +196,7 @@ def test_odr():
     print("ODR Velocity Profile Estimation - brute-force seed:");
     print("\t" + str(model_odr))
 
+    # RMSE calculation is wrong.. is returning a 2x2
     RMSE_bruteforce     = np.sqrt(np.square(velocity - model_bruteforce))
     RMSE_odr_bruteforce = np.sqrt(np.square(velocity - model_odr))
 

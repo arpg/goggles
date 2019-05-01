@@ -42,10 +42,7 @@ from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
 import numpy as np
-import scipy as sp
-from functools import reduce
 from sklearn.linear_model import RANSACRegressor
-# from radar_velocity_estimator.ransac import ransac
 from goggles.radar_utilities import RadarUtilities
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.base_estimator import dopplerRANSAC
@@ -96,6 +93,9 @@ class VelocityEstimator():
         self.angle_thres     = rospy.get_param('~angle_thres')
         self.range_thres     = rospy.get_param('~range_thres')
         self.intensity_thres = rospy.get_param('~intensity_thres')
+        # self.angle_thres     = 80
+        # self.range_thres     = 0.30
+        # self.intensity_thres = 5
         self.thresholds      = np.array([self.angle_thres, self.intensity_thres, self.range_thres])
 
         rospy.loginfo("INIT: " + ns + mmwave_topic + " angle_thres = " + str(self.angle_thres))
@@ -113,9 +113,9 @@ class VelocityEstimator():
         pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
 
         ## pts.shape = (Ntargets, 6)
-        if pts.shape[0] == 0:
+        if pts.shape[0] < 2:
             ## do nothing - do NOT publish a twist message: no useful velocity
-            ## estimate can be derived from an empty radar message
+            ## estimate can be derived from less than 2 targets
             rospy.logwarn("ptcloud_cb: EMPTY RADAR MESSAGE")
         else:
             # rospy.loginfo("\n")
@@ -164,12 +164,12 @@ class VelocityEstimator():
             # rospy.loginfo("inlier_mask.size = \n" + str(inlier_mask.size))
 
             if not np.any(model_ransac):
-                # ransac estimate is all zeros
+                # ransac estimate is all zeros - ransac did not converge to a solution
                 model_bruteforce, _ = self.model.getBruteForceEstimate(radar_doppler, radar_azimuth)
                 # rospy.loginfo("model_bruteforce = " + str(model_bruteforce))
 
                 # all data points considered inliers
-                # TODO: should be able to get an inlier set from getBruteForceEstimate()
+                # TODO: should be able to get a k-sigma inlier set from getBruteForceEstimate()
                 intensity_inlier = radar_intensity
                 doppler_inlier   = radar_doppler
                 azimuth_inlier   = radar_azimuth
@@ -189,7 +189,7 @@ class VelocityEstimator():
             # rospy.loginfo("Ntargets_inlier = " + str(Ntargets_inlier))
 
             ## get ODR estimate
-            weights = (1/self.odr.sigma_vr)*np.ones((Ntargets_inlier,), dtype=float)
+            weights = (1/self.odr.sigma_vr)*np.ones((Ntargets_inlier,), dtype=np.float32)
             delta = np.random.normal(0,self.odr.sigma_theta,(Ntargets_inlier,))
             model_odr = self.odr.odr( doppler_inlier, azimuth_inlier, self.odr.d, \
                 odr_seed, delta, weights )
