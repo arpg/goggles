@@ -1,28 +1,22 @@
 <launch>
-    <arg name="vrpn" default="false" doc="using vrpn system?"/>
-    <arg name="type" default="2D" doc="2D or 3D radar data"/>
-    <arg name="odr_flag" default="False" doc="True:=publish ODR estimate, False:=publish ransac estimate"/>
-    <arg name="radar_name" default="radar_fwd"/>
 
-    <arg name="azimuth_thres" default="80" doc="Azimuth threshold value"/>
-    <arg name="elevation_thres" default="80" doc="Elevation threshold value"/>
-    <arg name="range_thres" default="0.30" doc="Range threshold value"/>
-    <arg name="intensity_thres" default="5" doc="Intensity threshold value"/>
+    <arg name="dev" default="1843"/>
+    <arg name="cfg" default="rangeRes_0-04_velRes_0-12_10Hz"/>
 
-  <!-- launch velocity_estimator_node -->
-    <node pkg="goggles" type="velocity_estimator_node.py" name="goggles_node" output="screen">
-        <param name="type" value="$(arg type)"/>
-        <param name="odr_flag" value="$(arg odr_flag)"/>
-        <param name="radar_name" value="$(arg radar_name)"/>
+    <!-- launch ti mmwave sensor node -->
 
-        <param name="azimuth_thres" value="$(arg azimuth_thres)"/>
-        <param name="elevation_thres" value="$(arg elevation_thres)"/>
-        <param name="range_thres" value="$(arg range_thres)"/>
-        <param name="intensity_thres" value="$(arg intensity_thres)"/>
+    <include file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
+        <arg name="device" value="$(arg dev)"/>
+        <arg name="config" value="$(arg cfg)"/>
+        <arg name="sdk" value="."/>
+        <arg name="max_allowed_elevation_angle_deg" value="90"/>
+        <arg name="max_allowed_azimuth_angle_deg" value="90"/>
+    </include>
+
+    <!-- launch velocity estimator node -->
+
+    <node pkg="goggles" type="radar_velocity" name="radar_velocity_estimator">
+        <param name="radar_topic" value="/mmWaveDataHdl/RScan"/>
     </node>
-
-    <!-- launch inertial2BodyFrame Velocity transform node -->
-
-    <node if="$(arg vrpn)" pkg="static_tfs" type="vrpn2BodyFrameVelocity.py" name="vrpn2BodyFrameVelocity_node" output="screen"/>
 
 </launch>
