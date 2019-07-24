@@ -40,6 +40,7 @@ import rospy
 import sensor_msgs.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import TwistWithCovarianceStamped
+from geometry_msgs.msg import TwistStamped
 
 import numpy as np
 from sklearn.linear_model import RANSACRegressor
@@ -63,17 +64,12 @@ class VelocityEstimator():
         self.odr   = odr
         self.utils = RadarUtilities()
 
-        ## define RANSAC parameters
-        self.sampleSize    = 2      # the minimum number of data values required to fit the model
-        self.maxIterations = 100   # the maximum number of iterations allowed in the algorithm
-        self.maxDistance   = 0.1    # a threshold value for determining when a data point fits a model
-        self.minPts        = 5      # the number of close data values required to assert that a model fits well to data
-
         # instantiate ransac object with base_estimator class object
         self.base_estimator = dopplerRANSAC(model=model)
-        self.ransac = RANSACRegressor(base_estimator=self.base_estimator, min_samples=self.sampleSize, \
-            residual_threshold=self.maxDistance, is_data_valid=self.base_estimator.is_data_valid, \
-            max_trials=self.maxIterations, loss=self.base_estimator.loss)
+        self.ransac = RANSACRegressor(base_estimator=self.base_estimator, \
+            min_samples=self.model.sampleSize, residual_threshold=self.model.maxDistance, \
+            is_data_valid=self.base_estimator.is_data_valid, \
+            max_trials=self.model.maxIterations, loss=self.base_estimator.loss)
 
         ns = rospy.get_namespace()
         rospy.loginfo("INIT: namespace = %s", ns)
@@ -84,21 +80,22 @@ class VelocityEstimator():
         self.radar_sub = rospy.Subscriber(ns + mmwave_topic, PointCloud2, self.ptcloud_cb)
 
         ## init publisher
-        twist_topic = 'dopplerLogger'
+        twist_topic = 'goggles'
         # self.twist_bf_pub = rospy.Publisher(ns + twist_topic +'_bf', TwistWithCovarianceStamped, queue_size=10)
-        # self.twist_ransac_pub = rospy.Publisher(ns + twist_topic +'_ransac', TwistWithCovarianceStamped, queue_size=10)
-        self.twist_odr_pub = rospy.Publisher(ns + twist_topic +'_odr', TwistWithCovarianceStamped, queue_size=10)
+        self.twist_ransac_pub = rospy.Publisher(ns + twist_topic +'_ransac', TwistStamped, queue_size=10)
+        # self.twist_odr_pub = rospy.Publisher(ns + twist_topic +'_odr', TwistWithCovarianceStamped, queue_size=10)
 
         ## define filtering threshold parameters - taken from velocity_estimation.m
-        self.angle_thres     = rospy.get_param('~angle_thres')
+        self.azimuth_thres   = rospy.get_param('~azimuth_thres')
+        self.elevation_thres = rospy.get_param('~elevation_thres')
         self.range_thres     = rospy.get_param('~range_thres')
         self.intensity_thres = rospy.get_param('~intensity_thres')
         # self.angle_thres     = 80
         # self.range_thres     = 0.30
         # self.intensity_thres = 5
-        self.thresholds      = np.array([self.angle_thres, self.intensity_thres, self.range_thres])
+        self.thresholds      = np.array([self.azimuth_thres, self.intensity_thres, self.range_thres])
 
-        rospy.loginfo("INIT: " + ns + mmwave_topic + " angle_thres = " + str(self.angle_thres))
+        rospy.loginfo("INIT: " + ns + mmwave_topic + " azimuth_thres = " + str(self.azimuth_thres))
         rospy.loginfo("INIT: " + ns + mmwave_topic + " range_thres = " + str(self.range_thres))
         rospy.loginfo("INIT: " + ns + mmwave_topic + " intensity_thres = " + str(self.intensity_thres))
 
@@ -109,18 +106,18 @@ class VelocityEstimator():
         pts_list = list(pc2.read_points(msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
         pts = np.array(pts_list)
 
-        pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
-        pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
-
-        ## pts.shape = (Ntargets, 6)
-        if pts.shape[0] < 2:
+        if pts.shape[0] < self.model.sampleSize:
             ## do nothing - do NOT publish a twist message: no useful velocity
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("ptcloud_cb: EMPTY RADAR MESSAGE")
         else:
-            # rospy.loginfo("\n")
-            # rospy.loginfo("New Scan")
-            # rospy.loginfo("Ntargets = %d", pts.shape[0])
+            rospy.loginfo("\n")
+            rospy.loginfo("New Scan")
+            rospy.loginfo("Ntargets = %d", pts.shape[0])
+
+            pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
+            pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
+
             self.estimate_velocity(pts, msg)
 
     def estimate_velocity(self, pts, radar_msg):
@@ -130,7 +127,7 @@ class VelocityEstimator():
         ## apply AIR thresholding to remove near-field targets
         data_AIR = np.column_stack((azimuth, pts[:,3], pts[:,4]))
         idx_AIR = self.utils.AIR_filtering(data_AIR, self.thresholds)
-        # rospy.loginfo("Ntargets_valid = %d", idx_AIR.shape[0])
+        rospy.loginfo("Ntargets_valid = %d", idx_AIR.shape[0])
 
         ## create vectors of valid target data
         radar_intensity = pts[idx_AIR,3]
@@ -139,7 +136,7 @@ class VelocityEstimator():
         radar_azimuth   = azimuth[idx_AIR]
 
         Ntargets_valid = radar_doppler.shape[0]
-        if Ntargets_valid < 2:
+        if Ntargets_valid < self.model.sampleSize:
             ## do nothing - do NOT publish a twist message: no useful velocity
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("estimate_velocity: < 2 TARGETS AFTER AIR THRESHOLDING")
@@ -159,9 +156,10 @@ class VelocityEstimator():
             inlier_mask = self.ransac.inlier_mask_
             # outlier_mask = np.logical_not(inlier_mask)
 
+            rospy.loginfo("velocity_estimator_node: EXIT RANSAC")
             # rospy.loginfo("model_ransac = " + str(model_ransac))
             # rospy.loginfo("inlier_mask = \n" + str(inlier_mask))
-            # rospy.loginfo("inlier_mask.size = \n" + str(inlier_mask.size))
+            # rospy.loginfo("inlier_mask.size = " + str(inlier_mask.size))
 
             if not np.any(model_ransac):
                 # ransac estimate is all zeros - ransac did not converge to a solution
@@ -177,7 +175,7 @@ class VelocityEstimator():
                 odr_seed = model_bruteforce
             else:
                 # ransac estimate is valid
-                model_bruteforce = float('nan')*np.ones((2,))
+                model_bruteforce = float('nan')*np.ones((self.model.sampleSize,))
 
                 intensity_inlier = radar_intensity[inlier_mask]
                 doppler_inlier   = radar_doppler[inlier_mask]
@@ -186,13 +184,13 @@ class VelocityEstimator():
                 odr_seed = model_ransac
 
             Ntargets_inlier = doppler_inlier.shape[0]
-            # rospy.loginfo("Ntargets_inlier = " + str(Ntargets_inlier))
+            rospy.loginfo("Ntargets_inlier = " + str(Ntargets_inlier))
 
             ## get ODR estimate
-            weights = (1/self.odr.sigma_vr)*np.ones((Ntargets_inlier,), dtype=np.float32)
-            delta = np.random.normal(0,self.odr.sigma_theta,(Ntargets_inlier,))
-            model_odr = self.odr.odr( doppler_inlier, azimuth_inlier, self.odr.d, \
-                odr_seed, delta, weights )
+            # weights = (1/self.odr.sigma_vr)*np.ones((Ntargets_inlier,), dtype=np.float32)
+            # delta = np.random.normal(0,self.odr.sigma_theta,(Ntargets_inlier,))
+            # model_odr = self.odr.odr( doppler_inlier, azimuth_inlier, self.odr.d, \
+            #     odr_seed, delta, weights )
             # rospy.loginfo("model_odr = " + str(model_odr))
 
             ## publish velocity estimate
@@ -201,29 +199,37 @@ class VelocityEstimator():
             # else:
             #     velocity_estimate = -model_bruteforce
             #     self.publish_twist_estimate(velocity_estimate, radar_msg, type='bruteforce')
-            #
-            # if np.isnan(model_ransac[1]):
-            #     rospy.logwarn("estimate_velocity: RANSAC VELOCITY ESTIMATE IS NANs")
-            # else:
-            #     velocity_estimate = -model_ransac
-            #     self.publish_twist_estimate(velocity_estimate, radar_msg, type='ransac')
 
-            if np.isnan(model_odr[1]):
-                rospy.logwarn("estimate_velocity: ODR VELOCITY ESTIMATE IS NANs")
+            if np.isnan(model_ransac[1]):
+                rospy.logwarn("estimate_velocity: RANSAC VELOCITY ESTIMATE IS NANs")
             else:
-                velocity_estimate = -model_odr
-                self.publish_twist_estimate(velocity_estimate, radar_msg, type='odr')
+                # velocity_estimate = -model_ransac
+                velocity_estimate = -odr_seed
+                self.publish_twist_estimate(velocity_estimate, radar_msg, type='ransac')
+
+            # if np.isnan(model_odr[1]):
+            #     rospy.logwarn("estimate_velocity: ODR VELOCITY ESTIMATE IS NANs")
+            # else:
+            #     # velocity_estimate = -model_odr
+            #     self.publish_twist_estimate(velocity_estimate, radar_msg, type='odr')
 
     def publish_twist_estimate(self, velocity_estimate, radar_msg, type=None):
 
         ## create TwistStamped message
-        twist_estimate = TwistWithCovarianceStamped()
+        # twist_estimate = TwistWithCovarianceStamped()
+        twist_estimate = TwistStamped()
         twist_estimate.header.stamp = radar_msg.header.stamp
         twist_estimate.header.frame_id = "base_link"
 
-        twist_estimate.twist.twist.linear.x = velocity_estimate[0]
-        twist_estimate.twist.twist.linear.y = velocity_estimate[1]
-        twist_estimate.twist.twist.linear.z = 0
+        ## TwistWithCovarianceStamped message
+        # twist_estimate.twist.twist.linear.x = velocity_estimate[0]
+        # twist_estimate.twist.twist.linear.y = velocity_estimate[1]
+        # twist_estimate.twist.twist.linear.z = 0
+
+        ## TwistStamped message
+        twist_estimate.twist.linear.x = velocity_estimate[0]
+        twist_estimate.twist.linear.y = velocity_estimate[1]
+        twist_estimate.twist.linear.z = 0
 
         if type == 'bruteforce':
             self.twist_bf_pub.publish(twist_estimate)

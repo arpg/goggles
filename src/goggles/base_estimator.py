@@ -28,6 +28,7 @@ class dopplerRANSAC(BaseEstimator, RegressorMixin):
         radar_azimuth = np.squeeze(X)
         radar_doppler = np.squeeze(y)
 
+        rospy.loginfo("base_estimator.fit: sample size = " + str(radar_doppler.shape[0]))
         model = self.model.doppler2BodyFrameVelocity(radar_doppler, radar_azimuth)
         # rospy.loginfo("fit: model = " + str(model))
         self.param_vec_ = model
@@ -81,9 +82,20 @@ class dopplerRANSAC(BaseEstimator, RegressorMixin):
         numAzimuthBins = self.utils.getNumAzimuthBins(radar_azimuth)
         # rospy.loginfo("is_data_valid: numAzimuthBins = " + str(numAzimuthBins))
 
-        if numAzimuthBins > 1:
+        ## BUG: (2019-07-18) On the final iteration of RANSAC, the sample size
+        ## exceeds the value defined by the sampleSize parameter. The number of
+        ## data points in this larger sample is not consistent from one radar
+        ## scan to the next. This bug acually does not originate from here...
+
+        ## This function is NOT called prior to all Ninlier data points being
+        ## passed to the fit fcn prior to RANSAC exiting... why is this
+        ## behavior happening?
+
+        # if numAzimuthBins > self.model.sampleSize:
+        if numAzimuthBins == self.model.sampleSize :
             is_valid = True
         else:
             is_valid = False
 
+        rospy.loginfo("base_estimator.is_data_valid: is_valid = " + str(is_valid))
         return is_valid

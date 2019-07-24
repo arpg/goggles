@@ -59,6 +59,10 @@ class RadarDopplerModel2D:
     def doppler2BodyFrameVelocity(self, radar_doppler, radar_azimuth):
         numAzimuthBins = self.utils.getNumAzimuthBins(radar_azimuth)
 
+        rospy.loginfo("doppler2BodyFrameVelocity: numAzimuthBins = %d", numAzimuthBins)
+        rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
+        # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_doppler])    # 'list comprehension'
+
         if numAzimuthBins > 1:
            ## solve uniquely-determined problem for pair of targets (i,j)
             M = np.array([[np.cos(radar_azimuth[0]), np.sin(radar_azimuth[0])], \
