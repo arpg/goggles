@@ -52,6 +52,25 @@ public:
     min_range_ = 0.5;
     sum_time_ = 0.0;
     num_iter_ = 0;
+
+    window_size_ = 10;
+
+    // set up ceres problem
+    doppler_loss_ = new ceres::CauchyLoss(0.15);
+    accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
+
+    ceres::Problem::Options prob_options;
+    
+    prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
+    prob_options.enable_fast_removal = true;
+    //solver_options_.check_gradients = true;
+    //solver_options_.gradient_check_relative_precision = 1.0e-6;
+    solver_options_.num_threads = 4;
+    solver_options_.max_num_iterations = 300;
+    solver_options_.update_state_every_iteration = true;
+    solver_options_.function_tolerance = 1e-10;
+    solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
+    problem_.reset(new ceres::Problem(prob_options));
   }
 
   void callback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -73,12 +92,13 @@ public:
 
     // Get velocity measurements
     auto start = std::chrono::high_resolution_clock::now();
-    GetVelocityCeres(cloud, coeffs, vel_out);
+    GetVelocityCeres(cloud, coeffs, timestamp, vel_out);
     //GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
-    VLOG(2) << "execution time: " << sum_time_ / double(num_iter_);
+    num_iter_++;
+    std::cout << "execution time: " << sum_time_ / double(num_iter_) << std::endl;
     pub_.publish(vel_out);
   }
 
@@ -86,6 +106,15 @@ private:
   ros::NodeHandle nh_;
   ros::Publisher pub_;
   ros::Subscriber sub_;
+  ceres::CauchyLoss *doppler_loss_;
+  ceres::CauchyLoss *accel_loss_;
+  //std::deque<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> velocities_;
+  std::deque<Eigen::Vector3d*> velocities_;
+  std::deque<double> timestamps_;
+  std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
+  std::shared_ptr<ceres::Problem> problem_;
+  ceres::Solver::Options solver_options_;
+  int window_size_;
   double min_range_;
   int num_iter_;
   double sum_time_;
@@ -222,29 +251,30 @@ private:
     */
   void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud, 
                    Eigen::Vector3d &velocity, 
+                   double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+    // add latest parameter block and remove old one if necessary
+    velocities_.push_front(new Eigen::Vector3d());
+    std::vector<ceres::ResidualBlockId> residuals;
+    residual_blks_.push_front(residuals);
+    timestamps_.push_front(timestamp);
+    problem_->AddParameterBlock(velocities_.front()->data(),3);
+    if (velocities_.size() >= window_size_)
+    {
+      for (int i = 0; i < residual_blks_.back().size(); i++)
+        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
 
-    // set up ceres problem
-    ceres::Problem::Options prob_options;
-    std::shared_ptr<ceres::Problem> problem;
-    ceres::Solver::Options solver_options;
-    
-    prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
-    solver_options.num_threads = 4;
-    solver_options.max_num_iterations = 300;
-    solver_options.update_state_every_iteration = true;
-    solver_options.function_tolerance = 1e-10;
-    solver_options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-    problem.reset(new ceres::Problem(prob_options));
-
-    // add parameter block
-    problem->AddParameterBlock(velocity.data(), 3);  
+      problem_->RemoveParameterBlock(velocities_.back()->data());
+      delete velocities_.back();
+      velocities_.pop_back();
+      residual_blks_.pop_back();
+      timestamps_.pop_back();
+    }
     
     double min_intensity, max_intensity;
     getIntensityBounds(min_intensity,max_intensity,cloud);
-
-    ceres::CauchyLoss *loss_func = new ceres::CauchyLoss(0.15);
+    // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
       // calculate weight as normalized intensity
@@ -253,40 +283,57 @@ private:
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
-      // set up cost function
-      ceres::CostFunction* cost_function = 
-        new ceres::AutoDiffCostFunction<BodyVelocityCostFunction<double>, 1, 3>(
-          new BodyVelocityCostFunction<double>(cloud->at(i).doppler,
-                                       target,
-                                       weight));
+      ceres::CostFunction* doppler_cost_function = 
+        new BodyVelocityCostFunction(cloud->at(i).doppler,
+                                      target,
+                                      weight);
       // add residual block to ceres problem
-      problem->AddResidualBlock(cost_function, loss_func, velocity.data());
+      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(doppler_cost_function, 
+                                                                 doppler_loss_, 
+                                                                 velocity.data());
+      residual_blks_.front().push_back(res_id);
+    }
+    
+    // add residual on change in velocity if applicable
+    if (timestamps_.size() >= 2)
+    {
+      double delta_t = timestamps_[0] - timestamps_[1];
+      ceres::CostFunction* vel_change_cost_func = 
+        new VelocityChangeCostFunction(delta_t);
+      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(vel_change_cost_func, 
+                                                                 accel_loss_, 
+                                                                 velocities_[0]->data(), 
+                                                                 velocities_[1]->data());
+      residual_blks_[1].push_back(res_id);
     }
 
-    // solve the ceres problem and get result
+// solve the ceres problem and get result
     ceres::Solver::Summary summary;
-    ceres::Solve(solver_options, problem.get(), &summary);
+    ceres::Solve(solver_options_, problem_.get(), &summary);
 
     VLOG(3) << summary.FullReport();
-    VLOG(2) << "velocity from ceres: " << velocity.transpose();
+    VLOG(2) << "velocity from ceres: " << velocities_.front()->transpose();
 
     // get estimate covariance
+    /*
     ceres::Covariance::Options cov_options;
     cov_options.num_threads = 1;
     cov_options.algorithm_type = ceres::DENSE_SVD;
     ceres::Covariance covariance(cov_options);
 
     std::vector<std::pair<const double*, const double*>> cov_blks;
-    cov_blks.push_back(std::make_pair(velocity.data(),velocity.data()));
+    cov_blks.push_back(std::make_pair(velocities_.front()->data(),
+                                      velocities_.front()->data()));
 
-    covariance.Compute(cov_blks, problem.get());
+    covariance.Compute(cov_blks, problem_.get());
     Eigen::Matrix3d covariance_matrix;
-    covariance.GetCovarianceBlock(velocity.data(), 
-                                  velocity.data(), 
+    covariance.GetCovarianceBlock(velocities_.front()->data(), 
+                                  velocities_.front()->data(), 
                                   covariance_matrix.data());
 
     VLOG(2) << "covariance: \n" << covariance_matrix;
-    
+    */
+    Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,velocity,covariance_matrix);
   }
 
