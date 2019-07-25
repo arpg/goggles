@@ -53,7 +53,7 @@ public:
     sum_time_ = 0.0;
     num_iter_ = 0;
 
-    window_size_ = 10;
+    window_size_ = 4;
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
