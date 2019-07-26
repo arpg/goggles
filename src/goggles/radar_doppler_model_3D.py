@@ -33,11 +33,8 @@ class RadarDopplerModel3D:
         numAzimuthBins = self.utils.getNumAzimuthBins(theta)
         numElevBins = self.utils.getNumAzimuthBins(phi)
 
-        # rospy.loginfo("doppler2BodyFrameVelocity: numAzimuthBins = %d", numAzimuthBins)
-        # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
-
         if numAzimuthBins + numElevBins > 4:
-           ## solve uniquely-determined problem for pair of targets (i,j)
+           ## solve uniquely-determined problem for three targets
             M = np.array([ [np.cos(theta[0])*np.cos(phi[0]), np.sin(theta[0])*np.cos(phi[0]), np.sin(phi[0])], \
                            [np.cos(theta[1])*np.cos(phi[1]), np.sin(theta[1])*np.cos(phi[1]), np.sin(phi[1])], \
                            [np.cos(theta[2])*np.cos(phi[2]), np.sin(theta[2])*np.cos(phi[2]), np.sin(phi[2])] ])
@@ -54,7 +51,6 @@ class RadarDopplerModel3D:
 
     # measurement generative (forward) model: model->measurements
     def simulateRadarDoppler(self, model, data, eps, delta):
-        print("simulateRadarDoppler: type(model) = " + str(type(model)))
         Ntargets = data.shape[0]
         radar_doppler = np.zeros((Ntargets,), dtype=np.float32)
 

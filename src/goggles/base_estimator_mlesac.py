@@ -19,17 +19,17 @@ class dopplerMLESAC():
         self.utils = RadarUtilities()
 
         ## define MLESAC parameters
-        self.sampleSize     = 3      # the minimum number of data values required to fit the model
-        self.maxIterations  = 25     # the maximum number of iterations allowed in the algorithm
-        self.maxDistance    = 0.15   # a threshold value for determining when a data point fits a model
-        self.converge_thres = 10     # change in data log likelihood fcn required to indicate convergence
+        self.sample_size    = 3     # the minimum number of data values required to fit the model
+        self.max_iterations = 25    # the maximum number of iterations allowed in the algorithm
+        self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
+        self.converge_thres = 10    # change in data log likelihood fcn required to indicate convergence
 
-        self.param_vec_ = None      # body-frame velocity vector - to be estimated by MLESAC
+        self.param_vec_     = None  # body-frame velocity vector - to be estimated by MLESAC
+        self.param_vec_ols_ = None  # array_like param_vec_ with shape (n,)
 
     ## model fit fcn
     def fit(self, data):
         self.param_vec_ = self.model.doppler2BodyFrameVelocity(data)
-        print("fit: self.param_vec_ = " + str(self.param_vec_))
         return self
 
     ## distance(s) from data point(S) to model
@@ -60,7 +60,7 @@ class dopplerMLESAC():
         # return np.squeeze(distances)
 
     ## evaluate the data log likelihood of the data given the model - P(evidence | model)
-    def score(self, data):
+    def score(self, data, type):
         Ntargets = data.shape[0]
         p = data.shape[1]
 
@@ -68,7 +68,14 @@ class dopplerMLESAC():
         radar_azimuth = data[:,1]
         radar_elevaton = data[:,2]
 
-        doppler_predicted = self.model.simulateRadarDoppler(self.param_vec_, \
+        if type == 'mlesac':
+            model = self.param_vec_
+        elif type == 'ols':
+            model = self.param_vec_ols_
+        else:
+            raise ValueError("score type improperly specifed")
+
+        doppler_predicted = self.model.simulateRadarDoppler(model, \
             np.column_stack((radar_azimuth,radar_elevaton)), \
             np.zeros((Ntargets,), dtype=np.float32), \
             np.zeros(((p-1)*Ntargets,), dtype=np.float32))
@@ -78,6 +85,23 @@ class dopplerMLESAC():
         score = -1/(2*self.model.sigma_vr**2)*np.sum(eps_sq)
 
         return score
+
+    def residual(self, X, data):
+        Ntargets = data.shape[0]
+        p = data.shape[1]
+
+        radar_doppler = data[:,0]
+        radar_azimuth = data[:,1]
+        radar_elevaton = data[:,2]
+
+        doppler_predicted = self.model.simulateRadarDoppler(X, \
+            np.column_stack((radar_azimuth,radar_elevaton)), \
+            np.zeros((Ntargets,), dtype=np.float32), \
+            np.zeros(((p-1)*Ntargets,), dtype=np.float32))
+
+        eps = doppler_predicted - radar_doppler
+        return eps
+
 
     def is_data_valid(self, data):
         if data.shape[0] != data.shape[1]:

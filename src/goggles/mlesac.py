@@ -10,7 +10,9 @@ Description:
 
 import time
 import numpy as np
-# import scipy as sp
+from functools import partial, reduce
+
+from scipy.optimize import least_squares
 from goggles.radar_utilities import RadarUtilities
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
@@ -26,14 +28,14 @@ class MLESAC:
         self.iter       = None      # number of iterations until convergence
 
         self.report_scores = False  # report data log likelihood of each iteration
-        self.ols_flag      = False  # enable OLS solution on inlier set
+        self.ols_flag      = True   # enable OLS solution on inlier set
 
     def mlesac(self, data):
 
         Ntargets = data.shape[0]    # number of data points
         p = data.shape[1]           # dimension of velocity vector
 
-        if self.estimator_.sampleSize != p:
+        if self.estimator_.sample_size != p:
             raise ValueError("radar model does NOT match column dimension of data")
 
         bestScore = -np.inf
@@ -45,10 +47,10 @@ class MLESAC:
         iter = 0                    # algorithm iteration Number
 
         while np.abs(dll_incr) > self.estimator_.converge_thres and \
-            iter < self.estimator_.maxIterations:
+            iter < self.estimator_.max_iterations:
 
             ## randomly sample from data
-            idx = np.random.randint(Ntargets,high=None,size=(p,))
+            idx = np.random.randint(Ntargets,high=None,size=(self.estimator_.sample_size,))
             sample = data[idx,:]
 
             is_valid = self.estimator_.is_data_valid(sample)
@@ -58,7 +60,7 @@ class MLESAC:
                 self.estimator_.fit(sample)
 
                 ## score the model - evaluate the data log likelihood fcn
-                score = self.estimator_.score(data)
+                score = self.estimator_.score(data,'mlesac')
 
                 if score > bestScore:
                     ## this model better explains the data
@@ -66,7 +68,7 @@ class MLESAC:
 
                     dll_incr = score - bestScore    # increase in data log likelihood fcn
                     bestScore = score
-                    bestInliers = np.nonzero((distances < self.estimator_.maxDistance))
+                    bestInliers = np.nonzero((distances < self.estimator_.max_distance))
 
                     if self.report_scores:
                         scores.append(score)
@@ -88,16 +90,25 @@ class MLESAC:
                 # print("mlesac: INVALID DATA SAMPLE")
                 pass
 
-        ## get OLS solution on inlier set
-        if self.ols_flag:
-            pass
-            # model_ols = sp.optimize.least_squares()
-        else:
-            model_ols = float('nan')*np.ones((p,))
-
-        self.inliers = bestInliers
+        self.inliers = reduce(np.intersect1d,(bestInliers))
         self.scores = np.array(scores)
         self.iter = iter
+
+        ## get OLS solution on inlier set
+        if self.ols_flag:
+            # callable = partial(self.estimator_.residual, data=data)
+            # ols_soln = least_squares(callable, self.estimator_.param_vec_)
+
+            ols_soln = least_squares(self.estimator_.residual, \
+                self.estimator_.param_vec_, kwargs={"data": data[self.inliers,:]})
+            self.estimator_.param_vec_ols_ = ols_soln.x
+
+            score_mlesac = self.estimator_.score(data[self.inliers,:],'mlesac')
+            score_ols = self.estimator_.score(data[self.inliers,:],'ols')
+
+            print("mlesac score_mlesac = " + str(score_mlesac))
+            print("mlesac score_ols = " + str(score_ols))
+
         return self
 
 
@@ -116,11 +127,11 @@ def test(model):
     max_vel = 2.5       # [m/s]
 
     ## number of simulated targets
-    Ninliers = 70
-    Noutliers = 35
+    Ninliers = 150
+    Noutliers = 75
 
     ## generate truth velocity vector
-    velocity = (max_vel-min_vel)*np.random.random((base_estimator.sampleSize,)) + min_vel
+    velocity = (max_vel-min_vel)*np.random.random((base_estimator.sample_size,)) + min_vel
 
     ## create noisy INLIER  simulated radar measurements
     _, inlier_data = model.getSimulatedRadarMeasurements(Ninliers, \
@@ -138,10 +149,10 @@ def test(model):
 
     radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
     start_time = time.time()
-    # model_mlesac, inliers, _, _ = mlesac.mlesac(radar_data)
     mlesac.mlesac(radar_data)
     end_time = time.time()
     model_mlesac = mlesac.estimator_.param_vec_
+    model_ols = mlesac.estimator_.param_vec_ols_
     inliers = mlesac.inliers
 
     print("\nMLESAC Velocity Profile Estimation:\n")
@@ -151,11 +162,13 @@ def test(model):
     print(str.format('{0:.4f}',velocity[2]) + "\t " + str.format('{0:.4f}',model_mlesac[2]))
 
     rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
-    # rmse_ols = np.sqrt(np.mean(np.square(velocity - model_ols)))
+    print("\nRMSE (MLESAC)\t= " + str.format('{0:.4f}',rmse_mlesac) + " m/s")
 
-    print("\nRMSE (MLESAC) = " + str.format('{0:.4f}',rmse_mlesac) + " m/s")
-    # print("\nRMSE (OLS) = " + str.format('{0:.4f}',rmse_ols) + " m/s")
-    print("Execution Time = %s" % (end_time-start_time))
+    if mlesac.ols_flag:
+        rmse_ols = np.sqrt(np.mean(np.square(velocity - model_ols)))
+        print("RMSE (OLS)\t= " + str.format('{0:.4f}',rmse_ols) + " m/s")
+
+    print("\nExecution Time = %s" % (end_time-start_time))
 
 def test_montecarlo(model):
     pass

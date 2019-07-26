@@ -119,35 +119,28 @@ class VelocityEstimator():
             self.estimate_velocity(pts, msg)
 
     def estimate_velocity(self, pts, radar_msg):
+        Ntargets = pts.shape[0]
+
         ## create target azimuth vector (in radians)
         azimuth = np.arctan(np.divide(pts[:,1],pts[:,0]))
 
         if self.type == '2D':
-            ## apply AIR thresholding to remove near-field targets
-            data_AIR = np.column_stack((azimuth, pts[:,3], pts[:,4]))
-            idx_AIR = self.utils.AIR_filtering(data_AIR, self.thresholds)
-            # rospy.loginfo("Ntargets_valid = %d", idx_AIR.shape[0])
-
-            ## create vectors of valid target data
-            radar_intensity = pts[idx_AIR,3]
-            radar_range     = pts[idx_AIR,4]
-            radar_doppler   = pts[idx_AIR,5]
-            radar_azimuth   = azimuth[idx_AIR]
+            elevation = float('nan')*np.ones((Ntargets,))
         elif self.type == '3D':
             elevation = np.arcsin(np.divide(pts[:,4],pts[:,2]))
-            data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
-            idx_AIRE = self.utils.AIR_filtering(data_AIRE, self.thresholds)
-            # rospy.loginfo("Ntargets_valid = %d", idx_AIRE.shape[0])
-
-            ## create vectors of valid target data
-            radar_intensity = pts[idx_AIRE,3]
-            radar_range     = pts[idx_AIRE,4]
-            radar_doppler   = pts[idx_AIRE,5]
-            radar_azimuth   = azimuth[idx_AIRE]
-            radar_elevation = elevation[idx_AIRE]
         else:
             rospy.logerr("velocity_estimator_node main(): ESTIMATOR TYPE IMPROPERLY SPECIFIED")
 
+        data_AIRE = data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
+        idx_AIRE = self.utils.AIR_filtering(data_AIRE, self.thresholds)
+        # rospy.loginfo("Ntargets_valid = %d", idx_AIR.shape[0])
+
+        ## define pre-filtered radar data for further processing
+        radar_intensity = pts[idx_AIRE,3]
+        radar_range     = pts[idx_AIRE,4]
+        radar_doppler   = pts[idx_AIRE,5]
+        radar_azimuth   = azimuth[idx_AIRE]
+        radar_elevation = elevation[idx_AIRE]
 
         Ntargets_valid = radar_doppler.shape[0]
         if Ntargets_valid < self.model.sampleSize:
