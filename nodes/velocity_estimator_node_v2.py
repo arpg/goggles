@@ -4,7 +4,7 @@ Author:         Carl Stahoviak
 Date Created:   Apr 21, 2019
 Last Edited:    Apr 21, 2019
 
-Task: To estimate the forward and lateral body frame velocities of the sensor
+Task: To estimate the 2D or 3D body-frame velocity vector of the sensor
 platfrom given input data from a single radar (/mmWaveDataHdl/RScan topic).
 The velocity estimation scheme takes the following approach:
 
