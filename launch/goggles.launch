@@ -1,8 +1,8 @@
 <launch>
-    <arg name="vrpn" default="false" doc="using vrpn system?"/>
-    <arg name="type" default="2D" doc="2D or 3D radar data"/>
+    <arg name="vrpn" default="false" doc="Using vrpn system?"/>
+    <arg name="type" default="3D" doc="2D or 3D radar data"/>
     <arg name="odr_flag" default="False" doc="True:=publish ODR estimate, False:=publish ransac estimate"/>
-    <arg name="radar_name" default="radar_fwd"/>
+    <arg name="radar_name" default="radar_fwd" doc="Example: 'radar_fwd'. Use empty string for single radar"/>
 
     <arg name="azimuth_thres" default="80" doc="Azimuth threshold value"/>
     <arg name="elevation_thres" default="80" doc="Elevation threshold value"/>
@@ -13,7 +13,7 @@
     <node pkg="goggles" type="velocity_estimator_node.py" name="goggles_node" output="screen">
         <param name="type" value="$(arg type)"/>
         <param name="odr_flag" value="$(arg odr_flag)"/>
-        <param name="radar_name" value="$(arg radar_name)"/>
+        <param name="radar_name" value="" doc="Example: 'radar_fwd'. Use empty string for single radar"/>
 
         <param name="azimuth_thres" value="$(arg azimuth_thres)"/>
         <param name="elevation_thres" value="$(arg elevation_thres)"/>

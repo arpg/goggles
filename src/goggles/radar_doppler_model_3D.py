@@ -21,64 +21,6 @@ class RadarDopplerModel3D:
         self.sigma_theta = 0.0426           # [rad]
         self.sigma_phi = self.sigma_theta   # [rad]
 
-        ## define MLESAC parameters
-        self.sampleSize     = 3      # the minimum number of data values required to fit the model
-        self.maxIterations  = 25     # the maximum number of iterations allowed in the algorithm
-        self.maxDistance    = 0.15   # a threshold value for determining when a data point fits a model
-        self.converge_thres = 10     # change in data log likelihood fcn required to indicate convergence
-
-    # defined for RANSAC - not used
-    def fit(self, data):
-        model = self.doppler2BodyFrameVelocity(data)
-        return model
-
-    # defined for RANSAC - not used
-    def distance(self, data, model):
-        Ntargets = data.shape[0]
-        p = data.shape[1]
-
-        # init distances vector
-        distances = np.zeros((Ntargets,), dtype=np.float32)
-
-        radar_doppler   = data[:,0]      # [m/s]
-        radar_azimuth   = data[:,1]      # [rad]
-        radar_elevation = data[:,2]      # [rad]
-
-        ## do NOT corrupt measurements with noise
-        eps = np.zeros((Ntargets,), dtype=np.float32)
-        delta = np.zeros(((p-1)*Ntargets,), dtype=np.float32)
-
-        ## radar doppler generative model
-        doppler_predicted = self.simulateRadarDoppler(model, \
-            np.column_stack((radar_azimuth,radar_elevation)), eps, delta)
-
-        eps_sq = np.square(np.subtract(doppler_predicted,radar_doppler))
-        distances = np.sqrt(eps_sq)
-
-        ## distance per data point (column vector)
-        return distances
-        # return np.squeeze(distances)
-
-    ## evaluate the data log likelihood of the data given the model - P(evidence | model)
-    def score(self, data, model):
-        Ntargets = data.shape[0]
-        p = data.shape[1]
-
-        radar_doppler = data[:,0]
-        radar_azimuth = data[:,1]
-        radar_elevaton = data[:,2]
-
-        doppler_predicted = self.simulateRadarDoppler(model, \
-            np.column_stack((radar_azimuth,radar_elevaton)), \
-            np.zeros((Ntargets,), dtype=np.float32), \
-            np.zeros(((p-1)*Ntargets,), dtype=np.float32))
-
-        # evaluate the data log-likelihood given the model
-        eps_sq = np.square(np.subtract(doppler_predicted,radar_doppler))
-        score = -1/(2*self.sigma_vr**2)*np.sum(eps_sq)
-
-        return score
-
     # inverse measurement model: measurements->model
     def doppler2BodyFrameVelocity(self, data):
         # data - a 3x3 matrix
@@ -112,6 +54,7 @@ class RadarDopplerModel3D:
 
     # measurement generative (forward) model: model->measurements
     def simulateRadarDoppler(self, model, data, eps, delta):
+        print("simulateRadarDoppler: type(model) = " + str(type(model)))
         Ntargets = data.shape[0]
         radar_doppler = np.zeros((Ntargets,), dtype=np.float32)
 
