@@ -24,13 +24,7 @@ class dopplerMLESAC():
         self.maxDistance    = 0.15   # a threshold value for determining when a data point fits a model
         self.converge_thres = 10     # change in data log likelihood fcn required to indicate convergence
 
-        self.report_scores = False
-        self.ols_flag      = False
-
         self.param_vec_ = None      # body-frame velocity vector - to be estimated by MLESAC
-        self.inliers    = None      # inlier data points
-        self.scores     = None      # data log likelihood associated with each iteration
-        self.iter       = None      # number of iterations until convergence
 
     ## model fit fcn
     def fit(self, data):

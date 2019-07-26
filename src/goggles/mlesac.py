@@ -21,6 +21,13 @@ class MLESAC:
     def __init__(self, base_estimator):
         self.estimator_ = base_estimator
 
+        self.inliers    = None      # inlier data points
+        self.scores     = None      # data log likelihood associated with each iteration
+        self.iter       = None      # number of iterations until convergence
+
+        self.report_scores = False  # report data log likelihood of each iteration
+        self.ols_flag      = False  # enable OLS solution on inlier set
+
     def mlesac(self, data):
 
         Ntargets = data.shape[0]    # number of data points
@@ -28,16 +35,6 @@ class MLESAC:
 
         if self.estimator_.sampleSize != p:
             raise ValueError("radar model does NOT match column dimension of data")
-
-        # if p == 2:
-        #     radar_doppler = data[:,0]
-        #     radar_azimuth = data[:,1]
-        # elif p == 3:
-        #     radar_doppler = data[:,0]
-        #     radar_azimuth = data[:,1]
-        #     radar_elevation = data[:,2]
-        # else:
-        #     raise ValueError("data must be an Nx2 or Nx3 matrix")
 
         bestScore = -np.inf
         bestInliers = []
@@ -71,7 +68,7 @@ class MLESAC:
                     bestScore = score
                     bestInliers = np.nonzero((distances < self.estimator_.maxDistance))
 
-                    if self.estimator_.report_scores:
+                    if self.report_scores:
                         scores.append(score)
 
                     # evaluate stopping criteria - not yet used
@@ -92,15 +89,15 @@ class MLESAC:
                 pass
 
         ## get OLS solution on inlier set
-        if self.estimator_.ols_flag:
+        if self.ols_flag:
             pass
             # model_ols = sp.optimize.least_squares()
         else:
             model_ols = float('nan')*np.ones((p,))
 
-        self.estimator_.inliers = bestInliers
-        self.estimator_.scores = np.array(scores)
-        self.estimator_.iter = iter
+        self.inliers = bestInliers
+        self.scores = np.array(scores)
+        self.iter = iter
         return self
 
 
@@ -145,7 +142,7 @@ def test(model):
     mlesac.mlesac(radar_data)
     end_time = time.time()
     model_mlesac = mlesac.estimator_.param_vec_
-    inliers = mlesac.estimator_.param_vec_
+    inliers = mlesac.inliers
 
     print("\nMLESAC Velocity Profile Estimation:\n")
     print("True Velocity Vector\t MLESAC Estimated Velocity Vector")
