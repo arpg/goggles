@@ -18,14 +18,14 @@ from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
 from goggles.base_estimator_mlesac import dopplerMLESAC
 
-class MLESAC:
+class MLESAC():
 
     def __init__(self, base_estimator):
         self.estimator_ = base_estimator
 
-        self.inliers    = None      # inlier data points
-        self.scores     = None      # data log likelihood associated with each iteration
-        self.iter       = None      # number of iterations until convergence
+        self.inliers_    = None     # inlier data points
+        self.scores_     = None     # data log likelihood associated with each iteration
+        self.iter_       = None     # number of iterations until convergence
 
         self.report_scores = False  # report data log likelihood of each iteration
         self.ols_flag      = True   # enable OLS solution on inlier set
@@ -84,15 +84,16 @@ class MLESAC:
                 iter+=1
                 # print("iter = " + str(iter) + "\tscore = " + str(score))
             else:
-                # do nothing - cannot derive a valid model fromtargets in
-                # the same azimuth/elevation bins
+                ## do nothing - cannot derive a valid model fromtargets in
+                ## the same azimuth/elevation bins
 
                 # print("mlesac: INVALID DATA SAMPLE")
                 pass
 
-        self.inliers = reduce(np.intersect1d,(bestInliers))
-        self.scores = np.array(scores)
-        self.iter = iter
+        self.estimator_.param_vec_mlesac_ = self.estimator_.param_vec_
+        self.inliers_ = reduce(np.intersect1d,(bestInliers))
+        self.scores_ = np.array(scores)
+        self.iter_ = iter
 
         ## get OLS solution on inlier set
         if self.ols_flag:
@@ -100,14 +101,20 @@ class MLESAC:
             # ols_soln = least_squares(callable, self.estimator_.param_vec_)
 
             ols_soln = least_squares(self.estimator_.residual, \
-                self.estimator_.param_vec_, kwargs={"data": data[self.inliers,:]})
+                self.estimator_.param_vec_, self.estimator_.jac, \
+                kwargs={"data": data[self.inliers_,:]})
             self.estimator_.param_vec_ols_ = ols_soln.x
 
-            score_mlesac = self.estimator_.score(data[self.inliers,:],'mlesac')
-            score_ols = self.estimator_.score(data[self.inliers,:],'ols')
+            ## score both estimates
+            score_mlesac = self.estimator_.score(data[self.inliers_,:],'mlesac')
+            score_ols = self.estimator_.score(data[self.inliers_,:],'ols')
 
-            print("mlesac score_mlesac = " + str(score_mlesac))
-            print("mlesac score_ols = " + str(score_ols))
+            if score_ols > score_mlesac:
+                ## OLS solution is better than MLESAC solution
+                self.estimator_.param_vec_ = self.estimator_.param_vec_ols_
+            else:
+                ## do nothing - MLESAC solution is better than OLS solution
+                self.estimator_.param_vec_ols_ =  float('nan')*np.ones((p,))
 
         return self
 
@@ -151,15 +158,18 @@ def test(model):
     start_time = time.time()
     mlesac.mlesac(radar_data)
     end_time = time.time()
-    model_mlesac = mlesac.estimator_.param_vec_
+    model_mlesac = mlesac.estimator_.param_vec_mlesac_
     model_ols = mlesac.estimator_.param_vec_ols_
-    inliers = mlesac.inliers
+    inliers = mlesac.inliers_
 
     print("\nMLESAC Velocity Profile Estimation:\n")
-    print("True Velocity Vector\t MLESAC Estimated Velocity Vector")
-    print(str.format('{0:.4f}',velocity[0]) + "\t " + str.format('{0:.4f}',model_mlesac[0]))
-    print(str.format('{0:.4f}',velocity[1]) + "\t " + str.format('{0:.4f}',model_mlesac[1]))
-    print(str.format('{0:.4f}',velocity[2]) + "\t " + str.format('{0:.4f}',model_mlesac[2]))
+    print("Truth\t MLESAC\t\tOLS")
+    print(str.format('{0:.4f}',velocity[0]) + "\t " + str.format('{0:.4f}',model_mlesac[0]) \
+          + " \t" + str.format('{0:.4f}',model_ols[0]))
+    print(str.format('{0:.4f}',velocity[1]) + "\t " + str.format('{0:.4f}',model_mlesac[1]) \
+          + " \t" + str.format('{0:.4f}',model_ols[1]))
+    print(str.format('{0:.4f}',velocity[2]) + "\t " + str.format('{0:.4f}',model_mlesac[2]) \
+          + " \t" + str.format('{0:.4f}',model_ols[2]))
 
     rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
     print("\nRMSE (MLESAC)\t= " + str.format('{0:.4f}',rmse_mlesac) + " m/s")

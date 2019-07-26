@@ -20,12 +20,13 @@ class dopplerMLESAC():
 
         ## define MLESAC parameters
         self.sample_size    = 3     # the minimum number of data values required to fit the model
-        self.max_iterations = 25    # the maximum number of iterations allowed in the algorithm
+        self.max_iterations = 20    # the maximum number of iterations allowed in the algorithm
         self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
         self.converge_thres = 10    # change in data log likelihood fcn required to indicate convergence
 
-        self.param_vec_     = None  # body-frame velocity vector - to be estimated by MLESAC
-        self.param_vec_ols_ = None  # array_like param_vec_ with shape (n,)
+        self.param_vec_        = None  # body-frame velocity vector - to be estimated by MLESAC
+        self.param_vec_mlesac_ = None  # array_like param_vec_ with shape (n,)
+        self.param_vec_ols_    = None  # array_like param_vec_ with shape (n,)
 
     ## model fit fcn
     def fit(self, data):
@@ -86,6 +87,7 @@ class dopplerMLESAC():
 
         return score
 
+    ## returns residuals vector (n,)
     def residual(self, X, data):
         Ntargets = data.shape[0]
         p = data.shape[1]
@@ -101,6 +103,24 @@ class dopplerMLESAC():
 
         eps = doppler_predicted - radar_doppler
         return eps
+
+    ## returns Jacobain matrix, partial_eps/partial_beta (n,p)
+    def jac(self, X, data):
+        Ntargets = data.shape[0]   # X is a column vector of azimuth values
+        p = data.shape[1]
+
+        theta         = data[:,1]       # azimuth angle column vector [rad]
+        phi           = data[:,2]       # elevation angle column vector [rad]
+
+        # initialize
+        J = np.zeros((Ntargets,p), dtype=np.float32)
+
+        for i in range(Ntargets):
+            J[i,:] = np.array([np.cos(theta[i])*np.cos(phi[i]), \
+                               np.sin(theta[i])*np.sin(phi[i]), \
+                               np.sin(phi[i]) ])
+
+        return J
 
 
     def is_data_valid(self, data):
