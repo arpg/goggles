@@ -10,7 +10,7 @@ ROS package for state estimation using millimeter wave radar data. Includes:
 The following dependencies need to be installed independently:
 
 ## 2.1 Dependencies
- - [Ceres Solver](https://ceres-solver.org/installation.html)
+ - [Ceres Solver](http://ceres-solver.org/installation.html)
 
 If using TI millimeter wave sensors the [ti\_mmwave\_rospkg](https://github.com/arpg/ti_mmwave_rospkg) is also required.
 
