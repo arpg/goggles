@@ -22,10 +22,10 @@ Build using catkin\_make or catkin build
 
 ## 3.1 radar\_velocity
 
-Run using ```rosrun goggles radar\_velocity \_radar\_topic:=\<radar pointcloud topic\>```
+Run using ```rosrun goggles radar_velocity _radar_topic:=<radar pointcloud topic>```
 
 Input pointclouds must have doppler measurements for every point.
 
 If running with TI AWR1843 mmwave sensors you can use the launch file:
 
-```roslaunch goggles radar\_velocity.launch```
+```roslaunch goggles radar_velocity.launch```
