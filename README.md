@@ -12,9 +12,9 @@ The following dependencies need to be installed independently:
 ## 2.1 Dependencies
  - Ceres Solver
 
-If using TI millimeter wave sensors the ti\_mmwave\_rospkg is also required.
+If using TI millimeter wave sensors the [ti\_mmwave\_rospkg](https://github.com/arpg/ti_mmwave_rospkg) is also required.
 
-# 2.2 Building
+## 2.2 Building
 
 Build using catkin\_make or catkin build
 
@@ -23,7 +23,9 @@ Build using catkin\_make or catkin build
 ## 3.1 radar\_velocity
 
 Run using ```rosrun goggles radar\_velocity \_radar\_topic:=\<radar pointcloud topic\>```
+
 Input pointclouds must have doppler measurements for every point.
 
 If running with TI AWR1843 mmwave sensors you can use the launch file:
+
 ```roslaunch goggles radar\_velocity.launch```
