@@ -35,6 +35,7 @@ class dopplerMLESAC():
 
     ## distance(s) from data point(S) to model
     def distance(self, data):
+        ## TODO: use residual function as part of computing the distances
         Ntargets = data.shape[0]
         p = self.sample_size
 
@@ -61,6 +62,7 @@ class dopplerMLESAC():
 
     ## evaluate the data log likelihood of the data given the model - P(evidence | model)
     def score(self, data, type):
+        ## TODO: use residual function as part of computing the score
         Ntargets = data.shape[0]
         p = self.sample_size
 

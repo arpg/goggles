@@ -108,6 +108,8 @@ class MLESAC():
             if score_ols > score_mlesac:
                 ## OLS solution is better than MLESAC solution
                 self.estimator_.param_vec_ = self.estimator_.param_vec_ols_
+
+                ##TODO: maybe re-evaulate inliers??
             else:
                 ## do nothing - MLESAC solution is better than OLS solution
                 pass
@@ -154,7 +156,6 @@ def test(model):
     radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
     radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
-    print("mlesac: radar_data.shape = " + str(radar_data.shape))
     start_time = time.time()
     mlesac.mlesac(radar_data)
     end_time = time.time()
