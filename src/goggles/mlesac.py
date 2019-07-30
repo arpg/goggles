@@ -32,11 +32,7 @@ class MLESAC():
 
     def mlesac(self, data):
 
-        Ntargets = data.shape[0]    # number of data points
-        p = data.shape[1]           # dimension of velocity vector
-
-        if self.estimator_.sample_size != p:
-            raise ValueError("radar model does NOT match column dimension of data")
+        Ntargets = data.shape[0]    # data.shape = (Ntargets,3)
 
         bestScore = -np.inf
         bestInliers = []
@@ -60,7 +56,7 @@ class MLESAC():
                 self.estimator_.fit(sample)
 
                 ## score the model - evaluate the data log likelihood fcn
-                score = self.estimator_.score(data,'mlesac')
+                score = self.estimator_.score(data,type=None)
 
                 if score > bestScore:
                     ## this model better explains the data
@@ -114,7 +110,10 @@ class MLESAC():
                 self.estimator_.param_vec_ = self.estimator_.param_vec_ols_
             else:
                 ## do nothing - MLESAC solution is better than OLS solution
-                self.estimator_.param_vec_ols_ =  float('nan')*np.ones((p,))
+                pass
+        else:
+            self.estimator_.param_vec_ols_ = \
+                float('nan')*np.ones((self.estimator_.sample_size,))
 
         return self
 
@@ -155,6 +154,7 @@ def test(model):
     radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
     radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
+    print("mlesac: radar_data.shape = " + str(radar_data.shape))
     start_time = time.time()
     mlesac.mlesac(radar_data)
     end_time = time.time()
@@ -164,12 +164,9 @@ def test(model):
 
     print("\nMLESAC Velocity Profile Estimation:\n")
     print("Truth\t MLESAC\t\tOLS")
-    print(str.format('{0:.4f}',velocity[0]) + "\t " + str.format('{0:.4f}',model_mlesac[0]) \
-          + " \t" + str.format('{0:.4f}',model_ols[0]))
-    print(str.format('{0:.4f}',velocity[1]) + "\t " + str.format('{0:.4f}',model_mlesac[1]) \
-          + " \t" + str.format('{0:.4f}',model_ols[1]))
-    print(str.format('{0:.4f}',velocity[2]) + "\t " + str.format('{0:.4f}',model_mlesac[2]) \
-          + " \t" + str.format('{0:.4f}',model_ols[2]))
+    for i in range(base_estimator.sample_size):
+        print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
+              + " \t" + str.format('{0:.4f}',model_ols[i]))
 
     rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
     print("\nRMSE (MLESAC)\t= " + str.format('{0:.4f}',rmse_mlesac) + " m/s")
@@ -184,6 +181,6 @@ def test_montecarlo(model):
     pass
 
 if __name__=='__main__':
-    # model = RadarDopplerModel2D()
-    model = RadarDopplerModel3D()
+    model = RadarDopplerModel2D()
+    # model = RadarDopplerModel3D()
     test(model)

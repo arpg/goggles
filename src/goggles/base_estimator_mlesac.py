@@ -19,7 +19,7 @@ class dopplerMLESAC():
         self.utils = RadarUtilities()
 
         ## define MLESAC parameters
-        self.sample_size    = 3     # the minimum number of data values required to fit the model
+        self.sample_size    = self.model.min_pts     # the minimum number of data values required to fit the model
         self.max_iterations = 20    # the maximum number of iterations allowed in the algorithm
         self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
         self.converge_thres = 10    # change in data log likelihood fcn required to indicate convergence
@@ -36,7 +36,7 @@ class dopplerMLESAC():
     ## distance(s) from data point(S) to model
     def distance(self, data):
         Ntargets = data.shape[0]
-        p = data.shape[1]
+        p = self.sample_size
 
         # init distances vector
         distances = np.zeros((Ntargets,), dtype=np.float32)
@@ -58,23 +58,22 @@ class dopplerMLESAC():
 
         ## distance per data point (column vector)
         return distances
-        # return np.squeeze(distances)
 
     ## evaluate the data log likelihood of the data given the model - P(evidence | model)
     def score(self, data, type):
         Ntargets = data.shape[0]
-        p = data.shape[1]
+        p = self.sample_size
 
         radar_doppler = data[:,0]
         radar_azimuth = data[:,1]
         radar_elevaton = data[:,2]
 
         if type == 'mlesac':
-            model = self.param_vec_
+            model = self.param_vec_mlesac_
         elif type == 'ols':
             model = self.param_vec_ols_
         else:
-            raise ValueError("score type improperly specifed")
+            model = self.param_vec_
 
         doppler_predicted = self.model.simulateRadarDoppler(model, \
             np.column_stack((radar_azimuth,radar_elevaton)), \
@@ -90,7 +89,7 @@ class dopplerMLESAC():
     ## returns residuals vector (n,)
     def residual(self, X, data):
         Ntargets = data.shape[0]
-        p = data.shape[1]
+        p = self.sample_size
 
         radar_doppler = data[:,0]
         radar_azimuth = data[:,1]
@@ -106,30 +105,34 @@ class dopplerMLESAC():
 
     ## returns Jacobain matrix, partial_eps/partial_beta (n,p)
     def jac(self, X, data):
+        ## TODO: move this calculation over to the radar_doppler_model class
         Ntargets = data.shape[0]   # X is a column vector of azimuth values
-        p = data.shape[1]
 
-        theta         = data[:,1]       # azimuth angle column vector [rad]
-        phi           = data[:,2]       # elevation angle column vector [rad]
+        theta = data[:,1]       # azimuth angle column vector [rad]
+        phi   = data[:,2]       # elevation angle column vector [rad]
 
         # initialize
-        J = np.zeros((Ntargets,p), dtype=np.float32)
+        J = np.zeros((Ntargets,self.sample_size), dtype=np.float32)
 
         for i in range(Ntargets):
-            J[i,:] = np.array([np.cos(theta[i])*np.cos(phi[i]), \
-                               np.sin(theta[i])*np.sin(phi[i]), \
-                               np.sin(phi[i]) ])
+            if self.sample_size == 2:
+                J[i,:] = np.array([np.cos(theta[i]),np.sin(theta[i])])
+
+            elif self.sample_size == 3:
+                J[i,:] = np.array([np.cos(theta[i])*np.cos(phi[i]), \
+                                   np.sin(theta[i])*np.sin(phi[i]), \
+                                   np.sin(phi[i]) ])
+            else:
+                raise ValueError("Jacobian Error")
 
         return J
 
 
     def is_data_valid(self, data):
-        if data.shape[0] != data.shape[1]:
+        if data.shape[0] != self.sample_size:
             raise ValueError("data must be an 2x2 or 3x3 square matrix")
 
-        p = data.shape[1]           # dimension of velocity vector
-
-        if p == 2:
+        if self.sample_size == 2:
             radar_doppler = data[:,0]
             radar_azimuth = data[:,1]
 
@@ -140,7 +143,7 @@ class dopplerMLESAC():
             else:
                 is_valid = False
 
-        elif p == 3:
+        elif self.sample_size == 3:
             radar_doppler = data[:,0]
             radar_azimuth = data[:,1]
             radar_elevation = data[:,2]

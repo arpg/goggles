@@ -16,11 +16,11 @@ class RadarDopplerModel2D:
     def __init__(self):
         self.utils = RadarUtilities()
 
-        ## define RANSAC parameters
-        self.sampleSize    = 2      # the minimum number of data values required to fit the model
-        self.maxIterations = 100    # the maximum number of iterations allowed in the algorithm
-        self.maxDistance   = 0.1    # a threshold value for determining when a data point fits a model
-        self.minPts        = 2      # the number of close data values required to assert that a model fits well to data
+        ## define radar parameters
+        self.sigma_vr = 0.044               # [m/s]
+        self.sigma_theta = 0.0426           # [rad]
+
+        self.min_pts = 2    # minimum number of data points to fit the model of close data values required to assert that a model fits well to data
 
     # defined for RANSAC - not used
     def fit(self, data):
@@ -56,12 +56,15 @@ class RadarDopplerModel2D:
 
 
     # inverse measurement model: measurements->model
-    def doppler2BodyFrameVelocity(self, radar_doppler, radar_azimuth):
+    def doppler2BodyFrameVelocity(self, data):
+        radar_doppler = data[:,0]       # doppler velocity [m/s]
+        radar_azimuth = data[:,1]       # azimuth angle column vector [rad]
+
         numAzimuthBins = self.utils.getNumAzimuthBins(radar_azimuth)
 
-        rospy.loginfo("doppler2BodyFrameVelocity: numAzimuthBins = %d", numAzimuthBins)
-        rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
-        # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_doppler])    # 'list comprehension'
+        # rospy.loginfo("doppler2BodyFrameVelocity: numAzimuthBins = %d", numAzimuthBins)
+        # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
+        # # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_doppler])    # 'list comprehension'
 
         if numAzimuthBins > 1:
            ## solve uniquely-determined problem for pair of targets (i,j)
@@ -71,7 +74,7 @@ class RadarDopplerModel2D:
             b = np.array([[radar_doppler[0]], \
                           [radar_doppler[1]]])
 
-            model = np.linalg.solve(M,b)
+            model = np.squeeze(np.linalg.solve(M,b))
         else:
             model = float('nan')*np.ones((2,))
 
@@ -79,9 +82,11 @@ class RadarDopplerModel2D:
 
 
     # measurement generative (forward) model: model->measurements
-    def simulateRadarDoppler(self, model, radar_azimuth, eps, delta):
-        Ntargets = radar_azimuth.shape[0]
+    def simulateRadarDoppler(self, model, data, eps, delta):
+        Ntargets = data.shape[0]
         radar_doppler = np.zeros((Ntargets,), dtype=np.float32)
+
+        radar_azimuth = data[:,0]
 
         for i in range(Ntargets):
             ## add measurement noise distributed as N(0,sigma_theta_i)
@@ -197,6 +202,9 @@ class RadarDopplerModel2D:
             ## could Additionally add some noise here
             radar_azimuth[i] = radar_azimuth_bins[bin_idx]
 
+        true_elevation = np.zeros((Ntargets,))
+        radar_elevation = np.zeros((Ntargets,))
+
         ## define AGWN vector for doppler velocity measurements
         if debug:
             eps = np.ones((Ntargets,), dtype=np.float32)*sigma_vr
@@ -204,11 +212,14 @@ class RadarDopplerModel2D:
             eps = np.random.normal(0,sigma_vr,(Ntargets,))
 
         ## get true radar doppler measurements
-        true_doppler = self.simulateRadarDoppler(model, true_azimuth, \
+        true_doppler = self.simulateRadarDoppler(model, np.column_stack((true_azimuth,true_elevation)), \
             np.zeros((Ntargets,), dtype=np.float32), np.zeros((Ntargets,), dtype=np.float32))
 
         # get noisy radar doppler measurements
-        radar_doppler =  self.simulateRadarDoppler(model, radar_azimuth, \
+        radar_doppler =  self.simulateRadarDoppler(model, np.column_stack((radar_azimuth,radar_elevation)), \
             eps, np.zeros((Ntargets,), dtype=np.float32))
 
-        return true_azimuth, true_doppler, radar_azimuth, radar_doppler
+        data_truth = np.column_stack((true_doppler,true_azimuth,true_elevation))
+        data_sim = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
+
+        return data_truth, data_sim

@@ -76,15 +76,15 @@ class VelocityEstimator():
         rospy.loginfo("INIT: namespace = %s", ns)
 
         ## init subscriber
-        self.radar_name = rospy.get_param('~radar_name')
-        mmwave_topic = self.radar_name + 'mmWaveDataHdl/RScan'
-        self.radar_sub = rospy.Subscriber(ns + mmwave_topic, PointCloud2, self.ptcloud_cb)
-        rospy.loginfo("INIT: VelocityEstimator Node subcribed to: " + (ns + mmwave_topic))
+        self.mmwave_topic = rospy.get_param('~mmwave_topic')
+        self.radar_sub = rospy.Subscriber(self.mmwave_topic, PointCloud2, self.ptcloud_cb)
+        rospy.loginfo("INIT: VelocityEstimator Node subcribed to: " + self.mmwave_topic)
 
         ## init publisher
         twist_topic = 'goggles'
+        self.twist_mlesac_pub = rospy.Publisher(ns + twist_topic, TwistStamped, queue_size=10)
         # self.twist_bf_pub = rospy.Publisher(ns + twist_topic +'_bf', TwistWithCovarianceStamped, queue_size=10)
-        self.twist_mlesac_pub = rospy.Publisher(ns + twist_topic +'_mlesac', TwistStamped, queue_size=10)
+        # self.twist_mlesac_pub = rospy.Publisher(ns + twist_topic +'_mlesac', TwistStamped, queue_size=10)
         # self.twist_odr_pub = rospy.Publisher(ns + twist_topic +'_odr', TwistWithCovarianceStamped, queue_size=10)
 
         ## define filtering threshold parameters - taken from velocity_estimation.m
@@ -95,10 +95,10 @@ class VelocityEstimator():
         self.thresholds      = np.array([self.azimuth_thres, self.intensity_thres, \
                                          self.range_thres, self.elevation_thres])
 
-        rospy.loginfo("INIT: " + ns + mmwave_topic + " azimuth_thres = " + str(self.azimuth_thres))
-        rospy.loginfo("INIT: " + ns + mmwave_topic + " elevation_thres = " + str(self.elevation_thres))
-        rospy.loginfo("INIT: " + ns + mmwave_topic + " range_thres = " + str(self.range_thres))
-        rospy.loginfo("INIT: " + ns + mmwave_topic + " intensity_thres = " + str(self.intensity_thres))
+        rospy.loginfo("INIT: " + self.mmwave_topic + " azimuth_thres = " + str(self.azimuth_thres))
+        rospy.loginfo("INIT: " + self.mmwave_topic + " elevation_thres = " + str(self.elevation_thres))
+        rospy.loginfo("INIT: " + self.mmwave_topic + " range_thres = " + str(self.range_thres))
+        rospy.loginfo("INIT: " + self.mmwave_topic + " intensity_thres = " + str(self.intensity_thres))
 
         # use the ODR estimate? (if not, publish ransac estimate)
         self.odr_flag = rospy.get_param('~odr_flag')
@@ -106,6 +106,7 @@ class VelocityEstimator():
         rospy.loginfo("INIT: VelocityEstimator Node Initialized")
 
     def ptcloud_cb(self, msg):
+        rospy.loginfo("GOT HERE: ptcloud_cb")
         # rospy.loginfo("Messaged recieved on: " + rospy.get_namespace())
         pts_list = list(pc2.read_points(msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
         pts = np.array(pts_list)
@@ -125,15 +126,16 @@ class VelocityEstimator():
             self.estimate_velocity(pts, msg)
 
     def estimate_velocity(self, pts, radar_msg):
+        rospy.loginfo("GOT HERE: estimate_velocity")
         Ntargets = pts.shape[0]
         # rospy.loginfo("Ntargets = " + str(Ntargets))
 
         ## create target azimuth vector (in radians)
         azimuth = np.arctan(np.divide(pts[:,1],pts[:,0]))
 
-        if self.type == '2D':
+        if self.model.min_pts == 2:
             elevation = float('nan')*np.ones((Ntargets,))
-        elif self.type == '3D':
+        elif self.model.min_pts == 2:
             radar_xy = np.sqrt(np.square(pts[:,0]) + np.square(pts[:,1]))
             elevation = np.arctan(np.divide(pts[:,2],radar_xy))
         else:
@@ -209,8 +211,10 @@ class VelocityEstimator():
             if np.isnan(model_mlesac[0]):
                 rospy.logwarn("estimate_velocity: RANSAC VELOCITY ESTIMATE IS NANs")
             else:
-                # velocity_estimate = -model_ransac
-                velocity_estimate = -model_mlesac
+                if self.type == '2D':
+                    velcity_estimate = np.stack((-model_mlesac,np.zeros((1,))))
+                elif self.type =='3D':
+                    velocity_estimate = -model_mlesac
                 self.publish_twist_estimate(velocity_estimate, radar_msg, type='mlesac')
 
             # if np.isnan(model_odr[1]):
@@ -247,7 +251,6 @@ class VelocityEstimator():
             self.twist_odr_pub.publish(twist_estimate)
         else:
             rospy.logerr("publish_twist_estimate: CANNOT PUBLISH TWIST MESSAGE ON UNSPECIFIED TOPIC")
-
 
 def main():
     ## anonymous=True ensures that your node has a unique name by adding random numbers to the end of NAME

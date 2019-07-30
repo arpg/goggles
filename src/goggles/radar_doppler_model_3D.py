@@ -21,11 +21,10 @@ class RadarDopplerModel3D:
         self.sigma_theta = 0.0426           # [rad]
         self.sigma_phi = self.sigma_theta   # [rad]
 
+        self.min_pts = 3    # minimum number of data points to fit the model
+
     # inverse measurement model: measurements->model
     def doppler2BodyFrameVelocity(self, data):
-        # data - a 3x3 matrix
-        p = data.shape[1]
-
         radar_doppler = data[:,0]       # doppler velocity [m/s]
         theta         = data[:,1]       # azimuth angle column vector [rad]
         phi           = data[:,2]       # elevation angle column vector [rad]
@@ -45,7 +44,7 @@ class RadarDopplerModel3D:
 
             model = np.squeeze(np.linalg.solve(M,b))
         else:
-            model = float('nan')*np.ones((p,))
+            model = float('nan')*np.ones((3,))
 
         return model
 
