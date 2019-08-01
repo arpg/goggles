@@ -307,6 +307,12 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 				F_d = F_d + F_c * delta_t;
 
 				F = F_d * F; // update total jacobian
+
+				Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
+				G.block<3,3>(0,0) = C_ws_hat;
+
+				// update covariance
+				P = F_d * P * F_d.transpose() + G * Q * G.transpose();
 			}
 			
 			return true;
