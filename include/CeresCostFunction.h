@@ -96,6 +96,68 @@ class VelocityChangeCostFunction : public ceres::CostFunction
     double delta_t_;
 };
 
+class ImuIntegrator
+{
+	public:
+		PropagateImuIntegrator(ImuMeasurement &m0, ImuMeasurement &m1, double g_w, double tau)
+			: m0_(m0), m1_(m1), tau_(tau)
+		{
+			g_w_ << 0,0,g_w; // define world gravity as in positive Z direction
+		}
+		
+		void operator(const std::vector<double> &x, 
+									std::vector<double> &dxdt, 
+									const double t)
+		{
+			// map in and out states to Eigen datatypes for convenience
+			Eigen::Map<Eigen::Vector4d> q_ws(x.data()[0]); // sensor-to-world rotation
+																										 // assumes i,j,k,w representation
+			Eigen::Map<Eigen::Vector3d> v_s(x.data()[4]); // sensor frame velocity
+			Eigen::Map<Eigen::Vector3d> b_g(x.data()[7]); // gyro biases
+			Eigen::Map<Eigen::Vector3d> b_a(x.data()[10]); // accelerometer biases
+			Eigen::Map<Eigen::Vector4d> q_ws_dot(dxdt.data()[0]); 
+			Eigen::Map<Eigen::Vector3d> v_s_dot(dxdt.data()[4];
+			Eigen::Map<Eigen::Vector3d> b_g_dot(dxdt.data()[7]);
+			Eigen::Map<Eigen::Vector3d> b_a_dot(dxdt.data()[10]);
+		
+			// get interpolated imu measurement at time t
+			double t0 = m0_.t_;
+			double t1 = m1_.t_;
+			double t_span = t1 - t0;
+			double c = (t - t0) / t_span;
+			Eigen::Vector3d g = (1.0 - c) * m0_.g_ + c * m1_.g_;
+			Eigen::Vector3d a = (1.0 - c) * m0_.a_ + c * m1_.a_;
+
+			g = g - b_g; // subtract gyro biases
+			a = a - b_a; // subtract accel biases
+
+			// define differential equations
+			// ref: Leutenegger et al, 2015
+			Eigen::Matrix4d Omega;
+			Omega <<    0, -g(2),  g(1), g(0),
+							 g(2),     0, -g(0), g(1),
+							-g(1),  g(0),     0, g(2),
+							-g(0), -g(1), -g(2),    0;
+			q_ws_dot = 0.5 * Omega * q_ws;
+			
+			Eigen::Quaterniond q_ws_quat(q_ws(3),q_ws(0),q_ws(1),q_ws(3)); // eigen uses w,i,j,k
+			Eigen::Matrix3d C_sw = q_ws_quat.toRotationMatrix().inverse();
+			Eigen::Matrix3d omega_cross;
+			omega_cross <<    0, -g(2),  g(1),
+										 g(2),     0, -g(0),
+    	              -g(1),   g(0),    0;
+			v_s_dot = a + (C_sw * g_w_) - (omega_cross * v_s);
+	
+			b_g_dot = 0;
+			b_a_dot = -(1.0 / tau_) * b_a;	
+		}
+
+	private:
+		ImuMeasurement m0_;
+		ImuMeasurement m1_;
+		Eigen::Vector3d g_w_;
+		double tau_;
+};
 
 class ImuVelocityCostFunction : public ceres::CostFunction
 {
@@ -127,20 +189,5 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 		double t0_;
 		double t1_;
 		std::vector<ImuMeasurement> imu_measurements_;
-
-		void PropagateImuState(const ImuState &x, ImuState &dxdt, const double t)
-		{
-			// map in and out states to Eigen datatypes for convenience
-			Eigen::Map<Eigen::Quaterniond> q(x.data()[0]);
-			Eigen::Map<Eigen::Vector3d> v(x.data()[4]);
-			Eigen::Map<Eigen::Vector3d> b_g(x.data()[7]);
-			Eigen::Map<Eigen::Vector3d> b_a(x.data()[10]);
-			Eigen::Map<Eigen::Quaterniond> q_dot(dxdt.data()[0]);
-			Eigen::Map<Eigen::Vector3d> v_dot(dxdt.data()[4];
-			Eigen::Map<Eigen::Vector3d> b_g(dxdt.data()[7]);
-			Eigen::Map<Eigen::Vector3d> b_a(dxdt.data()[10]);
-
-			// define differential equations
-
-		}
+		
 };
