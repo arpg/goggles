@@ -49,7 +49,7 @@ list(APPEND LINK_LIBS
 set( INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set( HEADERS
-  ${INC_DIR}/CeresCostFunction.h
+  ${INC_DIR}/CeresCostFunctions.h
   )
 
 set( RAD_VEL_SRCS
