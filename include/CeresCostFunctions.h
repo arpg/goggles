@@ -120,12 +120,11 @@ class ImuIntegrator
                   const double t)
     {
       // map in and out states to Eigen datatypes for convenience
-      Eigen::Map<const Eigen::Vector4d> q_ws(&x[0]); // sensor-to-world rotation
-                                                     // assumes i,j,k,w representation
+      Eigen::Map<const Eigen::Quaterniond> q_ws(&x[0]); // sensor-to-world rotation
       Eigen::Map<const Eigen::Vector3d> v_s(&x[4]); // sensor frame velocity
       Eigen::Map<const Eigen::Vector3d> b_g(&x[7]); // gyro biases
       Eigen::Map<const Eigen::Vector3d> b_a(&x[10]); // accelerometer biases
-      Eigen::Map<Eigen::Vector4d> q_ws_dot(&dxdt[0]); 
+      Eigen::Map<Eigen::Quaterniond> q_ws_dot(&dxdt[0]); 
       Eigen::Map<Eigen::Vector3d> v_s_dot(&dxdt[4]);
       Eigen::Map<Eigen::Vector3d> b_g_dot(&dxdt[7]);
       Eigen::Map<Eigen::Vector3d> b_a_dot(&dxdt[10]);
@@ -148,10 +147,9 @@ class ImuIntegrator
                g(2),     0, -g(0), g(1),
               -g(1),  g(0),     0, g(2),
               -g(0), -g(1), -g(2),    0;
-      q_ws_dot = 0.5 * Omega * q_ws;
+      q_ws_dot.coeffs() = 0.5 * Omega * q_ws.coeffs();
       
-      Eigen::Quaterniond q_ws_quat(q_ws(3),q_ws(0),q_ws(1),q_ws(3)); // eigen uses w,i,j,k
-      Eigen::Matrix3d C_sw = q_ws_quat.toRotationMatrix().inverse();
+      Eigen::Matrix3d C_sw = q_ws.toRotationMatrix().inverse();
       Eigen::Matrix3d omega_cross;
       omega_cross <<    0, -g(2),  g(1),
                      g(2),     0, -g(0),
@@ -197,25 +195,27 @@ class ImuVelocityCostFunction : public ceres::CostFunction
                   double** jacobians) const
     {
       // map parameter blocks to eigen containers
-      Eigen::Map<const Eigen::Vector4d> q_ws_0(&parameters[0][0]);
+      Eigen::Map<const Eigen::Quaterniond> q_ws_0(&parameters[0][0]);
       Eigen::Map<const Eigen::Vector3d> v_s_0(&parameters[1][0]);
       Eigen::Map<const Eigen::Vector3d> b_g_0(&parameters[2][0]);
       Eigen::Map<const Eigen::Vector3d> b_a_0(&parameters[3][0]);
-      Eigen::Map<const Eigen::Vector4d> q_ws_1(&parameters[4][0]);
+      Eigen::Map<const Eigen::Quaterniond> q_ws_1(&parameters[4][0]);
       Eigen::Map<const Eigen::Vector3d> v_s_1(&parameters[5][0]);
       Eigen::Map<const Eigen::Vector3d> b_g_1(&parameters[6][0]);
       Eigen::Map<const Eigen::Vector3d> b_a_1(&parameters[7][0]);
 
       // get rotation matrices
-      const Eigen::Quaterniond q_ws_0_quat(q_ws_0(3), q_ws_0(0), q_ws_0(1), q_ws_0(2));
-      const Eigen::Quaterniond q_ws_1_quat(q_ws_1(3), q_ws_1(0), q_ws_1(1), q_ws_1(2));
-      const Eigen::Matrix3d C_ws_0 = q_ws_0_quat.toRotationMatrix();
+      const Eigen::Matrix3d C_ws_0 = q_ws_0.toRotationMatrix();
       const Eigen::Matrix3d C_sw_0 = C_ws_0.inverse();
-      const Eigen::Matrix3d C_ws_1 = q_ws_1_quat.toRotationMatrix();
+      const Eigen::Matrix3d C_ws_1 = q_ws_1.toRotationMatrix();
       const Eigen::Matrix3d C_sw_1 = C_ws_1.inverse();
 
       // initialize propagated states
-      Eigen::Vector4d q_ws_hat(q_ws_0(0), q_ws_0(1), q_ws_0(2), q_ws_0(3));
+      Eigen::Quaterniond q_ws_hat(q_ws_0.coeffs()[3], 
+                                  q_ws_0.coeffs()[0], 
+                                  q_ws_0.coeffs()[1], 
+                                  q_ws_0.coeffs()[2]);
+      q_ws_hat.w() = q_ws_0.coeffs()[3];
       Eigen::Vector3d v_s_hat(v_s_0(0), v_s_0(1), v_s_0(2));
       Eigen::Vector3d b_a_hat(b_a_0(0), b_a_0(1), b_a_0(2));
 
@@ -266,7 +266,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
         // integrate measurements using Runge-Kutta 4
         std::vector<double> x0;
-        for (int j = 0; j < 4; j++) x0.push_back(q_ws_hat(j));
+        x0.push_back(q_ws_hat.x());
+        x0.push_back(q_ws_hat.y());
+        x0.push_back(q_ws_hat.z());
+        x0.push_back(q_ws_hat.w());
         for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
         for (int j = 0; j < 3; j++) x0.push_back(b_g_0(j));
         for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
@@ -274,13 +277,15 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
         boost::numeric::odeint::runge_kutta4<std::vector<double>> stepper;
         boost::numeric::odeint::integrate_const(stepper, imu_int, x0, meas_0.t_, meas_1.t_, t_step);
-        q_ws_hat << x0[0], x0[1], x0[2], x0[3];
+        q_ws_hat.x() = x0[0];
+        q_ws_hat.y() = x0[1];
+        q_ws_hat.z() = x0[2];
+        q_ws_hat.w() = x0[3];
         v_s_hat << x0[4], x0[5], x0[6];
         b_a_hat << x0[10], x0[11], x0[12];
 
         // get orientation matrices
-        Eigen::Quaterniond q_ws_hat_quat(q_ws_hat(3),q_ws_hat(0),q_ws_hat(1),q_ws_hat(2));
-        Eigen::Matrix3d C_ws_hat = q_ws_hat_quat.toRotationMatrix();
+        Eigen::Matrix3d C_ws_hat = q_ws_hat.toRotationMatrix();
         Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
 
         // calculate continuous time jacobian
@@ -318,8 +323,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       // finish jacobian
       Eigen::Matrix<double,12,12> de_dX = Eigen::Matrix<double,12,12>::Identity();
-      Eigen::Quaterniond q_ws_hat_quat(q_ws_hat(3),q_ws_hat(0),q_ws_hat(1),q_ws_hat(2));
-      Eigen::Quaterniond q_ws_err = q_ws_hat_quat.conjugate() * q_ws_1_quat;
+      Eigen::Quaterniond q_ws_err = q_ws_hat.conjugate() * q_ws_1;
       Eigen::Matrix3d q_err_cross;
       q_err_cross << q_ws_err.w(), -q_ws_err.z(), q_ws_err.y(),
               q_ws_err.z(), q_ws_err.w(), -q_ws_err.x(),
