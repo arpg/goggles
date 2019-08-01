@@ -1,3 +1,12 @@
+#include <boost/numeric/odeint.hpp>
+
+struct ImuMeasurement
+{
+	Eigen::Vector3d g_; // gyro reading
+	Eigen::Vector3d a_; // accelerometer reading
+	double t_;          // timestamp
+}
+
 class BodyVelocityCostFunction : public ceres::CostFunction
 {
   public:
@@ -85,4 +94,53 @@ class VelocityChangeCostFunction : public ceres::CostFunction
 
   protected:
     double delta_t_;
+};
+
+
+class ImuVelocityCostFunction : public ceres::CostFunction
+{
+
+	typedef std::vector<double> ImuState;
+  public:
+		ImuVelocityCostFunction(double t0, 
+														double t1, 
+														std::vector<ImuMeasurement> &imu_measurements)
+			: t0_(t0), t1_(t1), imu_measurements_(imu_measurements)
+		{
+			set_num_residuals(3);
+			mutable_parameter_block_sizes()->push_back(3); // orientation at t0
+			mutable_parameter_block_sizes()->push_back(3); // velocity at t0
+			mutable_parameter_block_sizes()->push_back(3); // orientation at t1
+			mutable_parameter_block_sizes()->push_back(3); // velocity at t1
+			mutable_parameter_block_sizes()->push_back(3); // imu gyro biases
+			mutabel_parameter_block_sizes()->push_back(3); // imu accelerometer biases
+		}
+
+		bool Evaluate(double const* const* parameters,
+									double* residuals,
+									double** jacobians) const
+		{
+			return true;
+		}
+
+	protected:
+		double t0_;
+		double t1_;
+		std::vector<ImuMeasurement> imu_measurements_;
+
+		void PropagateImuState(const ImuState &x, ImuState &dxdt, const double t)
+		{
+			// map in and out states to Eigen datatypes for convenience
+			Eigen::Map<Eigen::Quaterniond> q(x.data()[0]);
+			Eigen::Map<Eigen::Vector3d> v(x.data()[4]);
+			Eigen::Map<Eigen::Vector3d> b_g(x.data()[7]);
+			Eigen::Map<Eigen::Vector3d> b_a(x.data()[10]);
+			Eigen::Map<Eigen::Quaterniond> q_dot(dxdt.data()[0]);
+			Eigen::Map<Eigen::Vector3d> v_dot(dxdt.data()[4];
+			Eigen::Map<Eigen::Vector3d> b_g(dxdt.data()[7]);
+			Eigen::Map<Eigen::Vector3d> b_a(dxdt.data()[10]);
+
+			// define differential equations
+
+		}
 };
