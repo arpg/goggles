@@ -219,11 +219,22 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			Eigen::Vector3d v_s_hat(v_s_0(0), v_s_0(1), v_s_0(2));
 			Eigen::Vector3d b_a_hat(b_a_0(0), b_a_0(1), b_a_0(2));
 
+			Eigen::Vector3d g_w(0.0, 0.0, params_.g_); // world gravity vector
+
 			Eigen::Matrix<double,12,12> F; // jacobian matrix
 			Eigen::Matrix<double,12,12> P; // covariance matrix
+			Eigen::Matrix<double,12,12> Q; // measurement noise matrix
 
-			F.setZero();
-			P.setZero();
+			F.setIdentity();
+			P.setIdentity();
+			Q.setIdentity();
+
+			// set up noise matrix
+			Q.block<3,3>(0,0) *= params_.sigma_g_;
+			Q.block<3,3>(3,3) *= params_.sigma_a_;
+			Q.block<3,3>(6,6) *= params_.sigma_b_g_;
+			Q.block<3,3>(9,9) *= params_.sigma_b_a_;
+
 
 			// propagate imu measurements, tracking jacobians and covariance
 			for (int i = 1; i < imu_measurements_.size(); i++)
@@ -249,6 +260,12 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					meas_1.a_ = (1.0 - c) * meas_0.a_ + c * meas_1.a_;
 				}
 
+				double delta_t = meas_1.t1_ - meas_0.t0_;
+
+				// get average of imu readings
+				Eigen::Vector3d omega_true = (meas_0.g_ + meas_1.g_) / 2.0;
+				Eigen::Vector3d acc_true = (meas_0.a_ + meas_1.a_) / 2.0;
+
 				// integrate measurements using Runge-Kutta 4
 				std::vector<double> x0;
 				for (int j = 0; j < 4; j++) x0.push_back(q_ws_hat(j));
@@ -263,7 +280,33 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 				v_s_hat << x0[4], x0[5], x0[6];
 				b_a_hat << x0[10], x0[11], x0[12];
 
-				// update covariance and jacobians
+				// get orientation matrices
+				Eigen::Quaterniond q_ws_hat_quat(q_ws_hat(3),q_ws_hat(0),q_ws_hat(1),q_ws_hat(2));
+				Eigen::Matrix3d C_ws_hat = q_ws_hat_quat.toRotationMatrix();
+				Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
+
+				// calculate continuous time jacobian
+				Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
+				F_c.block<3,3>(0,6) = C_ws_hat;
+				F_c.block<3,3>(3,0) = -C_sw_hat * g_w;
+				Eigen::Matrix3d omega_cross;
+				omega_cross << 0, -omega_true(2), omega_true(1),
+								omega_true(2), 0, -omega_true(0),
+								-omega_true(1), omega_true(0), 0;
+				F_c.block<3,3>(3,3) = -omega_cross;
+				Eigen::Matix3d v_s_hat_cross;
+				v_s_hat_cross << 0, -v_s_hat(2), v_s_hat(1),
+								v_s_hat(2), 0, -v_s_hat(0),
+								-v_s_hat(1), v_s_hat(0), 0;
+				F_c.block<3,3>(3,6) = -v_s_hat_cross;
+				F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
+				F_c.block<3,3>(9,9) = (-1.0 / params_.b_a_tau_) * Eigen::Matrix3d::Identity();
+
+				// approximate discrete time jacobian
+				Eigen::Matrix<double,12,12> F_d = Eigen::Matrix<double,12,12>::Identity();
+				F_d = F_d + F_c * delta_t;
+
+				F = F_d * F; // update total jacobian
 			}
 			
 			return true;
