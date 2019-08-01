@@ -52,8 +52,12 @@ set( HEADERS
   ${INC_DIR}/CeresCostFunction.h
   )
 
-set( SOURCES
+set( RAD_VEL_SRCS
   ${SRC_DIR}/radar_velocity.cpp
+  )
+
+set( RAD_IN_VEL_SRCS
+  ${SRC_DIR}/radar_inertial_velocity.cpp
   )
 
 ## Specify additional locations of header files
@@ -64,6 +68,7 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
   ${pthread_INCLUDE_DIRS}
   ${rt_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIR}
   ${CERES_INCLUDE_DIRS}
   ${INC_DIR}
 )
@@ -73,7 +78,12 @@ link_directories( ${PCL_LIBRARY_DIRS} )
 
 add_definitions(${PCL_DEFINITIONS})
 
-add_executable(radar_velocity ${SOURCES} ${HEADERS})
+add_executable(radar_velocity ${RAD_VEL_SRCS} ${HEADERS})
 target_link_libraries(radar_velocity
    ${LINK_LIBS}
-   )
+)
+
+add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${HEADERS})
+target_link_libraries(radar_inertial_velocity
+   ${LINK_LIBS}
+)
