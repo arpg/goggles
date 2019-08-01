@@ -219,8 +219,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			Eigen::Vector3d v_s_hat(v_s_0(0), v_s_0(1), v_s_0(2));
 			Eigen::Vector3d b_a_hat(b_a_0(0), b_a_0(1), b_a_0(2));
 
-			Eigen::Vector3d g_w(0.0, 0.0, params_.g_); // world gravity vector
-
 			Eigen::Matrix<double,12,12> F; // jacobian matrix
 			Eigen::Matrix<double,12,12> P; // covariance matrix
 			Eigen::Matrix<double,12,12> Q; // measurement noise matrix
@@ -260,7 +258,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					meas_1.a_ = (1.0 - c) * meas_0.a_ + c * meas_1.a_;
 				}
 
-				double delta_t = meas_1.t1_ - meas_0.t0_;
+				double delta_t = meas_1.t_ - meas_0.t_;
 
 				// get average of imu readings
 				Eigen::Vector3d omega_true = (meas_0.g_ + meas_1.g_) / 2.0;
@@ -272,10 +270,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 				for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
 				for (int j = 0; j < 3; j++) x0.push_back(b_g_0(j));
 				for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
-				double dt = (meas_1.t_ - meas_0.t_) / 10.0;
+				double t_step = delta_t / 10.0;
 				ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
 				boost::numeric::odeint::runge_kutta4<std::vector<double>> stepper;
-				boost::numeric::odeint::integrate_const(stepper, imu_int, x0, meas_0.t_, meas_1.t_, dt);
+				boost::numeric::odeint::integrate_const(stepper, imu_int, x0, meas_0.t_, meas_1.t_, t_step);
 				q_ws_hat << x0[0], x0[1], x0[2], x0[3];
 				v_s_hat << x0[4], x0[5], x0[6];
 				b_a_hat << x0[10], x0[11], x0[12];
@@ -288,13 +286,16 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 				// calculate continuous time jacobian
 				Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
 				F_c.block<3,3>(0,6) = C_ws_hat;
-				F_c.block<3,3>(3,0) = -C_sw_hat * g_w;
+				Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
+				g_w_cross(0,1) = -params_.g_;
+				g_w_cross(1,0) = params_.g_;
+				F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
 				Eigen::Matrix3d omega_cross;
 				omega_cross << 0, -omega_true(2), omega_true(1),
 								omega_true(2), 0, -omega_true(0),
 								-omega_true(1), omega_true(0), 0;
 				F_c.block<3,3>(3,3) = -omega_cross;
-				Eigen::Matix3d v_s_hat_cross;
+				Eigen::Matrix3d v_s_hat_cross;
 				v_s_hat_cross << 0, -v_s_hat(2), v_s_hat(1),
 								v_s_hat(2), 0, -v_s_hat(0),
 								-v_s_hat(1), v_s_hat(0), 0;
@@ -313,6 +314,23 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
 				// update covariance
 				P = F_d * P * F_d.transpose() + G * Q * G.transpose();
+			}
+
+			// finish jacobian
+			Eigen::Matrix<double,12,12> de_dX = Eigen::Matrix<double,12,12>::Identity();
+			Eigen::Quaterniond q_ws_hat_quat(q_ws_hat(3),q_ws_hat(0),q_ws_hat(1),q_ws_hat(2));
+			Eigen::Quaterniond q_ws_err = q_ws_hat_quat.conjugate() * q_ws_1_quat;
+			Eigen::Matrix3d q_err_cross;
+			q_err_cross << q_ws_err.w(), -q_ws_err.z(), q_ws_err.y(),
+							q_ws_err.z(), q_ws_err.w(), -q_ws_err.x(),
+							-q_ws_err.y(), q_ws_err.x(), q_ws_err.w();
+			de_dX.block<3,3>(0,0) = q_err_cross;
+
+			F = de_dX * F;
+
+			if (jacobians != NULL)
+			{
+
 			}
 			
 			return true;
