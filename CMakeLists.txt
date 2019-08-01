@@ -20,7 +20,7 @@ find_package(Boost REQUIRED )
 
 find_package(Threads REQUIRED)
 
-find_package(PCL 1.8 REQUIRED)
+find_package(PCL REQUIRED)
 
 find_package(Ceres REQUIRED)
 
