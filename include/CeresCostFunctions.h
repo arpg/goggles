@@ -218,6 +218,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       q_ws_hat.w() = q_ws_0.coeffs()[3];
       Eigen::Vector3d v_s_hat(v_s_0(0), v_s_0(1), v_s_0(2));
       Eigen::Vector3d b_a_hat(b_a_0(0), b_a_0(1), b_a_0(2));
+      Eigen::Vector3d b_g_hat(b_g_0(0), b_g_0(1), b_g_0(2));
 
       Eigen::Matrix<double,12,12> F; // jacobian matrix
       Eigen::Matrix<double,12,12> P; // covariance matrix
@@ -271,7 +272,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         x0.push_back(q_ws_hat.z());
         x0.push_back(q_ws_hat.w());
         for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
-        for (int j = 0; j < 3; j++) x0.push_back(b_g_0(j));
+        for (int j = 0; j < 3; j++) x0.push_back(b_g_hat(j));
         for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
         double t_step = delta_t / 10.0;
         ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
@@ -282,6 +283,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         q_ws_hat.z() = x0[2];
         q_ws_hat.w() = x0[3];
         v_s_hat << x0[4], x0[5], x0[6];
+        b_g_hat << x0[7], x0[8], x0[9];
         b_a_hat << x0[10], x0[11], x0[12];
 
         // get orientation matrices
@@ -332,9 +334,66 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       F = de_dX * F;
 
+      // calculate residuals
+      Eigen::Matrix<double,12,1> error;
+      error.segment<3>(0) = q_ws_err.head<3>();
+      error.segment<3>(3) = v_s_hat - v_s_1;
+      error.segment<3>(6) = b_g_hat - b_g_1;
+      error.segment<3>(9) = b_a_hat - b_a_1;
+
+      // assign weighted residuals
+      Eigen::Map<Eigen::Matrix<double,12,1> > weighted_error(residuals);
+      Eigen::Matrix<double,12,12> information = P.inverse();
+      information = 0.5 * information + 0.5 * information.transpose().eval();
+
+      Eigen::LLT<Matrix<double,12,12>> lltOfInformation(infomation);
+      square_root_information = lltOfInformation.matrixL().transpose();
+
+      weighted_error = square_root_information * error;
+
+      // get jacobians if requested
       if (jacobians != NULL)
       {
+        // jacobian of residuals w.r.t. orientation at t0
+        if (jacobians[0] != NULL)
+        {
 
+        }
+        // jacobian of residuals w.r.t. velocity at t0
+        if (jacobians[1] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. gyro bias at t0
+        if (jacobians[2] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. accel bias at t0
+        if (jacobians[3] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. orientation at t1
+        if (jacobians[4] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. velocity at t1
+        if (jacobians[5] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. gyro bias at t1
+        if (jacobians[6] != NULL)
+        {
+
+        }
+        // jacobian of residuals w.r.t. accel bias at t1
+        if (jacobians[7] != NULL)
+        {
+          
+        }
       }
       
       return true;
