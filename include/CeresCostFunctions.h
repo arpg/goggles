@@ -336,7 +336,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
-      error.segment<3>(0) = q_ws_err.head<3>();
+      error.segment<3>(0) = q_ws_err;
       error.segment<3>(3) = v_s_hat - v_s_1;
       error.segment<3>(6) = b_g_hat - b_g_1;
       error.segment<3>(9) = b_a_hat - b_a_1;
@@ -357,7 +357,22 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         // jacobian of residuals w.r.t. orientation at t0
         if (jacobians[0] != NULL)
         {
+          // get minimal representation (3x12)
+          Eigen::Matrix<double,12,3> J0_minimal = square_root_information 
+                                                      * F.block<12,3>(0,0);
 
+          // calculate lift jacobian
+          Eigen::Matrix4d q0_Oplus;
+          q0_Oplus << q_ws_0.w(), -q_ws_0.z(),  q_ws_0.y(), q_ws_0.x(),
+                      q_ws_0.z(),  q_ws_0.w(), -q_ws_0.x(), q_ws_0.y(),
+                     -q_ws_0.y(),  q_ws_0.x(),  q_ws_0.w(), q_ws_0.z(),
+                     -q_ws_0.x(), -q_ws_0.y(), -q_ws_0.z(), q_ws_0.w();
+          Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
+          Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
+          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q0_Oplus;
+
+          Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
+          J0_mapped = J0_minimal * J_lift;
         }
         // jacobian of residuals w.r.t. velocity at t0
         if (jacobians[1] != NULL)
@@ -392,7 +407,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         // jacobian of residuals w.r.t. accel bias at t1
         if (jacobians[7] != NULL)
         {
-          
+
         }
       }
       
