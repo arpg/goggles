@@ -16,13 +16,12 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+enable_testing()
 find_package(Boost REQUIRED )
-
 find_package(Threads REQUIRED)
-
 find_package(PCL REQUIRED)
-
 find_package(Ceres REQUIRED)
+find_package(GTest REQUIRED)
 
 
 generate_messages(
@@ -41,6 +40,7 @@ list(APPEND LINK_LIBS
   ${CERES_LIBRARIES}
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
+  ${GTEST_LIBRARIES}
 )
 
 ###########
@@ -70,6 +70,7 @@ include_directories(
   ${rt_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIR}
   ${CERES_INCLUDE_DIRS}
+  ${GTEST_INCLUDE_DIRS}
   ${INC_DIR}
 )
 
@@ -77,6 +78,8 @@ link_directories( ${Boost_LIBRARIES_DIRS} )
 link_directories( ${PCL_LIBRARY_DIRS} )
 
 add_definitions(${PCL_DEFINITIONS})
+
+add_subdirectory(test)
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${HEADERS})
 target_link_libraries(radar_velocity
