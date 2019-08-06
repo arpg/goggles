@@ -132,6 +132,13 @@ TEST(goggleTests, ImuIntegration)
   }
 
   // propagate states from t0 to t1 using imu measurements
+  for (int i = 0; i < imuMeasurements.size(); i++)
+  {
+    if (imuMeasurements[i].t_ + dt > t0 && imuMeasurements[i].t_ - dt < t1)
+    {
+      
+    }
+  }
 
   // compare groundtruth states at t1 to states at t1 from imu integration
 }
