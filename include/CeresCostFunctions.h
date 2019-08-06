@@ -324,7 +324,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       }
 
       // finish jacobian
-      Eigen::Matrix<double,12,12> de_dX = Eigen::Matrix<double,12,12>::Identity();
+      Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
       Eigen::Quaterniond q_ws_err = q_ws_hat.conjugate() * q_ws_1;
       Eigen::Matrix3d q_err_cross;
       q_err_cross << q_ws_err.w(), -q_ws_err.z(), q_ws_err.y(),
@@ -332,7 +332,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
               -q_ws_err.y(), q_ws_err.x(), q_ws_err.w();
       de_dX.block<3,3>(0,0) = q_err_cross;
 
-      F = de_dX * F;
+      F = F1 * F;
 
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
@@ -358,10 +358,11 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         if (jacobians[0] != NULL)
         {
           // get minimal representation (3x12)
-          Eigen::Matrix<double,12,3> J0_minimal = square_root_information 
-                                                      * F.block<12,3>(0,0);
+          Eigen::Matrix<double,12,3> J0_minimal;
+          J0_minimal = square_root_information * F.block<12,3>(0,0);
 
           // calculate lift jacobian
+          // shifts minimal 3d representation to overparameterized 4d representation
           Eigen::Matrix4d q0_Oplus;
           q0_Oplus << q_ws_0.w(), -q_ws_0.z(),  q_ws_0.y(), q_ws_0.x(),
                       q_ws_0.z(),  q_ws_0.w(), -q_ws_0.x(), q_ws_0.y(),
@@ -377,37 +378,59 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         // jacobian of residuals w.r.t. velocity at t0
         if (jacobians[1] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1_mapped(jacobians[1]);
+          J1_mapped = square_root_information * F.block<12,3>(3,0);
         }
         // jacobian of residuals w.r.t. gyro bias at t0
         if (jacobians[2] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2_mapped(jacobians[2]);
+          J2_mapped = square_root_information * F.block<12,3>(6,0);
         }
         // jacobian of residuals w.r.t. accel bias at t0
         if (jacobians[3] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3_mapped(jacobians[3]);
+          J3_mapped = square_root_information * F.block<12,3>(9,0);
         }
         // jacobian of residuals w.r.t. orientation at t1
         if (jacobians[4] != NULL)
         {
+          // get minimal representation
+          Eigen::Matrix<double,12,3> J4_minimal;
+          J4_minimal = square_root_information * F0.block<12,3>(0,0);
 
+          // calculate lift jacobian
+          // shifts minimal 3d representation to overparameterized 4d representation
+          Eigen::Matrix4d q1_Oplus;
+          q1_Oplus << q_ws_1.w(), -q_ws_1.z(),  q_ws_1.y(), q_ws_1.x(),
+                      q_ws_1.z(),  q_ws_1.w(), -q_ws_1.x(), q_ws_1.y(),
+                     -q_ws_1.y(),  q_ws_1.x(),  q_ws_1.w(), q_ws_1.z(),
+                     -q_ws_1.x(), -q_ws_1.y(), -q_ws_1.z(), q_ws_1.w();
+          Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
+          Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
+          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q1_0plus;
+
+          Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4_mapped(jacobians[4]);
+          J4_mapped = J4_minimal * J_lift;
         }
         // jacobian of residuals w.r.t. velocity at t1
         if (jacobians[5] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_mapped(jacobians[5]);
+          J5_mapped = square_root_information * F0.block<3,12>(3,0);
         }
         // jacobian of residuals w.r.t. gyro bias at t1
         if (jacobians[6] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_mapped(jacobians[6]);
+          J6_mapped = square_root_information * F0.block<3,12>(6,0);
         }
         // jacobian of residuals w.r.t. accel bias at t1
         if (jacobians[7] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_mapped(jacobians[7]);
+          J7_mapped = square_root_information * F0.block<3,12>(9,0);
         }
       }
       
