@@ -330,13 +330,13 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       q_err_cross << q_ws_err.w(), -q_ws_err.z(), q_ws_err.y(),
               q_ws_err.z(), q_ws_err.w(), -q_ws_err.x(),
               -q_ws_err.y(), q_ws_err.x(), q_ws_err.w();
-      de_dX.block<3,3>(0,0) = q_err_cross;
+      F1.block<3,3>(0,0) = q_err_cross;
 
       F = F1 * F;
 
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
-      error.segment<3>(0) = q_ws_err;
+      error.segment<3>(0) = q_ws_err.coeffs().head<3>();
       error.segment<3>(3) = v_s_hat - v_s_1;
       error.segment<3>(6) = b_g_hat - b_g_1;
       error.segment<3>(9) = b_a_hat - b_a_1;
@@ -346,8 +346,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Eigen::Matrix<double,12,12> information = P.inverse();
       information = 0.5 * information + 0.5 * information.transpose().eval();
 
-      Eigen::LLT<Matrix<double,12,12>> lltOfInformation(infomation);
-      square_root_information = lltOfInformation.matrixL().transpose();
+      Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
+      Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixL().transpose();
 
       weighted_error = square_root_information * error;
 
@@ -364,10 +364,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           // calculate lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
           Eigen::Matrix4d q0_Oplus;
-          q0_Oplus << q_ws_0.w(), -q_ws_0.z(),  q_ws_0.y(), q_ws_0.x(),
-                      q_ws_0.z(),  q_ws_0.w(), -q_ws_0.x(), q_ws_0.y(),
-                     -q_ws_0.y(),  q_ws_0.x(),  q_ws_0.w(), q_ws_0.z(),
-                     -q_ws_0.x(), -q_ws_0.y(), -q_ws_0.z(), q_ws_0.w();
+          q0_Oplus << q_ws_0.coeffs()[3], -q_ws_0.coeffs()[2],  q_ws_0.coeffs()[1], q_ws_0.coeffs()[0],
+                      q_ws_0.coeffs()[2],  q_ws_0.coeffs()[3], -q_ws_0.coeffs()[0], q_ws_0.coeffs()[1],
+                     -q_ws_0.coeffs()[1],  q_ws_0.coeffs()[0],  q_ws_0.coeffs()[3], q_ws_0.coeffs()[2],
+                     -q_ws_0.coeffs()[0], -q_ws_0.coeffs()[1], -q_ws_0.coeffs()[2], q_ws_0.coeffs()[3];
           Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
           Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
           Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q0_Oplus;
@@ -398,18 +398,18 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         {
           // get minimal representation
           Eigen::Matrix<double,12,3> J4_minimal;
-          J4_minimal = square_root_information * F0.block<12,3>(0,0);
+          J4_minimal = square_root_information * F1.block<12,3>(0,0);
 
           // calculate lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
           Eigen::Matrix4d q1_Oplus;
-          q1_Oplus << q_ws_1.w(), -q_ws_1.z(),  q_ws_1.y(), q_ws_1.x(),
-                      q_ws_1.z(),  q_ws_1.w(), -q_ws_1.x(), q_ws_1.y(),
-                     -q_ws_1.y(),  q_ws_1.x(),  q_ws_1.w(), q_ws_1.z(),
-                     -q_ws_1.x(), -q_ws_1.y(), -q_ws_1.z(), q_ws_1.w();
+          q1_Oplus << q_ws_1.coeffs()[3], -q_ws_1.coeffs()[2],  q_ws_1.coeffs()[1], q_ws_1.coeffs()[0],
+                      q_ws_1.coeffs()[2],  q_ws_1.coeffs()[3], -q_ws_1.coeffs()[0], q_ws_1.coeffs()[1],
+                     -q_ws_1.coeffs()[1],  q_ws_1.coeffs()[0],  q_ws_1.coeffs()[3], q_ws_1.coeffs()[2],
+                     -q_ws_1.coeffs()[0], -q_ws_1.coeffs()[1], -q_ws_1.coeffs()[2], q_ws_1.coeffs()[3];
           Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
           Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
-          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q1_0plus;
+          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q1_Oplus;
 
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4_mapped(jacobians[4]);
           J4_mapped = J4_minimal * J_lift;
@@ -418,19 +418,19 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         if (jacobians[5] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_mapped(jacobians[5]);
-          J5_mapped = square_root_information * F0.block<3,12>(3,0);
+          J5_mapped = square_root_information * F1.block<12,3>(3,0);
         }
         // jacobian of residuals w.r.t. gyro bias at t1
         if (jacobians[6] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_mapped(jacobians[6]);
-          J6_mapped = square_root_information * F0.block<3,12>(6,0);
+          J6_mapped = square_root_information * F1.block<12,3>(6,0);
         }
         // jacobian of residuals w.r.t. accel bias at t1
         if (jacobians[7] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_mapped(jacobians[7]);
-          J7_mapped = square_root_information * F0.block<3,12>(9,0);
+          J7_mapped = square_root_information * F1.block<12,3>(9,0);
         }
       }
       
