@@ -1,4 +1,6 @@
 #include <boost/numeric/odeint.hpp>
+#include <Eigen/Core>
+#include <ceres/ceres.h>
 
 struct ImuMeasurement
 {
