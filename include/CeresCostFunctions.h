@@ -145,10 +145,10 @@ class ImuIntegrator
       // define differential equations
       // ref: Leutenegger et al, 2015
       Eigen::Matrix4d Omega;
-      Omega <<    0, -g(2),  g(1), g(0),
-               g(2),     0, -g(0), g(1),
-              -g(1),  g(0),     0, g(2),
-              -g(0), -g(1), -g(2),    0;
+      Omega <<    0,  g(2), -g(1), -g(0),
+              -g(2),     0,  g(0), -g(1),
+               g(1), -g(0),     0, -g(2),
+               g(0),  g(1),  g(2),     0;
       q_ws_dot.coeffs() = 0.5 * Omega * q_ws.coeffs();
       
       Eigen::Matrix3d C_sw = q_ws.toRotationMatrix().inverse();

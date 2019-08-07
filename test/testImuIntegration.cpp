@@ -129,10 +129,15 @@ TEST(goggleTests, ImuIntegration)
     ImuMeasurement new_meas;
     new_meas.t_ = time;
     new_meas.g_ = omega_S;
-    new_meas.a_ = q_ws.inverse().toRotationMatrix() * (a_W + Eigen::Vector3d(0,0,imuParameters.g_));
+    new_meas.a_ = q_ws.inverse().toRotationMatrix() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_));
 
     imuMeasurements.push_back(new_meas);
   }
+
+  q_ws = q_ws_0;
+  v_s = v_s_0;
+  b_g = b_g_0;
+  b_a = b_a_0;
 
   // propagate states from t0 to t1 using imu measurements
   for (int i = 0; i < imuMeasurements.size(); i++)
@@ -186,15 +191,23 @@ TEST(goggleTests, ImuIntegration)
   // compare groundtruth states at t1 to states at t1 from imu integration
   double err_lim = 1.0e-6;
   Eigen::Vector3d v_err = v_s_1 - v_s;
+  
   ASSERT_TRUE(v_err.norm() < err_lim) << "velocity error of " << v_err.norm() 
                                     << " is greater than the tolrance of " 
                                     << err_lim << "\n"
-                                    << "  estimated: " << v_s.transpose()
+                                    << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
+                                    
   Eigen::Quaterniond q_err = q_ws_1.conjugate() * q_ws;
   ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim) << "orientation error of " << q_err.norm()
                                     << " is greater than the tolerance of " 
                                     << err_lim << "\n"
-                                    << "  estimated: " << q_ws.coeffs().transpose()
+                                    << "  estimated: " << q_ws.coeffs().transpose() << "\n"
                                     << "groundtruth: " << q_ws_1.coeffs().transpose();
+}
+
+int main(int argc, char **argv)
+{
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

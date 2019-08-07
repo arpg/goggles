@@ -41,6 +41,7 @@ list(APPEND LINK_LIBS
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${GTEST_LIBRARIES}
+  pthread
 )
 
 ###########
@@ -79,7 +80,10 @@ link_directories( ${PCL_LIBRARY_DIRS} )
 
 add_definitions(${PCL_DEFINITIONS})
 
-add_subdirectory(test)
+#add_subdirectory(test)
+
+catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp)
+target_link_libraries(testImuIntegration ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${HEADERS})
 target_link_libraries(radar_velocity
