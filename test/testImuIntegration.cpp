@@ -35,7 +35,7 @@ TEST(goggleTests, ImuIntegration)
   imuParameters.sigma_b_a_ = 2.0e-5;
   imuParameters.b_a_tau_ = 3600.0;
 
-  double imu_rate = 1000.0;
+  double imu_rate = 100.0;
 
   // generate random motion
   const double w_omega_S_x = Eigen::internal::random(0.1,10.0); // circular frequency
@@ -145,7 +145,7 @@ TEST(goggleTests, ImuIntegration)
   for (int i = 0; i < imuMeasurements.size()-1; i++)
   {
 
-    if (imuMeasurements[i].t_ + dt > t0 && imuMeasurements[i+1].t_ - dt < t1)
+    if (imuMeasurements[i].t_ + dt >= t0 && imuMeasurements[i+1].t_ - dt <= t1)
     {
       ImuMeasurement meas0 = imuMeasurements[i];
       ImuMeasurement meas1 = imuMeasurements[i+1];
@@ -168,7 +168,7 @@ TEST(goggleTests, ImuIntegration)
         meas1.a_ = (1.0 - c) * meas0.a_ + c * meas1.a_;
       }
 
-      double t_step = dt / 10.0;
+      double t_step = dt / 4.0;
       std::vector<double> x0;
       x0.push_back(q_ws.x());
       x0.push_back(q_ws.y());
@@ -178,8 +178,7 @@ TEST(goggleTests, ImuIntegration)
       for (int j = 0; j < 3; j++) x0.push_back(b_g(j));
       for (int j = 0; j < 3; j++) x0.push_back(b_a(j));
       ImuIntegrator imu_int(meas0, meas1, imuParameters.g_, imuParameters.b_a_tau_);
-      boost::numeric::odeint::runge_kutta4<std::vector<double>> stepper;
-      boost::numeric::odeint::integrate_const(stepper, imu_int, x0, meas0.t_, meas1.t_, t_step);
+      boost::numeric::odeint::integrate(imu_int, x0, meas0.t_, meas1.t_, t_step);
       q_ws.x() = x0[0];
       q_ws.y() = x0[1];
       q_ws.z() = x0[2];
@@ -192,9 +191,9 @@ TEST(goggleTests, ImuIntegration)
   }
 
   // compare groundtruth states at t1 to states at t1 from imu integration
-  double err_lim = 1.0e-6;
+  double err_lim = 1.0e-4;
   
-  Eigen::Quaterniond q_err = q_ws_0.conjugate() * q_ws;
+  Eigen::Quaterniond q_err = q_ws_1.conjugate() * q_ws;
   ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.coeffs().head(3).norm()
                                     << " is greater than the tolerance of " 
                                     << err_lim << "\n"
