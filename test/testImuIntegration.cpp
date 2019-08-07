@@ -63,6 +63,7 @@ TEST(goggleTests, ImuIntegration)
 
   // states
   Eigen::Quaterniond q_ws;
+  q_ws.setIdentity();
   Eigen::Vector3d v_s = Eigen::Vector3d::Zero();
   Eigen::Vector3d v_w = Eigen::Vector3d::Zero();
   Eigen::Vector3d b_g = Eigen::Vector3d::Zero();
@@ -118,18 +119,20 @@ TEST(goggleTests, ImuIntegration)
     const double cos_theta_half = cos(theta_half);
     dq.vec() = sinc_theta_half*0.5*dt*omega_S;
     dq.w() = cos_theta_half;
+    //dq.normalize();
     q_ws = q_ws * dq;
+    q_ws.normalize();
 
     // propagate speed
     v_w += dt*a_W; 
-    v_s = q_ws.inverse().toRotationMatrix() * v_w;
+    v_s = q_ws.toRotationMatrix().inverse() * v_w;
 
     // generate measurements (with no noise)
     // TO DO: add biases
     ImuMeasurement new_meas;
     new_meas.t_ = time;
     new_meas.g_ = omega_S;
-    new_meas.a_ = q_ws.inverse().toRotationMatrix() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_));
+    new_meas.a_ = q_ws.toRotationMatrix().inverse() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_));
 
     imuMeasurements.push_back(new_meas);
   }
@@ -182,6 +185,7 @@ TEST(goggleTests, ImuIntegration)
       q_ws.y() = x0[1];
       q_ws.z() = x0[2];
       q_ws.w() = x0[3];
+      q_ws.normalize();
       v_s << x0[4], x0[5], x0[6];
       b_g << x0[7], x0[8], x0[9];
       b_a << x0[10], x0[11], x0[12];
@@ -189,7 +193,13 @@ TEST(goggleTests, ImuIntegration)
   }
 
   // compare groundtruth states at t1 to states at t1 from imu integration
-  double err_lim = 1.0e-20;
+  double err_lim = 1.0e-6;
+  Eigen::Quaterniond q_err = q_ws_0.conjugate() * q_ws;
+  ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.norm()
+                                    << " is greater than the tolerance of " 
+                                    << err_lim << "\n"
+                                    << "  estimated: " << q_ws.coeffs().transpose() << "\n"
+                                    << "groundtruth: " << q_ws_1.coeffs().transpose();
   Eigen::Vector3d v_err = v_s_1 - v_s;
   /*
   ASSERT_TRUE(v_err.norm() < err_lim) << "velocity error of " << v_err.norm() 
@@ -198,13 +208,6 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
   */
-  Eigen::Quaterniond q_err = q_ws_0.conjugate() * q_ws;
-  //ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim) 
-  ASSERT_TRUE(false) << "orientation error of " << q_err.norm()
-                                    << " is greater than the tolerance of " 
-                                    << err_lim << "\n"
-                                    << "  estimated: " << q_ws.coeffs().transpose() << "\n"
-                                    << "groundtruth: " << q_ws_1.coeffs().transpose();
 }
 
 int main(int argc, char **argv)
