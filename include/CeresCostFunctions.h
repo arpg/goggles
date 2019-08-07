@@ -136,8 +136,8 @@ class ImuIntegrator
       double t1 = m1_.t_;
       double t_span = t1 - t0;
       double c = (t - t0) / t_span;
-      Eigen::Vector3d g = (1.0 - c) * m0_.g_ + c * m1_.g_;
-      Eigen::Vector3d a = (1.0 - c) * m0_.a_ + c * m1_.a_;
+      Eigen::Vector3d g = ((1.0 - c) * m0_.g_) + (c * m1_.g_);
+      Eigen::Vector3d a = ((1.0 - c) * m0_.a_) + (c * m1_.a_);
 
       g = g - b_g; // subtract gyro biases
       a = a - b_a; // subtract accel biases
@@ -145,10 +145,12 @@ class ImuIntegrator
       // define differential equations
       // ref: Leutenegger et al, 2015
       Eigen::Matrix4d Omega;
+      
       Omega <<    0, -g(2),  g(1),  g(0),
                g(2),     0, -g(0),  g(1),
               -g(1),  g(0),     0,  g(2),
               -g(0), -g(1), -g(2),     0;
+
       q_ws_dot.coeffs() = 0.5 * Omega * q_ws.coeffs();
       
       Eigen::Matrix3d C_sw = q_ws.toRotationMatrix().inverse();

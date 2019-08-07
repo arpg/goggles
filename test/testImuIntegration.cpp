@@ -142,7 +142,7 @@ TEST(goggleTests, ImuIntegration)
   b_a = b_a_0;
 
   // propagate states from t0 to t1 using imu measurements
-  for (int i = 0; i < imuMeasurements.size(); i++)
+  for (int i = 0; i < imuMeasurements.size()-1; i++)
   {
 
     if (imuMeasurements[i].t_ + dt > t0 && imuMeasurements[i+1].t_ - dt < t1)
@@ -193,14 +193,14 @@ TEST(goggleTests, ImuIntegration)
 
   // compare groundtruth states at t1 to states at t1 from imu integration
   double err_lim = 1.0e-6;
-  /*
+  
   Eigen::Quaterniond q_err = q_ws_0.conjugate() * q_ws;
-  ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.norm()
+  ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.coeffs().head(3).norm()
                                     << " is greater than the tolerance of " 
                                     << err_lim << "\n"
                                     << "  estimated: " << q_ws.coeffs().transpose() << "\n"
                                     << "groundtruth: " << q_ws_1.coeffs().transpose();
-  */
+  
   Eigen::Vector3d v_err = v_s_1 - v_s;
   ASSERT_TRUE(v_err.norm() < err_lim) << "velocity error of " << v_err.norm() 
                                     << " is greater than the tolrance of " 
