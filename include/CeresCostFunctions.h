@@ -136,8 +136,8 @@ class ImuIntegrator
       double t1 = m1_.t_;
       double t_span = t1 - t0;
       double c = (t - t0) / t_span;
-      Eigen::Vector3d g = ((1.0 - c) * m0_.g_) + (c * m1_.g_);
-      Eigen::Vector3d a = ((1.0 - c) * m0_.a_) + (c * m1_.a_);
+      Eigen::Vector3d g = ((1.0 - c) * m0_.g_ + c * m1_.g_).eval();
+      Eigen::Vector3d a = ((1.0 - c) * m0_.a_ + c * m1_.a_).eval();
 
       g = g - b_g; // subtract gyro biases
       a = a - b_a; // subtract accel biases
