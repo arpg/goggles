@@ -119,7 +119,6 @@ TEST(goggleTests, ImuIntegration)
     const double cos_theta_half = cos(theta_half);
     dq.vec() = sinc_theta_half*0.5*dt*omega_S;
     dq.w() = cos_theta_half;
-    //dq.normalize();
     q_ws = q_ws * dq;
     q_ws.normalize();
 
@@ -194,20 +193,21 @@ TEST(goggleTests, ImuIntegration)
 
   // compare groundtruth states at t1 to states at t1 from imu integration
   double err_lim = 1.0e-6;
+  /*
   Eigen::Quaterniond q_err = q_ws_0.conjugate() * q_ws;
   ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.norm()
                                     << " is greater than the tolerance of " 
                                     << err_lim << "\n"
                                     << "  estimated: " << q_ws.coeffs().transpose() << "\n"
                                     << "groundtruth: " << q_ws_1.coeffs().transpose();
+  */
   Eigen::Vector3d v_err = v_s_1 - v_s;
-  /*
   ASSERT_TRUE(v_err.norm() < err_lim) << "velocity error of " << v_err.norm() 
                                     << " is greater than the tolrance of " 
                                     << err_lim << "\n"
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
-  */
+  
 }
 
 int main(int argc, char **argv)
