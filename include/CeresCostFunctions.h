@@ -171,6 +171,38 @@ class ImuIntegrator
     double tau_;
 };
 
+class VelocityMeasCostFunction : public ceres::CostFunction
+{
+	public:
+		VelocityMeasCostFunction(Eigen::Vector3d &v_meas) : v_meas_(v_meas) 
+		{
+			set_num_residuals(3);
+			mutable_parameter_block_sizes()->push_back(3);
+		}
+
+		bool Evaluate(double const* const* parameters,
+									double* residuals,
+									double** jacobians) const
+		{
+			Eigen::Map<const Eigen::Matrix<double,3,1>> v(&parameters[0][0]);
+			Eigen::Map<Eigen::Matrix<double,3,1>> res(residuals);
+			res = v - v_meas_;
+
+			if (jacobians != NULL)
+			{
+				if (jacobians[0] != NULL)
+				{
+					Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J(jacobians[0]);
+					J = Eigen::Matrix3d::Identity();
+				}
+			}
+			return true;
+		}
+
+		protected:
+			const Eigen::Vector3d v_meas_;
+};
+
 class ImuVelocityCostFunction : public ceres::CostFunction
 {
 
@@ -363,7 +395,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           // get minimal representation (3x12)
           Eigen::Matrix<double,12,3> J0_minimal;
           J0_minimal = square_root_information * F.block<12,3>(0,0);
-
+					//std::cout << '\n' << J0_minimal << std::endl;
           // calculate lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
           Eigen::Matrix4d q0_Oplus;
@@ -377,6 +409,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
           J0_mapped = J0_minimal * J_lift;
+					//std::cout << '\n' << J0_mapped << std::endl;
         }
         // jacobian of residuals w.r.t. velocity at t0
         if (jacobians[1] != NULL)

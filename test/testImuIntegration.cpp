@@ -144,7 +144,7 @@ TEST(goggleTests, ImuIntegration)
   v_s = v_s_0;
   b_g = b_g_0;
   b_a = b_a_0;
-
+	std::cout << "q_1: " << q_ws_1.coeffs().transpose() << std::endl;
 	// create ceres problem
 	ceres::Problem problem;
 	ceres::Solver::Options options;
@@ -157,7 +157,7 @@ TEST(goggleTests, ImuIntegration)
 	problem.AddParameterBlock(q_ws_0.coeffs().data(),4);
 	problem.AddParameterBlock(b_g_0.data(),3);
 	problem.AddParameterBlock(b_a_0.data(),3);
-	problem.SetParameterBlockConstant(v_s_0.data());
+	//problem.SetParameterBlockConstant(v_s_0.data());
 	problem.SetParameterBlockConstant(q_ws_0.coeffs().data());
 	problem.SetParameterization(q_ws_0.coeffs().data(), quat_param);
 	problem.SetParameterBlockConstant(b_g_0.data());
@@ -184,12 +184,27 @@ TEST(goggleTests, ImuIntegration)
 													 v_s.data(),
 													 b_g.data(),
 													 b_a.data());
+
+	// create velocity measurement terms
+	Eigen::Vector3d v0_meas = v_s_0 + 1.0e-2*Eigen::Vector3d::Random();
+	Eigen::Vector3d v1_meas = v_s_1 + 1.0e-2*Eigen::Vector3d::Random();
+	ceres::CostFunction* v0_cost = 
+			new VelocityMeasCostFunction(v0_meas);
+	problem.AddResidualBlock(v0_cost,
+													 NULL,
+													 v_s_0.data());
+	ceres::CostFunction* v1_cost = 
+			new VelocityMeasCostFunction(v1_meas);
+	problem.AddResidualBlock(v1_cost,
+													 NULL,
+													 v_s_1.data());
+	
 	// run the solver
 	ceres::Solver::Summary summary;
 	ceres::Solve(options, &problem, &summary);
 
 	std::cout << summary.FullReport() << std::endl;	
-
+	std::cout << "q_1_hat: " << q_ws.coeffs().transpose() << std::endl;
   // compare groundtruth states at t1 to states at t1 from imu integration
   double err_lim = 1.0e-1;
   
