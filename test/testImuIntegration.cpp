@@ -4,6 +4,7 @@
 #include "CeresCostFunctions.h"
 #include <Eigen/Core>
 #include <boost/numeric/odeint.hpp>
+#include <fstream>
 
 double sinc_test(double x)
 {
@@ -23,6 +24,7 @@ double sinc_test(double x)
   }
 }
 
+const double jacobianTolerance = 1.0e-3;
 
 TEST(goggleTests, ImuIntegration)
 {
@@ -82,8 +84,10 @@ TEST(goggleTests, ImuIntegration)
   Eigen::Vector3d b_g_1;
   Eigen::Vector3d b_a_1;
   double t1;
-
-  // generate IMU measurements without noise
+	
+	// open file for gt state logging
+	std::ofstream gt_file;
+  // generate IMU measurements with noise
   for (int i = 0; i < int(duration*imu_rate); i++)
   {
     double time = double(i) / imu_rate;
@@ -126,87 +130,76 @@ TEST(goggleTests, ImuIntegration)
     v_w += dt*a_W; 
     v_s = q_ws.toRotationMatrix().inverse() * v_w;
 
+		// log groundtruth states to file
     // generate measurements (with no noise)
     // TO DO: add biases
     ImuMeasurement new_meas;
     new_meas.t_ = time;
-    new_meas.g_ = omega_S;
-    new_meas.a_ = q_ws.toRotationMatrix().inverse() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_));
+    new_meas.g_ = omega_S + imuParameters.sigma_g_/sqrt(dt)*Eigen::Vector3d::Random();
+    new_meas.a_ = q_ws.toRotationMatrix().inverse() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_)) + imuParameters.sigma_a_/sqrt(dt)*Eigen::Vector3d::Random();
 
     imuMeasurements.push_back(new_meas);
   }
-
   q_ws = q_ws_0;
   v_s = v_s_0;
   b_g = b_g_0;
   b_a = b_a_0;
 
+	// create ceres problem
+	ceres::Problem problem;
+	ceres::Solver::Options options;
+	options.check_gradients = true;
+	options.gradient_check_relative_precision = jacobianTolerance;
 
-  // propagate states from t0 to t1 using imu measurements
-  for (int i = 0; i < imuMeasurements.size()-1; i++)
-  {
+	// add (fixed) initial state parameter blocks
+	ceres::LocalParameterization* quat_param = new ceres::EigenQuaternionParameterization;
+	problem.AddParameterBlock(v_s_0.data(),3);
+	problem.AddParameterBlock(q_ws_0.coeffs().data(),4);
+	problem.AddParameterBlock(b_g_0.data(),3);
+	problem.AddParameterBlock(b_a_0.data(),3);
+	problem.SetParameterBlockConstant(v_s_0.data());
+	problem.SetParameterBlockConstant(q_ws_0.coeffs().data());
+	problem.SetParameterization(q_ws_0.coeffs().data(), quat_param);
+	problem.SetParameterBlockConstant(b_g_0.data());
+	problem.SetParameterBlockConstant(b_a_0.data());
+	// add variable parameter blocks for the final state
+	problem.AddParameterBlock(v_s.data(),3);
+	problem.AddParameterBlock(q_ws.coeffs().data(),4);
+	problem.AddParameterBlock(b_g.data(),3);
+	problem.AddParameterBlock(b_a.data(),3);
+	problem.SetParameterization(q_ws.coeffs().data(), quat_param);
 
-    if (imuMeasurements[i].t_ + dt >= t0 && imuMeasurements[i+1].t_ - dt <= t1)
-    {
-      ImuMeasurement meas0 = imuMeasurements[i];
-      ImuMeasurement meas1 = imuMeasurements[i+1];
+	// create the IMU error term
+	ceres::CostFunction* imu_cost_func = 
+			new ImuVelocityCostFunction(t0, t1,
+																	imuMeasurements,
+																	imuParameters);
+	problem.AddResidualBlock(imu_cost_func,
+													 NULL,
+													 q_ws_0.coeffs().data(),
+													 v_s_0.data(),
+													 b_g_0.data(),
+													 b_a_0.data(),
+													 q_ws.coeffs().data(),
+													 v_s.data(),
+													 b_g.data(),
+													 b_a.data());
+	// run the solver
+	ceres::Solver::Summary summary;
+	ceres::Solve(options, &problem, &summary);
 
-      // interpolate imu measurement at t0
-      if (meas0.t_ < t0)
-      {
-        double c = (t0 - meas0.t_) / dt;
-        meas0.t_ = t0;
-        meas0.g_ = ((1.0 - c) * meas0.g_ + c * meas1.g_).eval();
-        meas0.a_ = ((1.0 - c) * meas0.a_ + c * meas1.a_).eval();
-      }
-
-      // interpolate imu measurement at t1
-      if (meas1.t_ > t1)
-      {
-        double c = (t1 - meas0.t_) / dt;
-        meas1.t_ = t1;
-        meas1.g_ = ((1.0 - c) * meas0.g_ + c * meas1.g_).eval();
-        meas1.a_ = ((1.0 - c) * meas0.a_ + c * meas1.a_).eval();
-      }
-
-      double t_step = dt / 4.0;
-      std::vector<double> x0;
-      x0.push_back(q_ws.x());
-      x0.push_back(q_ws.y());
-      x0.push_back(q_ws.z());
-      x0.push_back(q_ws.w());
-      for (int j = 0; j < 3; j++) x0.push_back(v_s(j));
-      for (int j = 0; j < 3; j++) x0.push_back(b_g(j));
-      for (int j = 0; j < 3; j++) x0.push_back(b_a(j));
-      ImuIntegrator imu_int(meas0, meas1, imuParameters.g_, imuParameters.b_a_tau_);
-      boost::numeric::odeint::integrate(imu_int, x0, meas0.t_, meas1.t_, t_step);
-      q_ws.x() = x0[0];
-      q_ws.y() = x0[1];
-      q_ws.z() = x0[2];
-      q_ws.w() = x0[3];
-      q_ws.normalize();
-      v_s << x0[4], x0[5], x0[6];
-      b_g << x0[7], x0[8], x0[9];
-      b_a << x0[10], x0[11], x0[12];
-    }
-  }
+	std::cout << summary.FullReport() << std::endl;	
 
   // compare groundtruth states at t1 to states at t1 from imu integration
   double err_lim = 1.0e-1;
   
-  Eigen::Quaterniond q_err = q_ws_1.conjugate() * q_ws;
-  ASSERT_TRUE(q_err.coeffs().head(3).norm() < err_lim)  << "orientation error of " << q_err.coeffs().head(3).norm()
-                                    << " is greater than the tolerance of " 
-                                    << err_lim << "\n"
-                                    << "  estimated: " << q_ws.coeffs().transpose() << "\n"
-                                    << "groundtruth: " << q_ws_1.coeffs().transpose();
-  
   Eigen::Vector3d v_err = v_s_1 - v_s;
   ASSERT_TRUE(v_err.norm() < err_lim) << "velocity error of " << v_err.norm() 
-                                    << " is greater than the tolrance of " 
+                                    << " is greater than the tolerance of " 
                                     << err_lim << "\n"
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
+
   
 }
 

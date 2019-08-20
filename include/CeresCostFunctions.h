@@ -215,15 +215,13 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       const Eigen::Matrix3d C_sw_1 = C_ws_1.inverse();
 
       // initialize propagated states
-      Eigen::Quaterniond q_ws_hat(q_ws_0.coeffs()[3], 
-                                  q_ws_0.coeffs()[0], 
-                                  q_ws_0.coeffs()[1], 
-                                  q_ws_0.coeffs()[2]);
-      q_ws_hat.w() = q_ws_0.coeffs()[3];
+      Eigen::Quaterniond q_ws_hat(q_ws_0.coeffs()[3],
+																	q_ws_0.coeffs()[0],
+																	q_ws_0.coeffs()[1],
+																	q_ws_0.coeffs()[2]);
       Eigen::Vector3d v_s_hat(v_s_0(0), v_s_0(1), v_s_0(2));
       Eigen::Vector3d b_a_hat(b_a_0(0), b_a_0(1), b_a_0(2));
       Eigen::Vector3d b_g_hat(b_g_0(0), b_g_0(1), b_g_0(2));
-
       Eigen::Matrix<double,12,12> F; // jacobian matrix
       Eigen::Matrix<double,12,12> P; // covariance matrix
       Eigen::Matrix<double,12,12> Q; // measurement noise matrix
@@ -238,95 +236,97 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Q.block<3,3>(6,6) *= params_.sigma_b_g_;
       Q.block<3,3>(9,9) *= params_.sigma_b_a_;
 
-
       // propagate imu measurements, tracking jacobians and covariance
       for (int i = 1; i < imu_measurements_.size(); i++)
       {
-        ImuMeasurement meas_0 = imu_measurements_[i-1];
-        ImuMeasurement meas_1 = imu_measurements_[i];
+				if (imu_measurements_[i].t_ > t0_ 
+							&& imu_measurements_[i-1].t_ < t1_)
+				{
+        	ImuMeasurement meas_0 = imu_measurements_[i-1];
+        	ImuMeasurement meas_1 = imu_measurements_[i];
 
-        // if meas_0 is before t0_, interpolate measurement to match t0_
-        if (meas_0.t_ < t0_)
-        {
-          double c = (t0_ - meas_0.t_) / (meas_1.t_ - meas_0.t_);
-          meas_0.t_ = t0_;
-          meas_0.g_ = (1.0 - c) * meas_0.g_ + c * meas_1.g_;
-          meas_0.a_ = (1.0 - c) * meas_0.a_ + c * meas_1.a_;
-        }
+        	// if meas_0 is before t0_, interpolate measurement to match t0_
+        	if (meas_0.t_ < t0_)
+        	{
+          	double c = (t0_ - meas_0.t_) / (meas_1.t_ - meas_0.t_);
+          	meas_0.t_ = t0_;
+          	meas_0.g_ = ((1.0 - c) * meas_0.g_ + c * meas_1.g_).eval();
+          	meas_0.a_ = ((1.0 - c) * meas_0.a_ + c * meas_1.a_).eval();
+        	}
 
-        // if meas_1 is after t1_, interpolate measurement to match t1_
-        if (meas_1.t_ > t1_)
-        {
-          double c = (t1_ - meas_0.t_) / (meas_1.t_ - meas_0.t_);
-          meas_1.t_ = t1_;
-          meas_1.g_ = (1.0 - c) * meas_0.g_ + c * meas_1.g_;
-          meas_1.a_ = (1.0 - c) * meas_0.a_ + c * meas_1.a_;
-        }
+        	// if meas_1 is after t1_, interpolate measurement to match t1_
+        	if (meas_1.t_ > t1_)
+        	{
+          	double c = (t1_ - meas_0.t_) / (meas_1.t_ - meas_0.t_);
+          	meas_1.t_ = t1_;
+          	meas_1.g_ = ((1.0 - c) * meas_0.g_ + c * meas_1.g_).eval();
+          	meas_1.a_ = ((1.0 - c) * meas_0.a_ + c * meas_1.a_).eval();
+        	}
 
-        double delta_t = meas_1.t_ - meas_0.t_;
+        	double delta_t = meas_1.t_ - meas_0.t_;
 
-        // get average of imu readings
-        Eigen::Vector3d omega_true = (meas_0.g_ + meas_1.g_) / 2.0;
-        Eigen::Vector3d acc_true = (meas_0.a_ + meas_1.a_) / 2.0;
+        	// get average of imu readings
+        	Eigen::Vector3d omega_true = (meas_0.g_ + meas_1.g_) / 2.0;
+        	Eigen::Vector3d acc_true = (meas_0.a_ + meas_1.a_) / 2.0;
 
-        // integrate measurements using Runge-Kutta 4
-        std::vector<double> x0;
-        x0.push_back(q_ws_hat.x());
-        x0.push_back(q_ws_hat.y());
-        x0.push_back(q_ws_hat.z());
-        x0.push_back(q_ws_hat.w());
-        for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
-        for (int j = 0; j < 3; j++) x0.push_back(b_g_hat(j));
-        for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
-        double t_step = delta_t / 10.0;
-        ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
-        boost::numeric::odeint::runge_kutta4<std::vector<double>> stepper;
-        boost::numeric::odeint::integrate_const(stepper, imu_int, x0, meas_0.t_, meas_1.t_, t_step);
-        q_ws_hat.x() = x0[0];
-        q_ws_hat.y() = x0[1];
-        q_ws_hat.z() = x0[2];
-        q_ws_hat.w() = x0[3];
-        v_s_hat << x0[4], x0[5], x0[6];
-        b_g_hat << x0[7], x0[8], x0[9];
-        b_a_hat << x0[10], x0[11], x0[12];
+        	// integrate measurements using Runge-Kutta 4
+        	std::vector<double> x0;
+        	x0.push_back(q_ws_hat.x());
+        	x0.push_back(q_ws_hat.y());
+        	x0.push_back(q_ws_hat.z());
+        	x0.push_back(q_ws_hat.w());
+        	for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
+        	for (int j = 0; j < 3; j++) x0.push_back(b_g_hat(j));
+        	for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
+        	double t_step = delta_t / 4.0;
+        	ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
+        	boost::numeric::odeint::integrate(imu_int, x0, meas_0.t_, meas_1.t_, t_step);
+        	q_ws_hat.x() = x0[0];
+        	q_ws_hat.y() = x0[1];
+        	q_ws_hat.z() = x0[2];
+        	q_ws_hat.w() = x0[3];
+					q_ws_hat.normalize();
+        	v_s_hat << x0[4], x0[5], x0[6];
+        	b_g_hat << x0[7], x0[8], x0[9];
+        	b_a_hat << x0[10], x0[11], x0[12];
 
-        // get orientation matrices
-        Eigen::Matrix3d C_ws_hat = q_ws_hat.toRotationMatrix();
-        Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
+        	// get orientation matrices
+        	Eigen::Matrix3d C_ws_hat = q_ws_hat.toRotationMatrix();
+        	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
 
-        // calculate continuous time jacobian
-        Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
-        F_c.block<3,3>(0,6) = C_ws_hat;
-        Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
-        g_w_cross(0,1) = -params_.g_;
-        g_w_cross(1,0) = params_.g_;
-        F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
-        Eigen::Matrix3d omega_cross;
-        omega_cross << 0, -omega_true(2), omega_true(1),
-                omega_true(2), 0, -omega_true(0),
-                -omega_true(1), omega_true(0), 0;
-        F_c.block<3,3>(3,3) = -omega_cross;
-        Eigen::Matrix3d v_s_hat_cross;
-        v_s_hat_cross << 0, -v_s_hat(2), v_s_hat(1),
-                v_s_hat(2), 0, -v_s_hat(0),
-                -v_s_hat(1), v_s_hat(0), 0;
-        F_c.block<3,3>(3,6) = -v_s_hat_cross;
-        F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
-        F_c.block<3,3>(9,9) = (-1.0 / params_.b_a_tau_) * Eigen::Matrix3d::Identity();
+        	// calculate continuous time jacobian
+        	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
+        	F_c.block<3,3>(0,6) = C_ws_hat;
+        	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
+        	g_w_cross(0,1) = -params_.g_;
+        	g_w_cross(1,0) = params_.g_;
+        	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
+        	Eigen::Matrix3d omega_cross;
+        	omega_cross << 0, -omega_true(2), omega_true(1),
+          	      omega_true(2), 0, -omega_true(0),
+            	    -omega_true(1), omega_true(0), 0;
+        	F_c.block<3,3>(3,3) = -omega_cross;
+        	Eigen::Matrix3d v_s_hat_cross;
+        	v_s_hat_cross << 0, -v_s_hat(2), v_s_hat(1),
+          	      v_s_hat(2), 0, -v_s_hat(0),
+            	    -v_s_hat(1), v_s_hat(0), 0;
+        	F_c.block<3,3>(3,6) = -v_s_hat_cross;
+        	F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
+        	F_c.block<3,3>(9,9) = (-1.0 / params_.b_a_tau_) * Eigen::Matrix3d::Identity();
 
-        // approximate discrete time jacobian
-        Eigen::Matrix<double,12,12> F_d = Eigen::Matrix<double,12,12>::Identity();
-        F_d = F_d + F_c * delta_t;
+        	// approximate discrete time jacobian
+        	Eigen::Matrix<double,12,12> F_d = Eigen::Matrix<double,12,12>::Identity();
+        	F_d = F_d + F_c * delta_t;
 
-        F = F_d * F; // update total jacobian
+        	F = F_d * F; // update total jacobian
 
-        Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
-        G.block<3,3>(0,0) = C_ws_hat;
+        	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
+        	G.block<3,3>(0,0) = C_ws_hat;
 
-        // update covariance
-        P = F_d * P * F_d.transpose() + G * Q * G.transpose();
-      }
-
+        	// update covariance
+        	P = F_d * P * F_d.transpose() + G * Q * G.transpose();
+      	}
+			}
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
       Eigen::Quaterniond q_ws_err = q_ws_hat.conjugate() * q_ws_1;
@@ -337,7 +337,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       F1.block<3,3>(0,0) = q_err_cross;
 
       F = F1 * F;
-
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
       error.segment<3>(0) = q_ws_err.coeffs().head<3>();
@@ -383,19 +382,19 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         if (jacobians[1] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1_mapped(jacobians[1]);
-          J1_mapped = square_root_information * F.block<12,3>(3,0);
+					J1_mapped = square_root_information * F.block<12,3>(0,3);
         }
         // jacobian of residuals w.r.t. gyro bias at t0
         if (jacobians[2] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2_mapped(jacobians[2]);
-          J2_mapped = square_root_information * F.block<12,3>(6,0);
+          J2_mapped = square_root_information * F.block<12,3>(0,6);
         }
         // jacobian of residuals w.r.t. accel bias at t0
         if (jacobians[3] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3_mapped(jacobians[3]);
-          J3_mapped = square_root_information * F.block<12,3>(9,0);
+          J3_mapped = square_root_information * F.block<12,3>(0,9);
         }
         // jacobian of residuals w.r.t. orientation at t1
         if (jacobians[4] != NULL)
@@ -422,19 +421,19 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         if (jacobians[5] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_mapped(jacobians[5]);
-          J5_mapped = square_root_information * F1.block<12,3>(3,0);
+          J5_mapped = -square_root_information * F1.block<12,3>(0,3);
         }
         // jacobian of residuals w.r.t. gyro bias at t1
         if (jacobians[6] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_mapped(jacobians[6]);
-          J6_mapped = square_root_information * F1.block<12,3>(6,0);
+          J6_mapped = -square_root_information * F1.block<12,3>(0,6);
         }
         // jacobian of residuals w.r.t. accel bias at t1
         if (jacobians[7] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_mapped(jacobians[7]);
-          J7_mapped = square_root_information * F1.block<12,3>(9,0);
+          J7_mapped = -square_root_information * F1.block<12,3>(0,9);
         }
       }
       
