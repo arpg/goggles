@@ -158,16 +158,16 @@ TEST(goggleTests, ImuIntegration)
 	problem.AddParameterBlock(b_g_0.data(),3);
 	problem.AddParameterBlock(b_a_0.data(),3);
 	//problem.SetParameterBlockConstant(v_s_0.data());
-	problem.SetParameterBlockConstant(q_ws_0.coeffs().data());
-	problem.SetParameterization(q_ws_0.coeffs().data(), quat_param);
-	problem.SetParameterBlockConstant(b_g_0.data());
-	problem.SetParameterBlockConstant(b_a_0.data());
+	//problem.SetParameterBlockConstant(q_ws_0.coeffs().data());
+	//problem.SetParameterization(q_ws_0.coeffs().data(), quat_param);
+	//problem.SetParameterBlockConstant(b_g_0.data());
+	//problem.SetParameterBlockConstant(b_a_0.data());
 	// add variable parameter blocks for the final state
 	problem.AddParameterBlock(v_s.data(),3);
 	problem.AddParameterBlock(q_ws.coeffs().data(),4);
 	problem.AddParameterBlock(b_g.data(),3);
 	problem.AddParameterBlock(b_a.data(),3);
-	problem.SetParameterization(q_ws.coeffs().data(), quat_param);
+	//problem.SetParameterization(q_ws.coeffs().data(), quat_param);
 
 	// create the IMU error term
 	ceres::CostFunction* imu_cost_func = 

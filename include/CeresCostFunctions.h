@@ -448,7 +448,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q1_Oplus;
 
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4_mapped(jacobians[4]);
-          J4_mapped = J4_minimal * J_lift;
+					J4_mapped = J4_minimal * J_lift;
+          std::cout << '\n' << J4_minimal << std::endl;
         }
         // jacobian of residuals w.r.t. velocity at t1
         if (jacobians[5] != NULL)
