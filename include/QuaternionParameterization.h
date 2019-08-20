@@ -1,9 +1,11 @@
+#include <ceres/ceres.h>
+
+#pragma once
 #ifndef QUATERNIONPARAMETERIZATION_H_
 #define QUATERNIONPARAMETERIZATION_H_
 
-#include "ceres/ceres.h"
 
-class QuaternionParameterization : public ceres::LocalParemeterization
+class QuaternionParameterization : public ceres::LocalParameterization
 {
 	public:
 		
@@ -14,24 +16,25 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 		}
 
 		bool plus(const double* x, const double* delta,
-							double* x_plus_delta)
+							double* x_plus_delta) const
 		{
-			Eigen::Map<const Eigen::Matrix<double, 3, 1>> delta_(delta);
-			Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
+			Eigen::Map<const Eigen::Matrix<double, 3, 1>> delta_mapped(delta);
+			const Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
 
 			// apply delta to quaternion
 			Eigen::Vector4d dq;
-			double halfnorm = 0.5 * delta.norm();
-			dq.template head<3>() = sinc(halfnorm) * 0.5 * delta;
+			double halfnorm = 0.5 * delta_mapped.norm();
+			dq.template head<3>() = sinc(halfnorm) * 0.5 * delta_mapped;
 			dq[3] = cos(halfnorm);
 
-			q = Eigen::Quaterniond(dq) * q;
-			q.normalize();
-
-			x_plus_delta[0] = q.coeffs()[0];
-			x_plus_delta[1] = q.coeffs()[1];
-			x_plus_delta[2] = q.coeffs()[2];
-			x_plus_delta[3] = q.coeffs()[3];
+			Eigen::Quaterniond q_plus_delta = Eigen::Quaterniond(dq) * q;
+			q_plus_delta.normalize();
+			
+			const Eigen::Vector4d q_vec = q_plus_delta.coeffs();
+			x_plus_delta[0] = q_vec[0];
+			x_plus_delta[1] = q_vec[1];
+			x_plus_delta[2] = q_vec[2];
+			x_plus_delta[3] = q_vec[3];
 
 			return true;
 		}
@@ -43,7 +46,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 		}
 
 		bool minus(const double* x, const double* x_plus_delta,
-							 double* delta)
+							 double* delta) const
 		{
 			// put inputs into quaternion form
 			const Eigen::Quaterniond q_plus_delta(x_plus_delta[3], x_plus_delta[0],
@@ -51,7 +54,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 			const Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
 
 			// map output 
-			Eigen::Map<Eigen::Vector3d> delta_q_(delta);
+			Eigen::Map<Eigen::Vector3d> delta_q(delta);
 
 			// find quaternion difference and return twice the imaginary part
 			delta_q = 2.0 * (q_plus_delta * q.inverse()).coeffs().template head<3>();
@@ -63,7 +66,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 			return liftJacobian(x, jacobian);
 		}
 
-		bool plusJacobian(const double* x, double* jacobian)
+		bool plusJacobian(const double* x, double* jacobian) const
 		{
 			Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J(jacobian);
 			J.setZero();
@@ -77,7 +80,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 			return true;
 		}
 
-		bool liftJacobian(const double* x, double* jacobian)
+		bool liftJacobian(const double* x, double* jacobian) const
 		{
 			Eigen::Map<Eigen::Matrix<double,3,4,Eigen::RowMajor>> J_lift(jacobian);
 			J_lift.setZero();
@@ -183,7 +186,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 
 		int LocalSize() const { return 3; }
 
-		double sinc(double x)
+		double sinc(double x) const
 		{
 			if (fabs(x) < 1e-6) 
 			{
@@ -201,7 +204,7 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 			}
 		}
 
-		Eigen::Matrix4d oplus(const Eigen::Quaterniond &q_BC)
+		Eigen::Matrix4d oplus(const Eigen::Quaterniond &q_BC) const
 		{
 			Eigen::Vector4d q = q_BC.coeffs();
 			Eigen::Matrix4d Q;
@@ -214,3 +217,5 @@ class QuaternionParameterization : public ceres::LocalParemeterization
 			return Q;
 		}
 };
+
+#endif
