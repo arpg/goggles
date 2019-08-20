@@ -51,6 +51,7 @@ set( INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set( HEADERS
   ${INC_DIR}/CeresCostFunctions.h
+	${INC_DIR}/QuaternionParameterization.h
   )
 
 set( RAD_VEL_SRCS
