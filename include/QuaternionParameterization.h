@@ -36,6 +36,10 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			x_plus_delta[2] = q_vec[2];
 			x_plus_delta[3] = q_vec[3];
 
+			if (q_plus_delta.norm() - 1.0 < -1.0e-15 || 
+						q_plus_delta.norm() - 1.0 > 1.0e-15)
+				LOG(ERROR) << "not a unit quaternion";
+
 			return true;
 		}
 
