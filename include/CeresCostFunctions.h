@@ -1,5 +1,6 @@
 #include <boost/numeric/odeint.hpp>
 #include <Eigen/Core>
+#include "QuaternionParameterization.h"
 #include <ceres/ceres.h>
 
 struct ImuMeasurement
@@ -361,17 +362,16 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			}
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
-      Eigen::Quaterniond q_ws_err = q_ws_hat.conjugate() * q_ws_1;
-      Eigen::Matrix3d q_err_cross;
-      q_err_cross << q_ws_err.w(), -q_ws_err.z(), q_ws_err.y(),
-              q_ws_err.z(), q_ws_err.w(), -q_ws_err.x(),
-              -q_ws_err.y(), q_ws_err.x(), q_ws_err.w();
-      F1.block<3,3>(0,0) = q_err_cross;
+      Eigen::Quaterniond q_ws_err = q_ws_hat * q_ws_1.inverse();
+			q_ws_err.normalize();
+			QuaternionParameterization qp;
+			Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err.conjugate());
+      F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
 
       F = F1 * F;
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
-      error.segment<3>(0) = q_ws_err.coeffs().head<3>();
+      error.segment<3>(0) = 2.0 * q_ws_err.coeffs().head<3>();
       error.segment<3>(3) = v_s_hat - v_s_1;
       error.segment<3>(6) = b_g_hat - b_g_1;
       error.segment<3>(9) = b_a_hat - b_a_1;
@@ -395,21 +395,15 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           // get minimal representation (3x12)
           Eigen::Matrix<double,12,3> J0_minimal;
           J0_minimal = square_root_information * F.block<12,3>(0,0);
-					//std::cout << '\n' << J0_minimal << std::endl;
-          // calculate lift jacobian
+          
+					// get lift jacobian 
           // shifts minimal 3d representation to overparameterized 4d representation
-          Eigen::Matrix4d q0_Oplus;
-          q0_Oplus << q_ws_0.coeffs()[3], -q_ws_0.coeffs()[2],  q_ws_0.coeffs()[1], q_ws_0.coeffs()[0],
-                      q_ws_0.coeffs()[2],  q_ws_0.coeffs()[3], -q_ws_0.coeffs()[0], q_ws_0.coeffs()[1],
-                     -q_ws_0.coeffs()[1],  q_ws_0.coeffs()[0],  q_ws_0.coeffs()[3], q_ws_0.coeffs()[2],
-                     -q_ws_0.coeffs()[0], -q_ws_0.coeffs()[1], -q_ws_0.coeffs()[2], q_ws_0.coeffs()[3];
-          Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
-          Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
-          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q0_Oplus;
+          Eigen::Matrix<double,3,4> J_lift;
+					QuaternionParameterization qp;
+					qp.liftJacobian(parameters[0], J_lift.data());
 
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
-          J0_mapped = J0_minimal * J_lift;
-					//std::cout << '\n' << J0_mapped << std::endl;
+					J0_mapped = J0_minimal * J_lift;
         }
         // jacobian of residuals w.r.t. velocity at t0
         if (jacobians[1] != NULL)
@@ -434,22 +428,16 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         {
           // get minimal representation
           Eigen::Matrix<double,12,3> J4_minimal;
-          J4_minimal = square_root_information * F1.block<12,3>(0,0);
+          J4_minimal = -square_root_information * F1.block<12,3>(0,0);
 
-          // calculate lift jacobian
+          // get lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
-          Eigen::Matrix4d q1_Oplus;
-          q1_Oplus << q_ws_1.coeffs()[3], -q_ws_1.coeffs()[2],  q_ws_1.coeffs()[1], q_ws_1.coeffs()[0],
-                      q_ws_1.coeffs()[2],  q_ws_1.coeffs()[3], -q_ws_1.coeffs()[0], q_ws_1.coeffs()[1],
-                     -q_ws_1.coeffs()[1],  q_ws_1.coeffs()[0],  q_ws_1.coeffs()[3], q_ws_1.coeffs()[2],
-                     -q_ws_1.coeffs()[0], -q_ws_1.coeffs()[1], -q_ws_1.coeffs()[2], q_ws_1.coeffs()[3];
-          Eigen::Matrix<double,3,4> Jq_pinv = Eigen::Matrix<double,3,4>::Zero();
-          Jq_pinv.block<3,3>(0,0) = 2.0 * Eigen::Matrix3d::Identity();
-          Eigen::Matrix<double,3,4> J_lift = Jq_pinv * q1_Oplus;
+          Eigen::Matrix<double,3,4> J_lift;
+					QuaternionParameterization qp;
+					qp.liftJacobian(parameters[4], J_lift.data());
 
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4_mapped(jacobians[4]);
 					J4_mapped = J4_minimal * J_lift;
-          std::cout << '\n' << J4_minimal << std::endl;
         }
         // jacobian of residuals w.r.t. velocity at t1
         if (jacobians[5] != NULL)
