@@ -403,7 +403,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           Eigen::Matrix<double,3,4> J_lift;
 					QuaternionParameterization qp;
 					qp.liftJacobian(parameters[0], J_lift.data());
-
+					std::cout << J0_minimal << std::endl;
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
 					J0_mapped = J0_minimal * J_lift;
         }
