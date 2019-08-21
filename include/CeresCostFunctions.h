@@ -369,8 +369,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			QuaternionParameterization qp;
 			Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err.conjugate());
       F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
-
       F = F1 * F;
+			P = F1 * P * F1.transpose();
       // calculate residuals
       Eigen::Matrix<double,12,1> error;
       error.segment<3>(0) = 2.0 * q_ws_err.coeffs().head<3>();
