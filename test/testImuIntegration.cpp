@@ -238,6 +238,10 @@ TEST(goggleTests, ImuIntegration)
 
 	double dx = 1e-6;
 
+	QuaternionParameterization dq;
+	if (!dq.Verify(parameters[0],dx))
+		LOG(ERROR) << "verification of parameterization failed";
+
 	Eigen::Matrix<double,12,3> J0_numDiff;
 	for (size_t i=0; i<3; i++)
 	{
@@ -362,7 +366,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided jacobian 4 does not agree with num diff:\n"
 			<< "\nuser provided J4:\n" << J4
-			<< "\n\nnum diff J5:\n" << J4_numDiff * J4_lift << '\n';
+			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << '\n';
 	}
 	Eigen::Matrix<double,12,3> J5_numDiff;
 	for (size_t i = 0; i < 3; i++)
