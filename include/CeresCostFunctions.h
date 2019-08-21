@@ -1,5 +1,6 @@
 #include <boost/numeric/odeint.hpp>
 #include <Eigen/Core>
+#include <unsupported/Eigen/MatrixFunctions>
 #include "QuaternionParameterization.h"
 #include <ceres/ceres.h>
 
@@ -335,22 +336,23 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	g_w_cross(1,0) = params_.g_;
         	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
         	Eigen::Matrix3d omega_cross;
-        	omega_cross << 0, -omega_true(2), omega_true(1),
-          	      omega_true(2), 0, -omega_true(0),
-            	    -omega_true(1), omega_true(0), 0;
+        	omega_cross << 						 0, -omega_true(2),  omega_true(1),
+          	      			 omega_true(2),  						 0, -omega_true(0),
+            	    			-omega_true(1),  omega_true(0),							 0;
         	F_c.block<3,3>(3,3) = -omega_cross;
         	Eigen::Matrix3d v_s_hat_cross;
-        	v_s_hat_cross << 0, -v_s_hat(2), v_s_hat(1),
-          	      v_s_hat(2), 0, -v_s_hat(0),
-            	    -v_s_hat(1), v_s_hat(0), 0;
+        	v_s_hat_cross << 					 0, -v_s_hat(2),  v_s_hat(1),
+          	      					v_s_hat(2), 					0, -v_s_hat(0),
+            	    				 -v_s_hat(1),  v_s_hat(0), 					 0;
         	F_c.block<3,3>(3,6) = -v_s_hat_cross;
         	F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
         	F_c.block<3,3>(9,9) = (-1.0 / params_.b_a_tau_) * Eigen::Matrix3d::Identity();
 
-        	// approximate discrete time jacobian
-        	Eigen::Matrix<double,12,12> F_d = Eigen::Matrix<double,12,12>::Identity();
-        	F_d = F_d + F_c * delta_t;
-
+        	// approximate discrete time jacobian using bilinear transform
+        	Eigen::Matrix<double,12,12> I_12 = Eigen::Matrix<double,12,12>::Identity();
+        	Eigen::Matrix<double,12,12> F_d;
+					F_d = (I_12 + 0.5 * F_c * delta_t) * (I_12 - 0.5 * F_c * delta_t).inverse();
+					//F_d = (F_c*delta_t).exp();
         	F = F_d * F; // update total jacobian
 
         	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
