@@ -267,9 +267,9 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff << '\n';
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff  << '\n';
 	}
-
+	
 	Eigen::Matrix<double,12,3> J1_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -317,7 +317,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J2: \n" << J2
 			<< "\n\nnum diff J2:\n" << J2_numDiff << '\n';
 	}
-
+	
 	Eigen::Matrix<double,12,3> J3_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -368,6 +368,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J4:\n" << J4
 			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << '\n';
 	}
+	/*
 	Eigen::Matrix<double,12,3> J5_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -453,7 +454,7 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
 
-  
+  */
 }
 
 int main(int argc, char **argv)

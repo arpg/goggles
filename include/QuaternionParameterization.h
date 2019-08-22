@@ -89,7 +89,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			Eigen::Map<Eigen::Matrix<double,3,4,Eigen::RowMajor>> J_lift(jacobian);
 			J_lift.setZero();
 			const Eigen::Quaterniond q_inv(x[3], -x[0], -x[1], -x[2]);
-			Eigen::Matrix4d Qplus = oplus(q_inv);
+			Eigen::Matrix4d Qplus = qplus(q_inv);
 			Eigen::Matrix<double,3,4> Jq_pinv;
 			Jq_pinv.bottomRightCorner<3,1>().setZero();
 			Jq_pinv.topLeftCorner<3,3>() = Eigen::Matrix3d::Identity() * 2.0;
@@ -213,11 +213,24 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			Eigen::Vector4d q = q_BC.coeffs();
 			Eigen::Matrix4d Q;
 
-			Q(0,0) =  q[3]; Q(0,1) =  q[2]; Q(0,2) = -q[1]; Q(0,3) =  q[0];
-			Q(1,0) = -q[2]; Q(1,1) =  q[3]; Q(1,2) =  q[0]; Q(1,3) =  q[1];
-			Q(2,0) =  q[1]; Q(2,1) = -q[0]; Q(2,2) =  q[3]; Q(2,3) =  q[2];
+			Q(0,0) =  q[3]; Q(0,1) = -q[2]; Q(0,2) =  q[1]; Q(0,3) =  q[0];
+			Q(1,0) =  q[2]; Q(1,1) =  q[3]; Q(1,2) = -q[0]; Q(1,3) =  q[1];
+			Q(2,0) = -q[1]; Q(2,1) =  q[0]; Q(2,2) =  q[3]; Q(2,3) =  q[2];
 			Q(3,0) = -q[0]; Q(3,1) = -q[1]; Q(3,2) = -q[2]; Q(3,3) =  q[3];
 		
+			return Q;
+		}
+
+		Eigen::Matrix4d qplus(const Eigen::Quaterniond &q_BC) const
+		{
+			Eigen::Vector4d q = q_BC.coeffs();
+			Eigen::Matrix4d Q;
+
+			Q(0,0) =  q[3]; Q(0,1) =  q[2]; Q(0,2) = -q[1]; Q(0,3) =  q[0];
+			Q(1,0) =  q[2]; Q(1,1) =  q[3]; Q(1,2) =  q[0]; Q(1,3) =  q[1];
+			Q(2,0) =  q[1]; Q(2,1) = -q[0]; Q(2,2) =  q[3]; Q(2,3) =  q[2];
+			Q(3,0) = -q[0]; Q(3,1) = -q[1]; Q(3,2) = -q[2]; Q(3,3) =  q[3];
+			
 			return Q;
 		}
 };
