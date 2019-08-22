@@ -368,7 +368,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J4:\n" << J4
 			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << '\n';
 	}
-	/*
+	
 	Eigen::Matrix<double,12,3> J5_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -438,6 +438,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J7:\n" << J7
 			<< "\n\nnum diff J7:\n" << J7_numDiff << '\n';
 	}
+	/*
 	// run the solver
 	ceres::Solver::Summary summary;
 	ceres::Solve(options, &problem, &summary);
