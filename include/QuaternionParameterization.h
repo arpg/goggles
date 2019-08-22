@@ -145,7 +145,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			this->Minus(x.data(), x_plus_delta.data(), delta_x2.data());
 			
 			if ((delta_x2 - delta_x).norm() > 1.0e-12) return false;
-			std::cout << "verified plus and minus" << std::endl;
+			
 			// verify plusJacobian through numDiff
 			Eigen::Matrix<double, -1, -1, Eigen::RowMajor> J_plus_num_diff(
 				casted->GlobalSize(), casted->LocalSize());
@@ -178,10 +178,10 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			ComputeLiftJacobian(x_raw, J_lift.data());
 			Eigen::MatrixXd identity(casted->LocalSize(), casted->LocalSize());
 			identity.setIdentity();
-			std::cout << "verifying lift" << std::endl;
+			
 			if (((J_lift * J_plus) - identity).norm() > 1.0e-6) return false;
 			if ((J_plus - J_plus_num_diff).norm() > 1.0e-6) return false;
-			std::cout << "verified lift" << std::endl;
+			
 			return true;
 		}
 
