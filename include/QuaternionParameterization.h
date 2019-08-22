@@ -26,7 +26,6 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			double halfnorm = 0.5 * delta_mapped.norm();
 			dq.template head<3>() = sinc(halfnorm) * 0.5 * delta_mapped;
 			dq[3] = cos(halfnorm);
-
 			Eigen::Quaterniond q_plus_delta = Eigen::Quaterniond(dq) * q;
 			q_plus_delta.normalize();
 			
@@ -77,9 +76,9 @@ class QuaternionParameterization : public ceres::LocalParameterization
 
 			Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
 			
-			Eigen::Matrix<double,4,3> S;
+			Eigen::Matrix<double,4,3> S = Eigen::Matrix<double,4,3>::Zero();
 			S.topLeftCorner<3,3>() = Eigen::Matrix3d::Identity() * 0.5;
-			J = oplus(q) * S;
+			J = qplus(q) * S;
 
 			return true;
 		}
@@ -146,7 +145,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			this->Minus(x.data(), x_plus_delta.data(), delta_x2.data());
 			
 			if ((delta_x2 - delta_x).norm() > 1.0e-12) return false;
-
+			std::cout << "verified plus and minus" << std::endl;
 			// verify plusJacobian through numDiff
 			Eigen::Matrix<double, -1, -1, Eigen::RowMajor> J_plus_num_diff(
 				casted->GlobalSize(), casted->LocalSize());
@@ -179,10 +178,10 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			ComputeLiftJacobian(x_raw, J_lift.data());
 			Eigen::MatrixXd identity(casted->LocalSize(), casted->LocalSize());
 			identity.setIdentity();
-
+			std::cout << "verifying lift" << std::endl;
 			if (((J_lift * J_plus) - identity).norm() > 1.0e-6) return false;
 			if ((J_plus - J_plus_num_diff).norm() > 1.0e-6) return false;
-
+			std::cout << "verified lift" << std::endl;
 			return true;
 		}
 
@@ -227,7 +226,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			Eigen::Matrix4d Q;
 
 			Q(0,0) =  q[3]; Q(0,1) =  q[2]; Q(0,2) = -q[1]; Q(0,3) =  q[0];
-			Q(1,0) =  q[2]; Q(1,1) =  q[3]; Q(1,2) =  q[0]; Q(1,3) =  q[1];
+			Q(1,0) = -q[2]; Q(1,1) =  q[3]; Q(1,2) =  q[0]; Q(1,3) =  q[1];
 			Q(2,0) =  q[1]; Q(2,1) = -q[0]; Q(2,2) =  q[3]; Q(2,3) =  q[2];
 			Q(3,0) = -q[0]; Q(3,1) = -q[1]; Q(3,2) = -q[2]; Q(3,3) =  q[3];
 			
