@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 1.0;
+  const double duration = 0.21;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -267,7 +267,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff  << '\n';
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << '\n';
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;
@@ -360,7 +360,7 @@ TEST(goggleTests, ImuIntegration)
 		q_ws = q_ws_temp;
 		J4_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
 	}
-	Eigen::Matrix<double,3,4> J4_lift;
+	Eigen::Matrix<double,3,4,Eigen::RowMajor> J4_lift;
 	qp.liftJacobian(parameters[4], J4_lift.data());
 	if ((J4 - (J4_numDiff * J4_lift)).norm() > jacobianTolerance)
 	{

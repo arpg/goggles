@@ -318,7 +318,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					omega_true -= b_g_hat;
         	// get orientation matrices
         	Eigen::Matrix3d C_ws_hat = q_ws_hat.toRotationMatrix();
-        	Eigen::Matrix3d C_sw_hat = q_ws_hat.conjugate().toRotationMatrix();
+        	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
 
         	// calculate continuous time jacobian
         	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
@@ -327,9 +327,9 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					F_c.block<3,3>(0,6) = C_ws_hat;
 					
         	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
-        	g_w_cross(0,1) = -params_.g_;
-        	g_w_cross(1,0) = params_.g_;
-        	F_c.block<3,3>(3,0) = C_sw_hat * g_w_cross;
+        	g_w_cross(0,1) = params_.g_;
+        	g_w_cross(1,0) = -params_.g_;
+        	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
 					/*
 					Eigen::Vector3d g_w(0,0,-params_.g_);
 					Eigen::Vector3d g_s = C_sw_hat * g_w;
@@ -403,7 +403,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           
 					// get lift jacobian 
           // shifts minimal 3d representation to overparameterized 4d representation
-          Eigen::Matrix<double,3,4> J_lift;
+          Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
 					QuaternionParameterization qp;
 					qp.liftJacobian(parameters[0], J_lift.data());
 					std::cout << J0_minimal << std::endl;
@@ -437,7 +437,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
           // get lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
-          Eigen::Matrix<double,3,4> J_lift;
+          Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
 					QuaternionParameterization qp;
 					qp.liftJacobian(parameters[4], J_lift.data());
 
