@@ -329,7 +329,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
         	g_w_cross(0,1) = -params_.g_;
         	g_w_cross(1,0) = params_.g_;
-        	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
+        	F_c.block<3,3>(3,0) = C_sw_hat * g_w_cross;
 					/*
 					Eigen::Vector3d g_w(0,0,-params_.g_);
 					Eigen::Vector3d g_s = C_sw_hat * g_w;
@@ -337,7 +337,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					g_s_cross <<      0, -g_s(2),  g_s(1),
 										   g_s(2),       0, -g_s(0),
 											-g_s(1),  g_s(0),       0;
-        	F_c.block<3,3>(3,0) = g_s_cross;
+        	F_c.block<3,3>(3,0) = -g_s_cross;
 					*/
 					Eigen::Matrix3d omega_cross;
         	omega_cross << 						 0, -omega_true(2),  omega_true(1),
@@ -371,7 +371,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			QuaternionParameterization qp;
       Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err);
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
-      F = F1 * F;
+      F = F * F1;
 			F1 = -F1;
 			//P = F1 * P * F1.transpose();
       // calculate residuals
