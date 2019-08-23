@@ -267,7 +267,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << '\n';
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff  << '\n';
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;

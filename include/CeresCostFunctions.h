@@ -263,11 +263,14 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Q.block<3,3>(9,9) *= params_.sigma_b_a_;
 
       // propagate imu measurements, tracking jacobians and covariance
+			int num_meas = 0;
       for (int i = 1; i < imu_measurements_.size(); i++)
       {
 				if (imu_measurements_[i].t_ > t0_ 
 							&& imu_measurements_[i-1].t_ < t1_)
 				{
+					num_meas++;
+
         	ImuMeasurement meas_0 = imu_measurements_[i-1];
         	ImuMeasurement meas_1 = imu_measurements_[i];
 
@@ -364,6 +367,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	P = F_d * P * F_d.transpose() + G * Q * G.transpose();
       	}
 			}
+			std::cout << "used " << num_meas << " imu measurements" << std::endl;
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
       Eigen::Quaterniond q_ws_err = q_ws_hat * q_ws_1.inverse();
