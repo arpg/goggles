@@ -294,11 +294,14 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
         	double delta_t = meas_1.t_ - meas_0.t_;
 
-        	// get average of imu readings
+        	// get average of gyro readings
         	Eigen::Vector3d omega_true = (meas_0.g_ + meas_1.g_) / 2.0;
-        	Eigen::Vector3d acc_true = (meas_0.a_ + meas_1.a_) / 2.0;
 
-        	// integrate measurements using Runge-Kutta 4
+					// save initial velocity and orientation estimates
+					Eigen::Vector3d v_s_p0 = v_s_hat;
+        	Eigen::Quaterniond q_ws_p0 = q_ws_hat;
+
+					// integrate measurements using Runge-Kutta 4
         	std::vector<double> x0;
         	x0.push_back(q_ws_hat.x());
         	x0.push_back(q_ws_hat.y());
@@ -307,10 +310,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	for (int j = 0; j < 3; j++) x0.push_back(v_s_hat(j));
         	for (int j = 0; j < 3; j++) x0.push_back(b_g_hat(j));
         	for (int j = 0; j < 3; j++) x0.push_back(b_a_hat(j));
-        	double t_step = delta_t / 4.0;
+        	double t_step = delta_t / 5.0;
         	ImuIntegrator imu_int(meas_0, meas_1, params_.g_, params_.b_a_tau_);
         	boost::numeric::odeint::integrate(imu_int, x0, meas_0.t_, meas_1.t_, t_step);
-        	q_ws_hat.x() = x0[0];
+					q_ws_hat.x() = x0[0];
         	q_ws_hat.y() = x0[1];
         	q_ws_hat.z() = x0[2];
         	q_ws_hat.w() = x0[3];
@@ -319,47 +322,49 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	b_g_hat << x0[7], x0[8], x0[9];
         	b_a_hat << x0[10], x0[11], x0[12];
 					omega_true -= b_g_hat;
-        	// get orientation matrices
-        	Eigen::Matrix3d C_ws_hat = q_ws_hat.toRotationMatrix();
+					
+					// get average of velocity and orientation
+					Eigen::Vector3d v_s_true = (v_s_p0 + v_s_hat) / 2.0;
+					Eigen::Quaterniond q_ws_true = q_ws_p0.slerp(0.5,q_ws_hat);
+        	
+					// get orientation matrices
+        	Eigen::Matrix3d C_ws_hat = q_ws_true.toRotationMatrix();
         	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
-
         	// calculate continuous time jacobian
         	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
 					QuaternionParameterization qp;
-					//F_c.block<3,3>(0,6) = qp.qplus(q_ws_hat).topLeftCorner<3,3>();//).topLeftCorner<3,3>();
 					F_c.block<3,3>(0,6) = C_ws_hat;
 					
         	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
         	g_w_cross(0,1) = params_.g_;
         	g_w_cross(1,0) = -params_.g_;
         	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
-					/*
-					Eigen::Vector3d g_w(0,0,-params_.g_);
-					Eigen::Vector3d g_s = C_sw_hat * g_w;
-					Eigen::Matrix3d g_s_cross;
-					g_s_cross <<      0, -g_s(2),  g_s(1),
-										   g_s(2),       0, -g_s(0),
-											-g_s(1),  g_s(0),       0;
-        	F_c.block<3,3>(3,0) = -g_s_cross;
-					*/
+					
 					Eigen::Matrix3d omega_cross;
         	omega_cross << 						 0, -omega_true(2),  omega_true(1),
           	      			 omega_true(2),  						 0, -omega_true(0),
             	    			-omega_true(1),  omega_true(0),							 0;
         	F_c.block<3,3>(3,3) = -omega_cross;
-        	Eigen::Matrix3d v_s_hat_cross;
+        	/*
+					Eigen::Matrix3d v_s_hat_cross;
         	v_s_hat_cross << 					 0, -v_s_hat(2),  v_s_hat(1),
           	      					v_s_hat(2), 					0, -v_s_hat(0),
             	    				 -v_s_hat(1),  v_s_hat(0), 					 0;
         	F_c.block<3,3>(3,6) = -v_s_hat_cross;
-        	F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
+        	*/
+					Eigen::Matrix3d v_s_true_cross;
+					v_s_true_cross <<           0, -v_s_true(2),  v_s_true(1),
+														v_s_true(2),            0, -v_s_true(0),
+													 -v_s_true(1),  v_s_true(0),            0;
+					F_c.block<3,3>(3,6) = -v_s_true_cross;
+					F_c.block<3,3>(3,9) = -1.0 * Eigen::Matrix3d::Identity();
         	F_c.block<3,3>(9,9) = (-1.0 / params_.b_a_tau_) * Eigen::Matrix3d::Identity();
         	// approximate discrete time jacobian using bilinear transform
         	Eigen::Matrix<double,12,12> I_12 = Eigen::Matrix<double,12,12>::Identity();
         	Eigen::Matrix<double,12,12> F_d;
 					F_d = (I_12 + 0.5 * F_c * delta_t) * (I_12 - 0.5 * F_c * delta_t).inverse();
 					//F_d = (F_c * delta_t).exp();
-        	F = F_d * F; // update total jacobian
+        	F = F * F_d; // update total jacobian
         	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
         	G.block<3,3>(0,0) = C_ws_hat;
 
@@ -367,7 +372,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	P = F_d * P * F_d.transpose() + G * Q * G.transpose();
       	}
 			}
-			std::cout << "used " << num_meas << " imu measurements" << std::endl;
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
       Eigen::Quaterniond q_ws_err = q_ws_hat * q_ws_1.inverse();

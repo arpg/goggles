@@ -25,7 +25,7 @@ double sinc_test(double x)
   }
 }
 
-const double jacobianTolerance = 1.0e-3;
+const double jacobianTolerance = 1.0e-4;
 
 TEST(goggleTests, ImuIntegration)
 {
