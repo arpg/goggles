@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.25;
+  const double duration = 0.3;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -145,11 +145,11 @@ TEST(goggleTests, ImuIntegration)
 
     imuMeasurements.push_back(new_meas);
   }
-  q_ws = q_ws_0;
-  v_s = v_s_0;
-  b_g = b_g_0;
-  b_a = b_a_0;
-	std::cout << "q_1: " << q_ws_1.coeffs().transpose() << std::endl;
+  q_ws = q_ws_1;
+  v_s = v_s_1;
+  b_g = b_g_1;
+  b_a = b_a_1;
+	
 	// create ceres problem
 	ceres::Problem problem;
 	ceres::Solver::Options options;
@@ -271,7 +271,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;
@@ -345,7 +345,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J3:\n" << J3
 			<< "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
 	}
-	/*
+	
 	Eigen::Matrix<double,12,3> J4_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -462,7 +462,7 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
 
-  */
+  
 }
 
 int main(int argc, char **argv)

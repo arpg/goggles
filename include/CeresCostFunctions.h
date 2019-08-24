@@ -327,7 +327,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					Eigen::Vector3d v_s_true = (v_s_p0 + v_s_hat) / 2.0;
 					//Eigen::Quaterniond q_ws_true = q_ws_p0.slerp(0.5,q_ws_hat);
         	//Eigen::Quaterniond q_ws_true((q_ws_hat.coeffs() + q_ws_p0.coeffs()) / 2.0);
-					q_ws_true.normalize();
+					//q_ws_true.normalize();
 					// get orientation matrices
         	Eigen::Matrix3d C_ws_hat = q_ws_p0.toRotationMatrix();
         	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
@@ -339,6 +339,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
         	g_w_cross(0,1) = params_.g_;
         	g_w_cross(1,0) = -params_.g_;
+					//Eigen::Vector3d g_s = 0.5 * (C_sw_hat + q_ws_hat.toRotationMatrix()) * Eigen::Vector3d(0,0,params_.g_);
+					//F_c.block<3,3>(3,0) << 0, -g_s(2), g_s(1),
+					//											g_s(2), 0, -g_s(0),
+					//											-g_s(1), g_s(0), 0;
         	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
 					
 					Eigen::Matrix3d omega_cross;
@@ -368,7 +372,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					//F_d = (F_c * delta_t).exp();
         	F = F * F_d; // update total jacobian
         	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
-        	G.block<3,3>(0,0) = C_ws_hat;
+        	//G.block<3,3>(0,0) = C_ws_hat;
 
         	// update covariance
         	P = F_d * P * F_d.transpose().eval() + G * Q * G.transpose().eval() * delta_t;
@@ -382,9 +386,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			QuaternionParameterization qp;
       Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err);
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
-			//std::cout << F1.block<3,3>(0,0) << '\n' << std::endl;
-			//std::cout << F.block<12,3>(0,0) << '\n' << std::endl;
       F = F * F1;
+			//std::cout << F.block<12,3>(0,0) << '\n' << std::endl;
 			//P = F1 * P * F1.transpose().eval();
 			F1 = -F1;
       // calculate residuals
@@ -402,8 +405,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
       Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();//.transpose();
-      weighted_error = square_root_information * error;
-
+			weighted_error = square_root_information * error;
+			//std::cout << square_root_information.block<3,12>(0,0) << '\n' << std::endl;
+			//std::cout << square_root_information.block<3,3>(0,0) * F.block<3,3>(0,0) << '\n' << std::endl;
+			//std::cout << square_root_information.block<3,3>(0,3) * F.block<3,3>(3,0) << '\n' << std::endl;
       // get jacobians if requested
       if (jacobians != NULL)
       {
@@ -420,7 +425,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					QuaternionParameterization qp;
 					qp.liftJacobian(parameters[0], J_lift.data());
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
-					std::cout << J0_minimal << std::endl; 
 					J0_mapped = J0_minimal * J_lift;
         }
         // jacobian of residuals w.r.t. velocity at t0
