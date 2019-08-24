@@ -325,13 +325,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					
 					// get average of velocity and orientation
 					Eigen::Vector3d v_s_true = (v_s_p0 + v_s_hat) / 2.0;
-					//Eigen::Quaterniond q_ws_true = q_ws_p0.slerp(0.5,q_ws_hat);
-        	//Eigen::Quaterniond q_ws_true((q_ws_hat.coeffs() + q_ws_p0.coeffs()) / 2.0);
-					//q_ws_true.normalize();
-					// get orientation matrices
         	Eigen::Matrix3d C_ws_hat = q_ws_p0.toRotationMatrix();
         	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
-        	// calculate continuous time jacobian
+        	
+					// calculate continuous time jacobian
         	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
 					QuaternionParameterization qp;
 					F_c.block<3,3>(0,6) = C_ws_hat;
@@ -339,10 +336,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
         	g_w_cross(0,1) = params_.g_;
         	g_w_cross(1,0) = -params_.g_;
-					//Eigen::Vector3d g_s = 0.5 * (C_sw_hat + q_ws_hat.toRotationMatrix()) * Eigen::Vector3d(0,0,params_.g_);
-					//F_c.block<3,3>(3,0) << 0, -g_s(2), g_s(1),
-					//											g_s(2), 0, -g_s(0),
-					//											-g_s(1), g_s(0), 0;
         	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
 					
 					Eigen::Matrix3d omega_cross;
@@ -350,13 +343,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           	      			 omega_true(2),  						 0, -omega_true(0),
             	    			-omega_true(1),  omega_true(0),							 0;
         	F_c.block<3,3>(3,3) = -omega_cross;
-        	/*
-					Eigen::Matrix3d v_s_hat_cross;
-        	v_s_hat_cross << 					 0, -v_s_hat(2),  v_s_hat(1),
-          	      					v_s_hat(2), 					0, -v_s_hat(0),
-            	    				 -v_s_hat(1),  v_s_hat(0), 					 0;
-        	F_c.block<3,3>(3,6) = -v_s_hat_cross;
-        	*/
+					
 					Eigen::Matrix3d v_s_true_cross;
 					v_s_true_cross <<           0, -v_s_true(2),  v_s_true(1),
 														v_s_true(2),            0, -v_s_true(0),
@@ -368,11 +355,9 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	Eigen::Matrix<double,12,12> I_12 = Eigen::Matrix<double,12,12>::Identity();
         	Eigen::Matrix<double,12,12> F_d;
 					F_d = (I_12 + F_c * delta_t);
-					//F_d = (I_12 + 0.5 * F_c * delta_t) * (I_12 - 0.5 * F_c * delta_t).inverse().eval();
-					//F_d = (F_c * delta_t).exp();
         	F = F * F_d; // update total jacobian
         	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
-        	//G.block<3,3>(0,0) = C_ws_hat;
+        	G.block<3,3>(0,0) = C_ws_hat;
 
         	// update covariance
         	P = F_d * P * F_d.transpose().eval() + G * Q * G.transpose().eval() * delta_t;
@@ -387,10 +372,9 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err);
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
       F = F * F1;
-			//std::cout << F.block<12,3>(0,0) << '\n' << std::endl;
-			//P = F1 * P * F1.transpose().eval();
 			F1 = -F1;
-      // calculate residuals
+      
+			// calculate residuals
       Eigen::Matrix<double,12,1> error;
       error.segment<3>(0) = 2.0 * q_ws_err.vec();
       error.segment<3>(3) = v_s_hat - v_s_1;
@@ -404,12 +388,9 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       information = 0.5 * information + 0.5 * information.transpose().eval();
 
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
-      Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();//.transpose();
-			weighted_error = square_root_information * error;
-			//std::cout << square_root_information.block<3,12>(0,0) << '\n' << std::endl;
-			//std::cout << square_root_information.block<3,3>(0,0) * F.block<3,3>(0,0) << '\n' << std::endl;
-			//std::cout << square_root_information.block<3,3>(0,3) * F.block<3,3>(3,0) << '\n' << std::endl;
-      // get jacobians if requested
+      Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();
+      
+			// get jacobians if requested
       if (jacobians != NULL)
       {
         // jacobian of residuals w.r.t. orientation at t0
