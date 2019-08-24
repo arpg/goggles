@@ -326,10 +326,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					// get average of velocity and orientation
 					Eigen::Vector3d v_s_true = (v_s_p0 + v_s_hat) / 2.0;
 					//Eigen::Quaterniond q_ws_true = q_ws_p0.slerp(0.5,q_ws_hat);
-        	Eigen::Quaterniond q_ws_true((q_ws_hat.coeffs() + q_ws_p0.coeffs()) / 2.0);
+        	//Eigen::Quaterniond q_ws_true((q_ws_hat.coeffs() + q_ws_p0.coeffs()) / 2.0);
 					q_ws_true.normalize();
 					// get orientation matrices
-        	Eigen::Matrix3d C_ws_hat = q_ws_true.toRotationMatrix();
+        	Eigen::Matrix3d C_ws_hat = q_ws_p0.toRotationMatrix();
         	Eigen::Matrix3d C_sw_hat = C_ws_hat.inverse();
         	// calculate continuous time jacobian
         	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
@@ -363,7 +363,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	// approximate discrete time jacobian using bilinear transform
         	Eigen::Matrix<double,12,12> I_12 = Eigen::Matrix<double,12,12>::Identity();
         	Eigen::Matrix<double,12,12> F_d;
-					F_d = (I_12 + 0.5 * F_c * delta_t) * (I_12 - 0.5 * F_c * delta_t).inverse().eval();
+					F_d = (I_12 + F_c * delta_t);
+					//F_d = (I_12 + 0.5 * F_c * delta_t) * (I_12 - 0.5 * F_c * delta_t).inverse().eval();
 					//F_d = (F_c * delta_t).exp();
         	F = F * F_d; // update total jacobian
         	Eigen::Matrix<double,12,12> G = Eigen::Matrix<double,12,12>::Identity();
@@ -375,11 +376,14 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			}
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
-      Eigen::Quaterniond q_ws_err = q_ws_hat * q_ws_1.inverse();
+      Eigen::Quaterniond q_ws_err = (q_ws_hat * q_ws_0.inverse()) 
+																		* (q_ws_1 * q_ws_0.inverse()).inverse();
 			q_ws_err.normalize();
 			QuaternionParameterization qp;
       Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err);
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
+			//std::cout << F1.block<3,3>(0,0) << '\n' << std::endl;
+			//std::cout << F.block<12,3>(0,0) << '\n' << std::endl;
       F = F * F1;
 			//P = F1 * P * F1.transpose().eval();
 			F1 = -F1;
@@ -397,7 +401,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       information = 0.5 * information + 0.5 * information.transpose().eval();
 
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
-      Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixL().transpose();
+      Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();//.transpose();
       weighted_error = square_root_information * error;
 
       // get jacobians if requested

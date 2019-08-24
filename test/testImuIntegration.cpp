@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.3;
+  const double duration = 0.25;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -345,7 +345,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J3:\n" << J3
 			<< "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
 	}
-
+	/*
 	Eigen::Matrix<double,12,3> J4_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -372,7 +372,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J4:\n" << J4
 			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << "\n\n";
 	}
-	/*
+	
 	Eigen::Matrix<double,12,3> J5_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
