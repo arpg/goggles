@@ -180,7 +180,9 @@ private:
 		params_.g_ = g_vec.norm();
 
 		// set initial orientation (attitude only)
-
+		
+		// set initialized to true
+		initialized_ = true;
 	}
 
   /** \brief uses ceres solver to estimate the body velocity from the input 
