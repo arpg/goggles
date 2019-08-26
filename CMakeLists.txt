@@ -52,6 +52,7 @@ set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set( HEADERS
   ${INC_DIR}/CeresCostFunctions.h
 	${INC_DIR}/QuaternionParameterization.h
+	${INC_DIR}/DataTypes.h
   )
 
 set( RAD_VEL_SRCS
