@@ -2,24 +2,9 @@
 #include <Eigen/Core>
 #include <unsupported/Eigen/MatrixFunctions>
 #include "QuaternionParameterization.h"
+#include "DataTypes.h"
 #include <ceres/ceres.h>
 
-struct ImuMeasurement
-{
-  Eigen::Vector3d g_; // gyro reading
-  Eigen::Vector3d a_; // accelerometer reading
-  double t_;          // timestamp
-};
-
-struct ImuParams
-{
-  double g_; // gravity magnitude
-  double sigma_g_; // gyro noise prior
-  double sigma_a_; // accelerometer noise prior
-  double sigma_b_g_; // gyro bias noise prior
-  double sigma_b_a_; // accelerometer bias noise prior
-  double b_a_tau_; // accelerometer bias random walk parameter
-};
 
 class BodyVelocityCostFunction : public ceres::CostFunction
 {
