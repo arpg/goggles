@@ -27,17 +27,17 @@ struct ImuParams
 class ImuBuffer
 {
 	public:
-		void setTimeout(double imu_freq)
+		void SetTimeout(double imu_freq)
 		{
 			timeout_ = std::chrono::milliseconds(int((1.0 / imu_freq) * 1000.0));
 		}
 
-		double getStartTime()
+		double GetStartTime()
 		{
 			return measurements_.front().t_;
 		}
 
-		double getEndTime()
+		double GetEndTime()
 		{
 			return measurement_.back().t_;
 		}
@@ -69,7 +69,7 @@ class ImuBuffer
 		// if t1 is greater than the most recent timestamp in the buffer
 		// execution will block either until up-to-date measurements are
 		// available or 10 times the imu rate has elapsed
-		std::vector<ImuMeasurement> GetRange(double t0, double t1)
+		std::vector<ImuMeasurement> GetRange(double t0, double t1, bool delete_old)
 		{
 			std::vector<ImuMeasurement> meas_range;
 
@@ -113,11 +113,14 @@ class ImuBuffer
 
 			// delete old measurements (assuming they won't be needed again)
 			// keep the newest 5 measurements
-			start_index = end_index - 5;
-			while (start_index > 0)
+			if (delete_old)
 			{
-				measurements_.pop_front();
-				start_index--;
+				start_index = end_index - 5;
+				while (start_index > 0)
+				{
+					measurements_.pop_front();
+					start_index--;
+				}
 			}
 
 			return meas_range;
