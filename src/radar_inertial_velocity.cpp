@@ -1,6 +1,7 @@
 #define PCL_NO_PRECOMPILE
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Imu.h>
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
@@ -13,7 +14,8 @@
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
-#include <CeresCostFunctions.h>
+#include "CeresCostFunctions.h"
+#include "DataTypes.h"
 #include <chrono>
 
 struct RadarPoint
@@ -40,10 +42,12 @@ class RadarInertialVelocityReader
 {
 public:
 
-  RadarInertialVelocityReader(ros::NodeHandle nh) 
+  RadarInertialVelocityReader(ros::NodeHandle nh, ImuParams params) 
   {
     nh_ = nh;
-    std::string radar_topic;
+		params_ = params;
+    imu_buffer_.setTimeout(params_.frequency_);
+		std::string radar_topic;
     std::string imu_topic;
     nh_.getParam("radar_topic", radar_topic);
     nh_.getParam("imu_topic", imu_topic);
@@ -51,16 +55,18 @@ public:
     VLOG(2) << "imu topic: " << imu_topic;
 
     pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
-    sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::callback, this);
+    radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
+		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
     num_iter_ = 0;
+		initialized_ = false;
 
     window_size_ = 4;
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
-    accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
+    imu_loss_ = new ceres::CauchyLoss(0.1);
 
     ceres::Problem::Options prob_options;
     
@@ -76,7 +82,12 @@ public:
     problem_.reset(new ceres::Problem(prob_options));
   }
 
-  void callback(const sensor_msgs::PointCloud2ConstPtr& msg)
+	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
+	{
+
+	}
+
+  void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
 	  double timestamp = msg->header.stamp.toSec();
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
@@ -108,19 +119,22 @@ public:
 private:
   ros::NodeHandle nh_;
   ros::Publisher pub_;
-  ros::Subscriber sub_;
+  ros::Subscriber radar_sub_;
+	ros::Subscriber imu_sub_;
   ceres::CauchyLoss *doppler_loss_;
-  ceres::CauchyLoss *accel_loss_;
-  //std::deque<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> velocities_;
+  ceres::CauchyLoss *imu_loss_;
   std::deque<Eigen::Vector3d*> velocities_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
+	ImuBuffer imu_buffer_;
+	ImuParams params_;
   std::shared_ptr<ceres::Problem> problem_;
   ceres::Solver::Options solver_options_;
   int window_size_;
   double min_range_;
   int num_iter_;
   double sum_time_;
+	bool initialized_;
 
   /** \brief Clean up radar point cloud prior to processing
     * \param[in,out] cloud the input point cloud
@@ -304,7 +318,7 @@ private:
       ceres::CostFunction* vel_change_cost_func = 
         new VelocityChangeCostFunction(delta_t);
       ceres::ResidualBlockId res_id = problem_->AddResidualBlock(vel_change_cost_func, 
-                                                                 accel_loss_, 
+                                                                 imu_loss_, 
                                                                  velocities_[0]->data(), 
                                                                  velocities_[1]->data());
       residual_blks_[1].push_back(res_id);
@@ -387,7 +401,10 @@ int main(int argc, char** argv)
   google::InitGoogleLogging(argv[0]);
 	ros::init(argc, argv, "radar_vel");	
   ros::NodeHandle nh("~");
-  RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh);
+	// need to add a way to read in IMU parameters from config file
+	// perhaps using yaml-cpp
+	ImuParams params;
+  RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh, params);
   
   ros::spin();
 
