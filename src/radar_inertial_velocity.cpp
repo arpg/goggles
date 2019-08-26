@@ -46,7 +46,7 @@ public:
   {
     nh_ = nh;
 		params_ = params;
-    imu_buffer_.setTimeout(params_.frequency_);
+    imu_buffer_.SetTimeout(params_.frequency_);
 		std::string radar_topic;
     std::string imu_topic;
     nh_.getParam("radar_topic", radar_topic);
@@ -84,7 +84,17 @@ public:
 
 	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
 	{
+		ImuMeasurement new_meas;
 
+		new_meas.t_ = msg->header.stamp.toSec();
+		new_meas.g_ << msg->angular_velocity.x,
+									 msg->angular_velocity.y,
+									 msg->angular_velocity.z;
+		new_meas.a_ << msg->linear_acceleration.x,
+									 msg->linear_acceleration.y,
+									 msg->linear_acceleration.z;
+
+		imu_buffer_.AddMeasurement(new_meas);
 	}
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -106,8 +116,7 @@ public:
 
     // Get velocity measurements
     auto start = std::chrono::high_resolution_clock::now();
-    GetVelocityCeres(cloud, coeffs, timestamp, vel_out);
-    //GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
+    GetVelocity(cloud, coeffs, timestamp, vel_out);
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
@@ -152,125 +161,42 @@ private:
     }
   }
 
-  /** \brief Get body velocity using iteratively reweighted linear least squares
-    * \param[in] cloud the input point cloud
-    * \param[out] vel the resultant body velocity
-    * \param[in] max_iter the maximum number of iterations to run IRLS
-    * \param[in] func_tol the minimum cost improvement over total cost required
-    * to continue iterating
-    * \param[out] vel_out the resultant ros message
-    * \note this function is currently not used, it was written to demonstrate
-    * this process could be done with linear least squares
-    */
-    void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
-                       Eigen::Vector3d &velocity, 
-                       int max_iter, double func_tol,
-                       geometry_msgs::TwistWithCovarianceStamped &vel_out)
-  {
+	/** \brief uses initial IMU measurements to determine the magnitude of the
+		* gravity vector and the initial attitude
+		*/
+	void InitializeImu()
+	{
+		double t0 = imu_buffer_.GetStartTime();
+		std::vector<ImuMeasurement> measurements = 
+					imu_buffer_.GetRange(t0, t0 + 0.1, false);
 
-    // assemble model, measurement, and weight matrices
-    int N = cloud->size();
-    Eigen::MatrixXd X(N,3);
-    Eigen::MatrixXd y(N,1);
-    Eigen::MatrixXd W(N,N);
-    W.setZero();
+		// find gravity vector
+		Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
+		for (size_t i = 0; i < measurements.size(); i++)
+			sum_a += measurements[i].a_;
+		Eigen::Vector3d g_vec = -sum_a / measurements.size();
 
-    // get min and max intensity for calculating weights
-    double min_intensity, max_intensity;
-    getIntensityBounds(min_intensity,max_intensity,cloud);
+		// set gravity vector magnitude
+		params_.g_ = g_vec.norm();
 
-    for (int i = 0; i < N; i++)
-    {
-      // set measurement matrix entry as doppler measurement
-      y(i) = cloud->at(i).doppler;
+		// set initial orientation (attitude only)
 
-      // set model matrix row as unit vector from sensor to target
-      Eigen::Matrix<double, 1, 3> ray_st;
-      ray_st << cloud->at(i).x,
-                cloud->at(i).y,
-                cloud->at(i).z;
-      X.block<1,3>(i,0) = ray_st.normalized();
-
-      // set weight as normalized intensity
-      W(i,i) = (cloud->at(i).intensity - min_intensity)
-              / (max_intensity - min_intensity);
-    }
-
-    // initialize weights as normalized intensities
-    Eigen::MatrixXd W_p(N,N);
-    W_p = W;
-
-    // estimate velocities through iteratively re-weighted least squares
-    Eigen::MatrixXd res(N,1);
-    Eigen::MatrixXd psi(N,1);
-    double sum_res = 1.0e4;
-    double delta_res = 1.0;
-    double d_cost_over_cost = 1.0;
-    int num_iter = 0;
-    double c = 1.0 / (0.15*0.15);
-    double initial_cost = 0;
-
-    while (num_iter < max_iter
-          && d_cost_over_cost > func_tol)
-    {
-      // get the weighted least squares solution
-      velocity = (X.transpose()*W_p*X).inverse()*X.transpose()*W_p*y;
-
-      // evaluate the residual
-      res = (X * velocity) - y;
-
-      // compute new weights using the cauchy robust norm
-      for (int i = 0; i < N; i++)
-      {
-        psi(i) = std::max(std::numeric_limits<double>::min(),
-                      1.0 / (1.0 + res(i)*res(i) * c));
-        double w_i = psi(i);// / res(i);
-        W_p(i,i) = W(i,i) * w_i;
-      }
-
-      // compute sum residual with new weights
-      Eigen::MatrixXd new_sum_res = res.transpose() * W_p*W_p * res;
-      delta_res = fabs(sum_res - new_sum_res(0));
-      sum_res = new_sum_res(0);
-      d_cost_over_cost = delta_res / sum_res;
-      if (num_iter == 0) initial_cost = sum_res;
-      num_iter++;
-    }
-
-    VLOG(3) << "initial cost: " << initial_cost;
-    VLOG(3) << "final cost:   " << sum_res;
-    VLOG(3) << "change:       " << initial_cost - sum_res;
-    VLOG(3) << "iterations:   " << num_iter;
-
-    velocity = velocity * -1.0;
-
-    // get estimate covariance
-    double sum_psi_sq = 0.0;
-    double sum_psi_p = 0.0;
-
-    for (int i = 0; i < N; i++)
-    {
-      sum_psi_sq += psi(i) * psi(i) * W_p(i,i);
-      double inv = 1.0 / (1.0 + res(i)*res(i) * c);
-      sum_psi_p += -1.0 * c * inv * inv * W_p(i,i);
-    }
-    Eigen::MatrixXd cov = sum_psi_sq / (sum_psi_p * sum_psi_p)
-                      * (X.transpose() * X).inverse();
-    Eigen::Matrix3d covariance(cov);
-
-    populateMessage(vel_out, velocity, covariance);
-  }
+	}
 
   /** \brief uses ceres solver to estimate the body velocity from the input 
     * point cloud
     * \param[out] the resultant body velocity
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud, 
+  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr cloud, 
                    Eigen::Vector3d &velocity, 
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+		// if imu is not initialized, run initialization
+		if (!initialized)
+			InitializeImu();
+
     // add latest parameter block and remove old one if necessary
     velocities_.push_front(new Eigen::Vector3d());
     std::vector<ceres::ResidualBlockId> residuals;
