@@ -39,7 +39,7 @@ class ImuBuffer
 
 		double GetEndTime()
 		{
-			return measurement_.back().t_;
+			return measurements_.back().t_;
 		}
 		
 		// add a new measurement to the buffer
