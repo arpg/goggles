@@ -47,7 +47,7 @@ class ImuBuffer
 		// add a new measurement to the buffer
 		bool AddMeasurement(ImuMeasurement &meas)
 		{
-			if (meas.t_ < GetEndTime())
+			if (measurements_.size() > 1 && meas.t_ < GetEndTime())
 			{
 				LOG(ERROR) << "received imu measurement's timestamp (" 
 									 << meas.t_ << ") is less than that of the"
@@ -74,9 +74,14 @@ class ImuBuffer
 		std::vector<ImuMeasurement> GetRange(double t0, double t1, bool delete_old)
 		{
 			std::vector<ImuMeasurement> meas_range;
+			if (measurements_.size() == 0)
+			{
+				LOG(ERROR) << "No IMU measurements in buffer";
+				return meas_range;
+			}
 
 			if (t0 < GetStartTime())
-				LOG(WARNING) << "start time of requested range ("
+				LOG(ERROR) << "start time of requested range ("
 										 << t0 << ") is less than the timestamp"
 										 << " of the first measurement (" 
 										 << measurements_.front().t_ << ")";
