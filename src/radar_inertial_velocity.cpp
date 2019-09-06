@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
+#include "QuaternionParameterization.h"
 #include "CeresCostFunctions.h"
 #include "DataTypes.h"
 #include <chrono>
@@ -66,7 +67,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
-    imu_loss_ = new ceres::CauchyLoss(0.1);
+    imu_loss_ = new ceres::CauchyLoss(1.0);
 
     ceres::Problem::Options prob_options;
     
@@ -106,8 +107,6 @@ public:
     // Reject clutter
     Declutter(cloud);
     
-    Eigen::Vector3d coeffs = Eigen::Vector3d::Zero();
-    
     if (cloud->size() < 10)
       LOG(WARNING) << "input cloud has less than 10 points, output will be unreliable";
     
@@ -116,7 +115,7 @@ public:
 
     // Get velocity measurements
     auto start = std::chrono::high_resolution_clock::now();
-    GetVelocity(cloud, coeffs, timestamp, vel_out);
+    GetVelocity(cloud, timestamp, vel_out);
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
@@ -132,7 +131,8 @@ private:
 	ros::Subscriber imu_sub_;
   ceres::CauchyLoss *doppler_loss_;
   ceres::CauchyLoss *imu_loss_;
-  std::deque<Eigen::Vector3d*> velocities_;
+	std::deque<Eigen::Quaterniond*> attitudes_;
+  std::deque<Eigen::Matrix<double,9,1>*> speeds_and_biases_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
 	ImuBuffer imu_buffer_;
@@ -170,18 +170,35 @@ private:
 		std::vector<ImuMeasurement> measurements = 
 					imu_buffer_.GetRange(t0, t0 + 0.1, false);
 
-		// find gravity vector
+		// find gravity vector and average stationary gyro reading
 		Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
+		Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();
 		for (size_t i = 0; i < measurements.size(); i++)
+		{
+			sum_g += measurements[i].g_;
 			sum_a += measurements[i].a_;
+		}
 		Eigen::Vector3d g_vec = -sum_a / measurements.size();
 
 		// set gravity vector magnitude
 		params_.g_ = g_vec.norm();
 
+		// set initial velocity and biases
+		Eigen::Matrix<double,9,1> speed_and_bias_initial;
+		speed_and_bias_initial.setZero();
+		speed_and_bias_initial.block<3,1>(3,1) = sum_g / measurements.size();
+		speeds_and_biases_.push_front(&speed_and_bias_initial);
+
 		// set initial orientation (attitude only)
-		
-		// set initialized to true
+		// assuming IMU is set close to Z-down
+		Eigen::Vector3d down_vec(0,0,1);
+		Eigen::Vector4d q_vec;
+		Eigen::Vector3d g_direction = -g_vec.normalized();
+		q_vec.head<3>() = down_vec.cross(g_direction);
+		q_vec[3] = sqrt(1 + down_vec.dot(g_direction));
+		Eigen::Quaterniond attitude_initial(q_vec);
+		attitudes_.push_front(&attitude_initial);
+
 		initialized_ = true;
 	}
 
@@ -191,28 +208,40 @@ private:
     * \param[out] the resultant velocity and covariance in ros message form
     */
   void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr cloud, 
-                   Eigen::Vector3d &velocity, 
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
 		// if imu is not initialized, run initialization
-		if (!initialized)
+		if (!initialized_)
+		{
 			InitializeImu();
+		}
+		// else add new params copied from previous values
+		else
+		{
+			speeds_and_biases_.push_front(
+						new Eigen::Matrix<double,9,1>(*speeds_and_biases_.front()));
+			attitudes_.push_front(
+						new Eigen::Quaterniond(*attitudes_.front()));
+		}
 
-    // add latest parameter block and remove old one if necessary
-    velocities_.push_front(new Eigen::Vector3d());
+    // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
-    problem_->AddParameterBlock(velocities_.front()->data(),3);
-    if (velocities_.size() >= window_size_)
+		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->data(),9);
+    if (attitudes_.size() >= window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
 
-      problem_->RemoveParameterBlock(velocities_.back()->data());
-      delete velocities_.back();
-      velocities_.pop_back();
+      problem_->RemoveParameterBlock(attitudes_.back()->coeffs().data());
+			problem_->RemoveParameterBlock(speeds_and_biases_.back()->data());
+      delete attitudes_.back();
+      attitudes_.pop_back();
+			delete speeds_and_biases_.back();
+			speeds_and_biases_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
     }
@@ -233,22 +262,34 @@ private:
                                       target,
                                       weight);
       // add residual block to ceres problem
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(doppler_cost_function, 
-                                                                 doppler_loss_, 
-                                                                 velocity.data());
+      ceres::ResidualBlockId res_id = 
+				problem_->AddResidualBlock(doppler_cost_function, 
+                                   doppler_loss_, 
+                                	 speeds_and_biases_.front()->head<3>().data());
       residual_blks_.front().push_back(res_id);
     }
     
-    // add residual on change in velocity if applicable
+    // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      double delta_t = timestamps_[0] - timestamps_[1];
-      ceres::CostFunction* vel_change_cost_func = 
-        new VelocityChangeCostFunction(delta_t);
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(vel_change_cost_func, 
-                                                                 imu_loss_, 
-                                                                 velocities_[0]->data(), 
-                                                                 velocities_[1]->data());
+      std::vector<ImuMeasurement> imu_measurements = 
+					imu_buffer_.GetRange(timestamps_[0], timestamps_[1], true);
+      ceres::CostFunction* imu_cost_func = 
+        	new ImuVelocityCostFunction(timestamps_[0], 
+																			timestamps_[1], 
+																			imu_measurements,
+																			params_);
+      ceres::ResidualBlockId res_id 
+				= problem_->AddResidualBlock(imu_cost_func, 
+                                     imu_loss_, 
+                                     attitudes_[0]->coeffs().data(),
+																		 speeds_and_biases_[0]->head(3).data(),
+																		 speeds_and_biases_[0]->segment(3,3).data(),
+																		 speeds_and_biases_[0]->tail(3).data(),
+                                     attitudes_[1]->coeffs().data(),
+																		 speeds_and_biases_[1]->head(3).data(),
+																		 speeds_and_biases_[1]->segment(3,3).data(),
+																		 speeds_and_biases_[1]->tail(3).data());
       residual_blks_[1].push_back(res_id);
     }
 
@@ -257,7 +298,8 @@ private:
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     VLOG(3) << summary.FullReport();
-    VLOG(2) << "velocity from ceres: " << velocities_.front()->transpose();
+    VLOG(2) << "velocity from ceres: " 
+						<< speeds_and_biases_.front()->head(3).transpose();
 
     // get estimate covariance
     /*
@@ -267,19 +309,19 @@ private:
     ceres::Covariance covariance(cov_options);
 
     std::vector<std::pair<const double*, const double*>> cov_blks;
-    cov_blks.push_back(std::make_pair(velocities_.front()->data(),
-                                      velocities_.front()->data()));
+    cov_blks.push_back(std::make_pair(speeds_and_biases_.front()->head<3>().data(),
+                                      speeds_and_biases_.front()->head<3>().data()));
 
     covariance.Compute(cov_blks, problem_.get());
     Eigen::Matrix3d covariance_matrix;
-    covariance.GetCovarianceBlock(velocities_.front()->data(), 
-                                  velocities_.front()->data(), 
+    covariance.GetCovarianceBlock(speeds_and_biases_.front()->head<3>().data(), 
+                                  speeds_and_biases_.front()->head<3>().data(), 
                                   covariance_matrix.data());
 
     VLOG(2) << "covariance: \n" << covariance_matrix;
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-    populateMessage(vel_out,velocity,covariance_matrix);
+    populateMessage(vel_out,covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance
@@ -288,10 +330,9 @@ private:
     * \param[in] covariance the estimate covariance
     */
   void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
-                        Eigen::Vector3d &velocity,
-                        Eigen::Matrix3d &covariance)
+                       Eigen::Matrix3d &covariance)
   {
-    
+    Eigen::Vector3d velocity = speeds_and_biases_.front()->head<3>();
     vel.twist.twist.linear.x = velocity[0];
     vel.twist.twist.linear.y = velocity[1];
     vel.twist.twist.linear.z = velocity[2];
