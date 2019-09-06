@@ -3,11 +3,13 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Imu.h>
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
+#include <tf/transform_listener.h>
 #include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
 #include <pcl/point_types.h>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
-#include  <glog/logging.h>
+#include <glog/logging.h>
 #include <Eigen/Core>
 #include <fstream>
 #include <iostream>
@@ -50,17 +52,26 @@ public:
     imu_buffer_.SetTimeout(params_.frequency_);
 		std::string radar_topic;
     std::string imu_topic;
+		std::string imu_frame;
+		std::string radar_frame;
 		std::string config;
     nh_.getParam("radar_topic", radar_topic);
     nh_.getParam("imu_topic", imu_topic);
+		nh_.getParam("imu_frame", imu_frame);
+		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
     VLOG(2) << "radar topic: " << radar_topic;
     VLOG(2) << "imu topic: " << imu_topic;
-
+		
+		// get imu params and extrinsics
 		LoadParams(config);
+		tf::TransformListener tf_listener;
+		tf_listener.lookupTransform(imu_frame, radar_frame, ros::Time(0), radar_to_imu_);
 
     pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
-    radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
+    
+		
+		radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
 		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -118,11 +129,15 @@ public:
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
 	  double timestamp = msg->header.stamp.toSec();
+		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
-	  pcl::fromROSMsg(*msg, *cloud);
+	  pcl::fromROSMsg(*msg, *raw_cloud);
     
     // Reject clutter
-    Declutter(cloud);
+    Declutter(raw_cloud);
+
+		// transform to imu frame
+		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
     
     if (cloud->size() < 10)
       LOG(WARNING) << "input cloud has less than 10 points, output will be unreliable";
@@ -146,6 +161,7 @@ private:
   ros::Publisher pub_;
   ros::Subscriber radar_sub_;
 	ros::Subscriber imu_sub_;
+	tf::StampedTransform radar_to_imu_;
   ceres::CauchyLoss *doppler_loss_;
   ceres::CauchyLoss *imu_loss_;
 	std::deque<Eigen::Quaterniond*> attitudes_;
@@ -387,10 +403,8 @@ int main(int argc, char** argv)
   google::InitGoogleLogging(argv[0]);
 	ros::init(argc, argv, "radar_vel");	
   ros::NodeHandle nh("~");
-	// need to add a way to read in IMU parameters from config file
-	// perhaps using yaml-cpp
 	ImuParams params;
-  RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh, params);
+  RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh);
   
   ros::spin();
 

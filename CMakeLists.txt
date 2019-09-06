@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   message_generation
+	tf
 )
 
 enable_testing()
@@ -41,7 +42,7 @@ list(APPEND LINK_LIBS
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${GTEST_LIBRARIES}
-	${yaml-cpp_LIBRARIES}
+	${YAML_CPP_LIBRARIES}}
   pthread
 )
 
@@ -75,6 +76,7 @@ include_directories(
   ${Boost_INCLUDE_DIR}
   ${CERES_INCLUDE_DIRS}
   ${GTEST_INCLUDE_DIRS}
+	${YAML_CPP_INCLUDE_DIRS}
   ${INC_DIR}
 )
 
