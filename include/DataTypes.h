@@ -17,6 +17,8 @@ struct ImuParams
 {
 	double frequency_; // imu frequency
 	double g_;         // gravity magnitude
+	double g_max_;	   // max gyro reading
+	double a_max_;     // max acceleration
 	double sigma_g_;   // gyro noise prior
 	double sigma_a_;   // accelerometer noise prior
 	double sigma_b_g_; // gyro bias noise prior

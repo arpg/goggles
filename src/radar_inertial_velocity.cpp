@@ -104,6 +104,8 @@ public:
 	
 		// get imu params
 		params_.frequency_ = config["frequency"].as<double>();
+    params_.a_max_ = config["a_max"].as<double>();
+    params_.g_max_ = config["g_max"].as<double>();
 		params_.sigma_g_ = config["sigma_g"].as<double>();
 		params_.sigma_a_ = config["sigma_a"].as<double>();
 		params_.sigma_b_g_ = config["sigma_b_g"].as<double>();
