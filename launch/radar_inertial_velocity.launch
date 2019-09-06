@@ -12,10 +12,10 @@
   <arg name="config_file" default="../config/microstrain.yaml"/>
 
   <arg name="rviz" default="false"/>
-  <arg name="launch radar" default="true"/>
+  <arg name="launch_radar" default="true"/>
 
   <!-- Call mmWave sensor launch file -->
-  <include file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
+	<include if="$(arg launch_radar)" file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
     <arg name="device" value="1843" doc="TI mmWave sensor device type [1443, 1642, 1843]"/>
     <arg name="config" value="$(arg config)"/>
     <arg name="sdk" value="$(arg sdk)" doc="version of SDK that firmware is compiled for - use 03_02_00_04"/>
@@ -25,13 +25,13 @@
     <arg name="data_port" value="$(arg data_port)"/>
   </include>
 
-  <!-- Static transform from radar frame to imu frame --!>
+  <!-- Static transform from radar frame to imu frame -->
   <node pkg="tf" type="static_transform_publisher" name="radar_to_imu"
-    args="0 0 0 0 0 0 $(arg radar_ref_frame) $(arg imu_ref_frame) 100"/>
+    args="0 0 0 3.1415 0 0 $(arg radar_ref_frame) $(arg imu_ref_frame) 100"/>
 
 
   <!-- launch goggles velocity estimation node -->
-  <node if="$(arg launch_radar)" pkg="goggles" type="radar_inertial_velocity" name="goggles">
+  <node pkg="goggles" type="radar_inertial_velocity" name="goggles">
       <param name="radar_topic" value="$(arg mmwave_topic)"/>
       <param name="imu_topic" value="$(arg imu_topic)"/>
       <param name="radar_frame" value="$(arg radar_ref_frame)"/>
