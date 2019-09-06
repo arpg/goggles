@@ -1,0 +1,10 @@
+% config for the microstrain 3dm-gx5-25 imu
+
+a_max: 78.48
+g_max: 5.235
+sigma_g: 5.236e-03
+sigma_a: 7.845e-01
+sigma_b_g: 4.0e-6
+sigma_b_a: 4.0e-5
+b_a_tau: 3600
+frequency: 200
