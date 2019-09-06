@@ -45,7 +45,7 @@ class ImuBuffer
 		// add a new measurement to the buffer
 		bool AddMeasurement(ImuMeasurement &meas)
 		{
-			if (meas.t_ < measurements_.back().t_)
+			if (meas.t_ < GetEndTime())
 			{
 				LOG(ERROR) << "received imu measurement's timestamp (" 
 									 << meas.t_ << ") is less than that of the"
@@ -73,7 +73,7 @@ class ImuBuffer
 		{
 			std::vector<ImuMeasurement> meas_range;
 
-			if (t0 < measurements_.front().t_)
+			if (t0 < GetStartTime())
 				LOG(WARNING) << "start time of requested range ("
 										 << t0 << ") is less than the timestamp"
 										 << " of the first measurement (" 
@@ -83,7 +83,7 @@ class ImuBuffer
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk, 
 											  timeout_,
-											  [&t1,this]{return t1 <= measurements_.back().t_;}));
+											  [&t1,this]{return t1 <= GetEndTime();}));
 			{
 				LOG(ERROR) << "waiting for up to date imu measurements has failed\n"
 									 << "             requested t1: " << t1 << '\n'
