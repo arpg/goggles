@@ -22,7 +22,7 @@ find_package(Threads REQUIRED)
 find_package(PCL REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(GTest REQUIRED)
-
+find_package(yaml-cpp REQUIRED)
 
 generate_messages(
    DEPENDENCIES
@@ -41,6 +41,7 @@ list(APPEND LINK_LIBS
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${GTEST_LIBRARIES}
+	${yaml-cpp_LIBRARIES}
   pthread
 )
 
