@@ -66,7 +66,14 @@ public:
 		// get imu params and extrinsics
 		LoadParams(config);
 		tf::TransformListener tf_listener;
-		tf_listener.lookupTransform(imu_frame, radar_frame, ros::Time(0), radar_to_imu_);
+		tf_listener.waitForTransform(imu_frame, 
+																 radar_frame, 
+																 ros::Time(0.0), 
+																 ros::Duration(1.0));
+		tf_listener.lookupTransform(imu_frame, 
+																radar_frame, 
+																ros::Time(0.0), 
+																radar_to_imu_);
 
     pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
     
@@ -100,7 +107,15 @@ public:
 
 	void LoadParams(std::string config_filename)
 	{
-		YAML::Node config = YAML::LoadFile(config_filename);
+		YAML::Node config;
+		try 
+		{
+			config = YAML::LoadFile(config_filename);
+		}
+		catch (YAML::BadFile e)
+		{
+			LOG(FATAL) << "Bad config file at: " << config_filename << '\n' << e.msg;
+		}
 	
 		// get imu params
 		params_.frequency_ = config["frequency"].as<double>();
