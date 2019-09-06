@@ -125,9 +125,9 @@ public:
 									 msg->linear_acceleration.y,
 									 msg->linear_acceleration.z;
 
-    if (new_meas.g_.lpNorm(Eigen::Infinity) > params_.max_g_)
+    if (new_meas.g_.lpNorm<Eigen::Infinity>() > params_.g_max_)
       LOG(WARNING) << "Gyro saturation";
-    if (new_meas.a_.lpNorm(Eigen::Infinity) > params_.max_a_)
+    if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
       LOG(WARNING) << "Accelerometer saturation";
 
 		imu_buffer_.AddMeasurement(new_meas);
