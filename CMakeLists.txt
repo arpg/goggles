@@ -34,7 +34,12 @@ generate_messages(
  )
 
 catkin_package(
-  CATKIN_DEPENDS roscpp std_msgs sensor_msgs
+  CATKIN_DEPENDS 
+  roscpp std_msgs 
+  sensor_msgs 
+  tf 
+  pcl_ros
+  geometry_msgs
 )
 
 list(APPEND LINK_LIBS

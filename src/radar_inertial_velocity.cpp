@@ -5,7 +5,7 @@
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
 #include <tf/transform_listener.h>
 #include <pcl_ros/point_cloud.h>
-#include <pcl_ros/transforms.h>
+#include <pcl_ros/impl/transforms.hpp>
 #include <pcl/point_types.h>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
