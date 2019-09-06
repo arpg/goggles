@@ -17,6 +17,7 @@
 #include "QuaternionParameterization.h"
 #include "CeresCostFunctions.h"
 #include "DataTypes.h"
+#include "yaml-cpp/yaml.h"
 #include <chrono>
 
 struct RadarPoint
@@ -43,17 +44,20 @@ class RadarInertialVelocityReader
 {
 public:
 
-  RadarInertialVelocityReader(ros::NodeHandle nh, ImuParams params) 
+  RadarInertialVelocityReader(ros::NodeHandle nh) 
   {
     nh_ = nh;
-		params_ = params;
     imu_buffer_.SetTimeout(params_.frequency_);
 		std::string radar_topic;
     std::string imu_topic;
+		std::string config;
     nh_.getParam("radar_topic", radar_topic);
     nh_.getParam("imu_topic", imu_topic);
+		nh_.getParam("config", config);
     VLOG(2) << "radar topic: " << radar_topic;
     VLOG(2) << "imu topic: " << imu_topic;
+
+		LoadParams(config);
 
     pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
     radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
@@ -82,6 +86,19 @@ public:
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
+
+	void LoadParams(std::string config_filename)
+	{
+		YAML::Node config = YAML::LoadFile(config_filename);
+	
+		// get imu params
+		params_.frequency_ = config["frequency"].as<double>();
+		params_.sigma_g_ = config["sigma_g"].as<double>();
+		params_.sigma_a_ = config["sigma_a"].as<double>();
+		params_.sigma_b_g_ = config["sigma_b_g"].as<double>();
+		params_.sigma_b_a_ = config["sigma_b_a"].as<double>();
+		params_.b_a_tau_ = config["b_a_tau"].as<double>();
+	}
 
 	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
 	{
