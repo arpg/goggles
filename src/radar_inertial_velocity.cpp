@@ -225,6 +225,7 @@ private:
 		*/
 	void InitializeImu()
 	{
+		LOG(INFO) << "initializing imu";
 		double t0 = imu_buffer_.GetStartTime();
 		std::vector<ImuMeasurement> measurements = 
 					imu_buffer_.GetRange(t0, t0 + 0.1, false);
@@ -238,16 +239,16 @@ private:
 			sum_a += measurements[i].a_;
 		}
 		Eigen::Vector3d g_vec = -sum_a / measurements.size();
-
+		
 		// set gravity vector magnitude
 		params_.g_ = g_vec.norm();
-
+		
 		// set initial velocity and biases
 		Eigen::Matrix<double,9,1> speed_and_bias_initial;
 		speed_and_bias_initial.setZero();
-		speed_and_bias_initial.block<3,1>(3,1) = sum_g / measurements.size();
+		speed_and_bias_initial.segment(3,3) = sum_g / measurements.size();
 		speeds_and_biases_.push_front(&speed_and_bias_initial);
-
+		
 		// set initial orientation (attitude only)
 		// assuming IMU is set close to Z-down
 		Eigen::Vector3d down_vec(0,0,1);
@@ -259,6 +260,7 @@ private:
 		attitudes_.push_front(&attitude_initial);
 
 		initialized_ = true;
+		LOG(INFO) << "initialized!";
 	}
 
   /** \brief uses ceres solver to estimate the body velocity from the input 
@@ -278,12 +280,13 @@ private:
 		// else add new params copied from previous values
 		else
 		{
+			LOG(ERROR) << "adding new states";
 			speeds_and_biases_.push_front(
 						new Eigen::Matrix<double,9,1>(*speeds_and_biases_.front()));
 			attitudes_.push_front(
 						new Eigen::Quaterniond(*attitudes_.front()));
 		}
-
+		LOG(ERROR) << "adding new parameter blocks";
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
@@ -292,6 +295,7 @@ private:
     problem_->AddParameterBlock(speeds_and_biases_.front()->data(),9);
     if (attitudes_.size() >= window_size_)
     {
+			LOG(ERROR) << "removing old parameters and residuals";
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
 
@@ -304,7 +308,7 @@ private:
       residual_blks_.pop_back();
       timestamps_.pop_back();
     }
-    
+    LOG(ERROR) << "adding doppler residuals";
     double min_intensity, max_intensity;
     getIntensityBounds(min_intensity,max_intensity,cloud);
     // add residuals on doppler readings
@@ -331,6 +335,7 @@ private:
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
+			LOG(ERROR) << "adding imu residual";
       std::vector<ImuMeasurement> imu_measurements = 
 					imu_buffer_.GetRange(timestamps_[0], timestamps_[1], true);
       ceres::CostFunction* imu_cost_func = 
@@ -352,12 +357,13 @@ private:
       residual_blks_[1].push_back(res_id);
     }
 
-// solve the ceres problem and get result
+		// solve the ceres problem and get result
+		LOG(ERROR) << "running solver";
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
-    VLOG(3) << summary.FullReport();
-    VLOG(2) << "velocity from ceres: " 
+    LOG(ERROR) << summary.FullReport();
+    LOG(ERROR) << "velocity from ceres: " 
 						<< speeds_and_biases_.front()->head(3).transpose();
 
     // get estimate covariance
@@ -381,6 +387,7 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
+		LOG(ERROR) << "done getting velocity";
   }
 
   /** \brief populate ros message with velocity and covariance
