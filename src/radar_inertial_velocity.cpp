@@ -146,26 +146,25 @@ public:
       LOG(ERROR) << "Gyro saturation";
     if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
       LOG(ERROR) << "Accelerometer saturation";
-		LOG(ERROR) << "adding imu";
+		
 		imu_buffer_.AddMeasurement(new_meas);
 	}
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-		LOG(ERROR) << "getting radar timestamp";
 	  double timestamp = msg->header.stamp.toSec();
-		LOG(ERROR) << "getting radar point cloud";
+		
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::fromROSMsg(*msg, *raw_cloud);
-    LOG(ERROR) << "decluttering";
-    // Reject clutter
+    
+		// Reject clutter
     Declutter(raw_cloud);
-		LOG(ERROR) << "transforming";
+		
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    LOG(ERROR) << "getting velocity";
-    if (cloud->size() < 10)
+    
+		if (cloud->size() < 10)
       LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
     geometry_msgs::TwistWithCovarianceStamped vel_out;
@@ -178,7 +177,7 @@ public:
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
     num_iter_++;
-    std::cout << "execution time: " << sum_time_ / double(num_iter_) << std::endl;
+    LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
     pub_.publish(vel_out);
   }
 
@@ -292,7 +291,9 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->data(),9);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
+		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
+		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
     if (attitudes_.size() >= window_size_)
     {
 			LOG(ERROR) << "removing old parameters and residuals";
@@ -336,13 +337,17 @@ private:
     if (timestamps_.size() >= 2)
     {
 			LOG(ERROR) << "adding imu residual";
+			LOG(ERROR) << "getting imu measurements";
       std::vector<ImuMeasurement> imu_measurements = 
 					imu_buffer_.GetRange(timestamps_[0], timestamps_[1], true);
+			LOG(ERROR) << "got " << imu_measurements.size() << " measurements";
+			LOG(ERROR) << "creating cost function";
       ceres::CostFunction* imu_cost_func = 
         	new ImuVelocityCostFunction(timestamps_[0], 
 																			timestamps_[1], 
 																			imu_measurements,
 																			params_);
+			LOG(ERROR) << "adding residual block";
       ceres::ResidualBlockId res_id 
 				= problem_->AddResidualBlock(imu_cost_func, 
                                      imu_loss_, 
@@ -354,7 +359,8 @@ private:
 																		 speeds_and_biases_[1]->head(3).data(),
 																		 speeds_and_biases_[1]->segment(3,3).data(),
 																		 speeds_and_biases_[1]->tail(3).data());
-      residual_blks_[1].push_back(res_id);
+      LOG(ERROR) << "logging residual block id";
+			residual_blks_[1].push_back(res_id);
     }
 
 		// solve the ceres problem and get result
