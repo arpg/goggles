@@ -87,8 +87,6 @@ class ImuBuffer
 										 << measurements_.front().t_ << ")";
 			
 			// block execution until up-to-date imu measurements are available
-
-			LOG(ERROR) << std::fixed << std::setprecision(5) << "end time: " << GetEndTime();
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk, 
 											  timeout_,
