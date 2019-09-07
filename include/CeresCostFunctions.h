@@ -224,8 +224,8 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       const Eigen::Matrix3d C_sw_0 = C_ws_0.inverse();
       const Eigen::Matrix3d C_ws_1 = q_ws_1.toRotationMatrix();
       const Eigen::Matrix3d C_sw_1 = C_ws_1.inverse();
-			LOG(ERROR) << "initializing states";
-      // initialize propagated states
+      
+			// initialize propagated states
       Eigen::Quaterniond q_ws_hat(q_ws_0.coeffs()[3],
 																	q_ws_0.coeffs()[0],
 																	q_ws_0.coeffs()[1],
