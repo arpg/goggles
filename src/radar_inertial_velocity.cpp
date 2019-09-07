@@ -49,7 +49,6 @@ public:
   RadarInertialVelocityReader(ros::NodeHandle nh) 
   {
     nh_ = nh;
-    imu_buffer_.SetTimeout(params_.frequency_);
 		std::string radar_topic;
     std::string imu_topic;
 		std::string imu_frame;
@@ -65,6 +64,7 @@ public:
 		
 		// get imu params and extrinsics
 		LoadParams(config);
+    imu_buffer_.SetTimeout(params_.frequency_);
 		tf::TransformListener tf_listener;
 		tf_listener.waitForTransform(imu_frame, 
 																 radar_frame, 
