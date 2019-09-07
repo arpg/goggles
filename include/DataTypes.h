@@ -31,7 +31,7 @@ class ImuBuffer
 	public:
 		void SetTimeout(double imu_freq)
 		{
-			timeout_ = std::chrono::milliseconds(10 * int((1.0 / imu_freq) * 1000.0));
+			timeout_ = std::chrono::milliseconds(50 * int((1.0 / imu_freq) * 1000.0));
 		}
 
 		double GetStartTime()
