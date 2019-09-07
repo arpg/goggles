@@ -251,17 +251,34 @@ private:
 		// set initial orientation (attitude only)
 		// assuming IMU is set close to Z-down
 		Eigen::Vector3d down_vec(0,0,1);
-		Eigen::Vector4d q_vec;
-		Eigen::Vector3d g_direction = -g_vec.normalized();
-		q_vec.head<3>() = down_vec.cross(g_direction);
-		q_vec[3] = sqrt(1 + down_vec.dot(g_direction));
-		Eigen::Quaterniond attitude_initial(q_vec);
+		Eigen::Vector3d increment;
+		Eigen::Vector3d g_direction = g_vec.normalized();
+		Eigen::Vector3d cross = down_vec.cross(g_direction);
+		if (cross.norm() == 0.0)
+			increment = cross;
+		else
+			increment = cross.normalized();
+		double angle = std::acos(down_vec.transpose() * g_direction);
+		increment *= angle;
+		increment *= -1.0;
+		
+		Eigen::Quaterniond attitude_initial = Eigen::Quaterniond::Identity();
+		// initial oplus increment
+		Eigen::Vector4d dq;
+		double halfnorm = 0.5 * increment.norm();
+		QuaternionParameterization qp;
+		dq.head(3) = qp.sinc(halfnorm) * 0.5 * increment;
+		dq[3] = std::cos(halfnorm);
+
+		attitude_initial = (Eigen::Quaterniond(dq) * attitude_initial);
 		attitude_initial.normalize();
+		
 		attitudes_.push_front(
 				new Eigen::Quaterniond(attitude_initial));
 
 		initialized_ = true;
 		LOG(INFO) << "initialized!";
+		LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
 	}
 
   /** \brief uses ceres solver to estimate the body velocity from the input 
