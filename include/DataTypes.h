@@ -79,7 +79,7 @@ class ImuBuffer
 				LOG(ERROR) << "No IMU measurements in buffer";
 				return meas_range;
 			}
-
+			
 			if (t0 < GetStartTime())
 				LOG(ERROR) << "start time of requested range ("
 										 << t0 << ") is less than the timestamp"
@@ -98,7 +98,7 @@ class ImuBuffer
 									 << "most recent imu timestamp: " << GetEndTime();
 				return meas_range;
 			}
-
+			
 			// find index of measurement immediately before (or equal to) t0
 			size_t start_index = 0;
 			while (measurements_[start_index + 1].t_ < t0)
@@ -114,7 +114,7 @@ class ImuBuffer
 
 			if (measurements_[end_index].t_ < t1)
 				LOG(ERROR) << "timestamp of end index is less than t1";
-
+			
 			// add measurement range to return vector
 			for (size_t i = start_index; i <= end_index; i++)
 				meas_range.push_back(measurements_[i]);
