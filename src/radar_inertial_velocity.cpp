@@ -301,7 +301,9 @@ private:
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
 
       problem_->RemoveParameterBlock(attitudes_.back()->coeffs().data());
-			problem_->RemoveParameterBlock(speeds_and_biases_.back()->data());
+			problem_->RemoveParameterBlock(speeds_and_biases_.back()->head(3).data());
+			problem_->RemoveParameterBlock(speeds_and_biases_.back()->segment(3,3).data());
+			problem_->RemoveParameterBlock(speeds_and_biases_.back()->tail(3).data());
       delete attitudes_.back();
       attitudes_.pop_back();
 			delete speeds_and_biases_.back();
@@ -339,26 +341,26 @@ private:
 			LOG(ERROR) << "adding imu residual";
 			LOG(ERROR) << "getting imu measurements";
       std::vector<ImuMeasurement> imu_measurements = 
-					imu_buffer_.GetRange(timestamps_[0], timestamps_[1], true);
+					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 			LOG(ERROR) << "got " << imu_measurements.size() << " measurements";
 			LOG(ERROR) << "creating cost function";
       ceres::CostFunction* imu_cost_func = 
-        	new ImuVelocityCostFunction(timestamps_[0], 
-																			timestamps_[1], 
+        	new ImuVelocityCostFunction(timestamps_[1], 
+																			timestamps_[0], 
 																			imu_measurements,
 																			params_);
 			LOG(ERROR) << "adding residual block";
       ceres::ResidualBlockId res_id 
 				= problem_->AddResidualBlock(imu_cost_func, 
                                      imu_loss_, 
-                                     attitudes_[0]->coeffs().data(),
-																		 speeds_and_biases_[0]->head(3).data(),
-																		 speeds_and_biases_[0]->segment(3,3).data(),
-																		 speeds_and_biases_[0]->tail(3).data(),
                                      attitudes_[1]->coeffs().data(),
 																		 speeds_and_biases_[1]->head(3).data(),
 																		 speeds_and_biases_[1]->segment(3,3).data(),
-																		 speeds_and_biases_[1]->tail(3).data());
+																		 speeds_and_biases_[1]->tail(3).data(),
+                                     attitudes_[0]->coeffs().data(),
+																		 speeds_and_biases_[0]->head(3).data(),
+																		 speeds_and_biases_[0]->segment(3,3).data(),
+																		 speeds_and_biases_[0]->tail(3).data());
       LOG(ERROR) << "logging residual block id";
 			residual_blks_[1].push_back(res_id);
     }
