@@ -31,7 +31,7 @@ class ImuBuffer
 	public:
 		void SetTimeout(double imu_freq)
 		{
-			timeout_ = std::chrono::milliseconds(1000 * int((1.0 / imu_freq) * 1000.0));
+			timeout_ = std::chrono::milliseconds(10 * int((1.0 / imu_freq) * 1000.0));
 		}
 
 		double GetStartTime()
@@ -91,7 +91,7 @@ class ImuBuffer
 			LOG(ERROR) << std::fixed << std::setprecision(5) << "end time: " << GetEndTime();
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk, 
-											  std::chrono::milliseconds(3000),//timeout_,
+											  timeout_,
 											  [&t1,this]{return t1 <= GetEndTime();}))
 			{
 				LOG(ERROR) << std::fixed << std::setprecision(5)
