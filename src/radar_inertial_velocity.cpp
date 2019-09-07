@@ -98,7 +98,7 @@ public:
     solver_options_.num_threads = 1;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
-    solver_options_.function_tolerance = 1e-10;
+    solver_options_.function_tolerance = 1e-3;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
@@ -158,13 +158,26 @@ public:
     
 		// Reject clutter
     Declutter(raw_cloud);
-		
+		bool no_doppler = true;
+		for (int i = 0; i < raw_cloud->size(); i++)
+		{
+			if (raw_cloud->at(i).doppler > 0)
+				no_doppler = false;
+		}
+		if (no_doppler)
+			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
+
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
     
+		
 		if (cloud->size() < 10)
-      LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
+			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
+		// should be able to function without this
+		if (no_doppler)
+			return;
+
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
 
@@ -177,7 +190,8 @@ public:
     num_iter_++;
     LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
     pub_.publish(vel_out);
-  }
+  	
+	}
 
 private:
   ros::NodeHandle nh_;
@@ -344,7 +358,8 @@ private:
         new BodyVelocityCostFunction(cloud->at(i).doppler,
                                       target,
                                       weight);
-      // add residual block to ceres problem
+      
+			// add residual block to ceres problem
       ceres::ResidualBlockId res_id = 
 				problem_->AddResidualBlock(doppler_cost_function, 
                                    doppler_loss_, 
