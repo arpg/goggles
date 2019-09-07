@@ -298,13 +298,11 @@ private:
 		// else add new params copied from previous values
 		else
 		{
-			LOG(ERROR) << "adding new states";
 			speeds_and_biases_.push_front(
 						new Eigen::Matrix<double,9,1>(*speeds_and_biases_.front()));
 			attitudes_.push_front(
 						new Eigen::Quaterniond(*attitudes_.front()));
 		}
-		LOG(ERROR) << "adding new parameter blocks";
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
@@ -316,7 +314,6 @@ private:
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
     if (attitudes_.size() >= window_size_)
     {
-			LOG(ERROR) << "removing old parameters and residuals";
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
 
@@ -331,8 +328,8 @@ private:
       residual_blks_.pop_back();
       timestamps_.pop_back();
     }
-    LOG(ERROR) << "adding doppler residuals";
-    double min_intensity, max_intensity;
+    
+		double min_intensity, max_intensity;
     getIntensityBounds(min_intensity,max_intensity,cloud);
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
@@ -358,19 +355,16 @@ private:
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-			LOG(ERROR) << "adding imu residual";
-			LOG(ERROR) << "getting imu measurements";
       std::vector<ImuMeasurement> imu_measurements = 
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
-			LOG(ERROR) << "got " << imu_measurements.size() << " measurements";
-			LOG(ERROR) << "creating cost function";
-      ceres::CostFunction* imu_cost_func = 
+      
+			ceres::CostFunction* imu_cost_func = 
         	new ImuVelocityCostFunction(timestamps_[1], 
 																			timestamps_[0], 
 																			imu_measurements,
 																			params_);
-			LOG(ERROR) << "adding residual block";
-      ceres::ResidualBlockId res_id 
+      
+			ceres::ResidualBlockId res_id 
 				= problem_->AddResidualBlock(imu_cost_func, 
                                      imu_loss_, 
                                      attitudes_[1]->coeffs().data(),
@@ -381,12 +375,10 @@ private:
 																		 speeds_and_biases_[0]->head(3).data(),
 																		 speeds_and_biases_[0]->segment(3,3).data(),
 																		 speeds_and_biases_[0]->tail(3).data());
-      LOG(ERROR) << "logging residual block id";
 			residual_blks_[1].push_back(res_id);
     }
 
 		// solve the ceres problem and get result
-		LOG(ERROR) << "running solver";
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
@@ -415,7 +407,6 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
-		LOG(ERROR) << "done getting velocity";
   }
 
   /** \brief populate ros message with velocity and covariance
