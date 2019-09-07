@@ -59,8 +59,6 @@ public:
 		nh_.getParam("imu_frame", imu_frame);
 		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
-    VLOG(2) << "radar topic: " << radar_topic;
-    VLOG(2) << "imu topic: " << imu_topic;
 		
 		// get imu params and extrinsics
 		LoadParams(config);
@@ -90,14 +88,14 @@ public:
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
     imu_loss_ = new ceres::CauchyLoss(1.0);
-
+		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-6;
-    solver_options_.num_threads = 4;
+    solver_options_.num_threads = 1;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-10;
@@ -189,6 +187,7 @@ private:
 	tf::StampedTransform radar_to_imu_;
   ceres::CauchyLoss *doppler_loss_;
   ceres::CauchyLoss *imu_loss_;
+	ceres::LocalParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> attitudes_;
   std::deque<Eigen::Matrix<double,9,1>*> speeds_and_biases_;
   std::deque<double> timestamps_;
@@ -246,7 +245,8 @@ private:
 		Eigen::Matrix<double,9,1> speed_and_bias_initial;
 		speed_and_bias_initial.setZero();
 		speed_and_bias_initial.segment(3,3) = sum_g / measurements.size();
-		speeds_and_biases_.push_front(&speed_and_bias_initial);
+		speeds_and_biases_.push_front(
+				new Eigen::Matrix<double,9,1>(speed_and_bias_initial));
 		
 		// set initial orientation (attitude only)
 		// assuming IMU is set close to Z-down
@@ -256,7 +256,9 @@ private:
 		q_vec.head<3>() = down_vec.cross(g_direction);
 		q_vec[3] = sqrt(1 + down_vec.dot(g_direction));
 		Eigen::Quaterniond attitude_initial(q_vec);
-		attitudes_.push_front(&attitude_initial);
+		attitude_initial.normalize();
+		attitudes_.push_front(
+				new Eigen::Quaterniond(attitude_initial));
 
 		initialized_ = true;
 		LOG(INFO) << "initialized!";
@@ -291,11 +293,13 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
+		problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
     problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
     if (attitudes_.size() >= window_size_)
     {
+			LOG(FATAL) << "I decided to end it here";
 			LOG(ERROR) << "removing old parameters and residuals";
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
