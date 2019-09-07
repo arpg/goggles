@@ -299,7 +299,6 @@ private:
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
     if (attitudes_.size() >= window_size_)
     {
-			LOG(FATAL) << "I decided to end it here";
 			LOG(ERROR) << "removing old parameters and residuals";
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
