@@ -348,6 +348,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         	P = F_d * P * F_d.transpose().eval() + G * Q * G.transpose().eval() * delta_t;
       	}
 			}
+			LOG(INFO) << "initial orientation:    " << q_ws_0.coeffs().transpose();
+			LOG(INFO) << "propagated orientation: " << q_ws_hat.coeffs().transpose();
+			LOG(INFO) << "initial velocity:    " << v_s_0.transpose();
+			LOG(INFO) << "propagated velocity: " << v_s_hat.transpose();
       // finish jacobian
       Eigen::Matrix<double,12,12> F1 = Eigen::Matrix<double,12,12>::Identity();
       Eigen::Quaterniond q_ws_err = (q_ws_hat * q_ws_0.inverse()) 
@@ -375,11 +379,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
       Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();
       weighted_error = square_root_information * error;
-			
+
 			// get jacobians if requested
       if (jacobians != NULL)
       {
-				LOG(ERROR) << "setting jacobians";
         // jacobian of residuals w.r.t. orientation at t0
         if (jacobians[0] != NULL)
         {
