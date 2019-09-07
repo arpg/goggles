@@ -209,7 +209,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
                   double* residuals,
                   double** jacobians) const
     {
-      // map parameter blocks to eigen containers
+			// map parameter blocks to eigen containers
       Eigen::Map<const Eigen::Quaterniond> q_ws_0(&parameters[0][0]);
       Eigen::Map<const Eigen::Vector3d> v_s_0(&parameters[1][0]);
       Eigen::Map<const Eigen::Vector3d> b_g_0(&parameters[2][0]);
@@ -224,7 +224,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       const Eigen::Matrix3d C_sw_0 = C_ws_0.inverse();
       const Eigen::Matrix3d C_ws_1 = q_ws_1.toRotationMatrix();
       const Eigen::Matrix3d C_sw_1 = C_ws_1.inverse();
-
+			LOG(ERROR) << "initializing states";
       // initialize propagated states
       Eigen::Quaterniond q_ws_hat(q_ws_0.coeffs()[3],
 																	q_ws_0.coeffs()[0],
@@ -246,7 +246,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
       Q.block<3,3>(3,3) *= params_.sigma_a_ * params_.sigma_a_;
       Q.block<3,3>(6,6) *= params_.sigma_b_g_ * params_.sigma_b_g_;
       Q.block<3,3>(9,9) *= params_.sigma_b_a_ * params_.sigma_b_a_;
-      
+			
 			// propagate imu measurements, tracking jacobians and covariance
 			int num_meas = 0;
       for (int i = 1; i < imu_measurements_.size(); i++)
@@ -358,7 +358,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
       F = F * F1;
 			F1 = -F1;
-      
+			
 			// calculate residuals
       Eigen::Matrix<double,12,1> error;
       error.segment<3>(0) = 2.0 * q_ws_err.vec();
@@ -374,10 +374,12 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
       Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();
-      
+      weighted_error = square_root_information * error;
+			
 			// get jacobians if requested
       if (jacobians != NULL)
       {
+				LOG(ERROR) << "setting jacobians";
         // jacobian of residuals w.r.t. orientation at t0
         if (jacobians[0] != NULL)
         {
@@ -446,7 +448,6 @@ class ImuVelocityCostFunction : public ceres::CostFunction
           J7_mapped = square_root_information * F1.block<12,3>(0,9);
         }
       }
-      
       return true;
     }
 
