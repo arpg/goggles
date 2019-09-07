@@ -31,7 +31,7 @@ class ImuBuffer
 	public:
 		void SetTimeout(double imu_freq)
 		{
-			timeout_ = std::chrono::milliseconds(int((1.0 / imu_freq) * 1000.0));
+			timeout_ = std::chrono::milliseconds(1000 * int((1.0 / imu_freq) * 1000.0));
 		}
 
 		double GetStartTime()
@@ -87,14 +87,17 @@ class ImuBuffer
 										 << measurements_.front().t_ << ")";
 			
 			// block execution until up-to-date imu measurements are available
+
+			LOG(ERROR) << std::fixed << std::setprecision(5) << "end time: " << GetEndTime();
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk, 
-											  timeout_,
-											  [&t1,this]{return t1 <= GetEndTime();}));
+											  std::chrono::milliseconds(3000),//timeout_,
+											  [&t1,this]{return t1 <= GetEndTime();}))
 			{
-				LOG(ERROR) << "waiting for up to date imu measurements has failed\n"
+				LOG(ERROR) << std::fixed << std::setprecision(5)
+									 << "waiting for up to date imu measurements has failed\n"
 									 << "             requested t1: " << t1 << '\n'
-									 << "most recent imu timestamp: " << measurements_.back().t_;
+									 << "most recent imu timestamp: " << GetEndTime();
 				return meas_range;
 			}
 

@@ -131,38 +131,42 @@ public:
 	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
 	{
 		ImuMeasurement new_meas;
-
+		
 		new_meas.t_ = msg->header.stamp.toSec();
+		
 		new_meas.g_ << msg->angular_velocity.x,
 									 msg->angular_velocity.y,
 									 msg->angular_velocity.z;
+		
 		new_meas.a_ << msg->linear_acceleration.x,
 									 msg->linear_acceleration.y,
 									 msg->linear_acceleration.z;
 
     if (new_meas.g_.lpNorm<Eigen::Infinity>() > params_.g_max_)
-      LOG(WARNING) << "Gyro saturation";
+      LOG(ERROR) << "Gyro saturation";
     if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
-      LOG(WARNING) << "Accelerometer saturation";
-
+      LOG(ERROR) << "Accelerometer saturation";
+		LOG(ERROR) << "adding imu";
 		imu_buffer_.AddMeasurement(new_meas);
 	}
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
+		LOG(ERROR) << "getting radar timestamp";
 	  double timestamp = msg->header.stamp.toSec();
+		LOG(ERROR) << "getting radar point cloud";
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::fromROSMsg(*msg, *raw_cloud);
-    
+    LOG(ERROR) << "decluttering";
     // Reject clutter
     Declutter(raw_cloud);
-
+		LOG(ERROR) << "transforming";
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    
+    LOG(ERROR) << "getting velocity";
     if (cloud->size() < 10)
-      LOG(WARNING) << "input cloud has less than 10 points, output will be unreliable";
+      LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
@@ -428,7 +432,10 @@ int main(int argc, char** argv)
 	ImuParams params;
   RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh);
   
-  ros::spin();
+  //ros::spin();
+	ros::AsyncSpinner spinner(4);
+	spinner.start();
+	ros::waitForShutdown();
 
   return 0;
 }
