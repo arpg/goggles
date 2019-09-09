@@ -94,11 +94,11 @@ public:
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
-    //solver_options_.gradient_check_relative_precision = 1.0e-6;
+    //solver_options_.gradient_check_relative_precision = 1.0e-4;
     solver_options_.num_threads = 1;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
-    solver_options_.function_tolerance = 1e-3;
+    solver_options_.function_tolerance = 1e-6;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
@@ -175,8 +175,8 @@ public:
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
 		// should be able to function without this
-		if (no_doppler)
-			return;
+		//if (no_doppler)
+		//	return;
 
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
@@ -326,7 +326,7 @@ private:
     problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-    if (attitudes_.size() >= window_size_)
+    if (attitudes_.size() > window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);

@@ -25,7 +25,7 @@ double sinc_test(double x)
   }
 }
 
-const double jacobianTolerance = 1.0e-2;
+const double jacobianTolerance = 1.0e-4;
 
 TEST(goggleTests, ImuIntegration)
 {
@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.3;
+  const double duration = 0.22;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -163,12 +163,7 @@ TEST(goggleTests, ImuIntegration)
 	problem.AddParameterBlock(q_ws_0.coeffs().data(),4);
 	problem.AddParameterBlock(b_g_0.data(),3);
 	problem.AddParameterBlock(b_a_0.data(),3);
-	//problem.SetParameterBlockConstant(v_s_0.data());
-	//problem.SetParameterBlockConstant(q_ws_0.coeffs().data());
 	problem.SetParameterization(q_ws_0.coeffs().data(), quat_param);
-	//problem.SetParameterBlockConstant(b_g_0.data());
-	//problem.SetParameterBlockConstant(b_a_0.data());
-	// add variable parameter blocks for the final state
 	problem.AddParameterBlock(v_s.data(),3);
 	problem.AddParameterBlock(q_ws.coeffs().data(),4);
 	problem.AddParameterBlock(b_g.data(),3);
@@ -240,7 +235,7 @@ TEST(goggleTests, ImuIntegration)
 
 	imu_cost_func->Evaluate(parameters, residuals.data(), jacobians);
 
-	double dx = 1e-6;
+	double dx = 1e-10;
 
 	QuaternionParameterization dq;
 	if (!dq.Verify(parameters[0],dx))
@@ -271,7 +266,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << "\n\n";
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;
@@ -291,13 +286,14 @@ TEST(goggleTests, ImuIntegration)
 		v_s_0 = v_s_0_temp;
 		J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
 	}
+	
 	if ((J1 - J1_numDiff).norm() > jacobianTolerance)
 	{
 		LOG(ERROR) << "User provided jacobian 1 does not agree with num diff: "
 			<< "\nuser provided J1: \n" << J1 
 			<< "\n\nnum diff J1:\n" << J1_numDiff << "\n\n";
 	}
-
+	
 	Eigen::Matrix<double,12,3> J2_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -345,7 +341,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J3:\n" << J3
 			<< "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
 	}
-	
+	/*
 	Eigen::Matrix<double,12,3> J4_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -462,7 +458,7 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
 
-  
+  */
 }
 
 int main(int argc, char **argv)

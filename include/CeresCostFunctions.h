@@ -249,7 +249,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			
 			// propagate imu measurements, tracking jacobians and covariance
 			int num_meas = 0;
-      for (int i = 1; i < imu_measurements_.size(); i++)
+			for (int i = 1; i < imu_measurements_.size(); i++)
       {
 				if (imu_measurements_[i].t_ > t0_ 
 							&& imu_measurements_[i-1].t_ < t1_)
@@ -316,9 +316,10 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					// calculate continuous time jacobian
         	Eigen::Matrix<double,12,12> F_c = Eigen::Matrix<double,12,12>::Zero();
 					QuaternionParameterization qp;
-					F_c.block<3,3>(0,6) = (q_ws_hat*q_ws_0.inverse()).toRotationMatrix();//C_ws_hat;
 					
-        	Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
+					Eigen::Quaterniond delta_q = q_ws_hat * q_ws_0.inverse();
+					F_c.block<3,3>(0,6) = (delta_q.inverse()).toRotationMatrix();//C_ws_hat;
+					Eigen::Matrix3d g_w_cross = Eigen::Matrix3d::Zero();
         	g_w_cross(0,1) = params_.g_;
         	g_w_cross(1,0) = -params_.g_;
         	F_c.block<3,3>(3,0) = -C_sw_hat * g_w_cross;
@@ -359,8 +360,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 			QuaternionParameterization qp;
       Eigen::Matrix4d q_err_oplus = qp.oplus(q_ws_err);
 			F1.block<3,3>(0,0) = q_err_oplus.topLeftCorner<3,3>();
-      F = F * F1;
-			F1 = -F1;
+			//F = F * F1;
 			
 			// calculate residuals
       Eigen::Matrix<double,12,1> error;
