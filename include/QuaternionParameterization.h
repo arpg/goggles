@@ -13,9 +13,11 @@ class QuaternionParameterization : public ceres::LocalParameterization
 		{
 			Eigen::Vector4d dq;
 			double halfnorm = 0.5 * dAlpha.norm();
-			dq.head(3) = sinc(halfnorm) * 0.5 * dAlpha;
+			dq.template head<3>() = sinc(halfnorm) * 0.5 * dAlpha;
 			dq[3] = cos(halfnorm);
-			return Eigen::Quaterniond(dq);
+			Eigen::Quaterniond result(dq);
+			result.normalize();
+			return result;
 		}
 		
 		bool Plus(const double* x, const double* delta,
@@ -31,7 +33,8 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			const Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
 
 			// apply delta to quaternion
-			Eigen::Quaterniond q_plus_delta = DeltaQ(delta_mapped);
+			Eigen::Quaterniond q_delta = DeltaQ(delta_mapped);
+			Eigen::Quaterniond q_plus_delta = q_delta * q;
 			q_plus_delta.normalize();
 			
 			const Eigen::Vector4d q_vec = q_plus_delta.coeffs();
@@ -139,6 +142,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			if (!casted) return false;
 			
 			// verify plus and minus functions
+			LOG(INFO) << "verifying plus and minus";
 			Eigen::VectorXd x(casted->GlobalSize());
 			memcpy(x.data(), x_raw, sizeof(double) * casted->GlobalSize());
 			Eigen::VectorXd delta_x(casted->LocalSize());
@@ -152,6 +156,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			if ((delta_x2 - delta_x).norm() > 1.0e-12) return false;
 			
 			// verify plusJacobian through numDiff
+			LOG(INFO) << "verifying plusJacobian";
 			Eigen::Matrix<double, -1, -1, Eigen::RowMajor> J_plus_num_diff(
 				casted->GlobalSize(), casted->LocalSize());
 			const double dx = 1.0e-9;
@@ -174,6 +179,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			}
 			
 			// verify lift
+			LOG(INFO) << "verifying lift";
 			Eigen::Matrix<double, -1, -1, Eigen::RowMajor> J_plus(casted->GlobalSize(),
 																														casted->LocalSize());
 			Eigen::Matrix<double, -1, -1, Eigen::RowMajor> J_lift(casted->LocalSize(),
