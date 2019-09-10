@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.25;
+  const double duration = 0.22;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -235,10 +235,10 @@ TEST(goggleTests, ImuIntegration)
 
 	imu_cost_func->Evaluate(parameters, residuals.data(), jacobians);
 
-	double dx = 1e-10;
+	double dx = 1e-6;
 	
-	QuaternionParameterization dq;
-	if (!dq.Verify(parameters[0],dx))
+	QuaternionParameterization qp;
+	if (!qp.Verify(parameters[0],dx))
 		LOG(ERROR) << "verification of parameterization failed";
 	
 	Eigen::Matrix<double,12,3> J0_numDiff;
@@ -260,7 +260,6 @@ TEST(goggleTests, ImuIntegration)
 		J0_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
 	}
 	Eigen::Matrix<double,3,4,Eigen::RowMajor> J0_lift;
-	QuaternionParameterization qp;
 	qp.liftJacobian(parameters[0], J0_lift.data());
 	if ((J0 - J0_numDiff * J0_lift).norm() > jacobianTolerance)
 	{
@@ -366,7 +365,7 @@ TEST(goggleTests, ImuIntegration)
 	{
 		LOG(ERROR) << "User provided jacobian 4 does not agree with num diff:\n"
 			<< "\nuser provided J4:\n" << J4
-			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << "\n\n";
+			<< "\n\nnum diff J4:\n" << J4_numDiff << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J5_numDiff;
@@ -458,7 +457,7 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
 
-	  
+		
 }
 
 int main(int argc, char **argv)

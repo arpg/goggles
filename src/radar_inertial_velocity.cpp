@@ -83,11 +83,11 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 4;
+    window_size_ = 5;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(0.15);
-    imu_loss_ = new ceres::CauchyLoss(1.0);
+    doppler_loss_ = new ceres::CauchyLoss(0.1);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
@@ -95,8 +95,8 @@ public:
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-4;
-    solver_options_.num_threads = 1;
-    solver_options_.max_num_iterations = 300;
+    solver_options_.num_threads = 8;
+    solver_options_.max_num_iterations = 100;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-6;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
@@ -175,8 +175,8 @@ public:
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
 		// should be able to function without this
-		//if (no_doppler)
-		//	return;
+		if (no_doppler)
+			return;
 
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
@@ -200,7 +200,7 @@ private:
 	ros::Subscriber imu_sub_;
 	tf::StampedTransform radar_to_imu_;
   ceres::CauchyLoss *doppler_loss_;
-  ceres::CauchyLoss *imu_loss_;
+  ceres::ScaledLoss *imu_loss_;
 	ceres::LocalParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> attitudes_;
   std::deque<Eigen::Matrix<double,9,1>*> speeds_and_biases_;
