@@ -9,7 +9,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 {
 	public:
 
-		Eigen::Quaterniond DeltaQ(const Eigen::Vector3d& dAlpha)
+		Eigen::Quaterniond DeltaQ(const Eigen::Vector3d& dAlpha) const
 		{
 			Eigen::Vector4d dq;
 			double halfnorm = 0.5 * dAlpha.norm();
