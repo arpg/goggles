@@ -8,6 +8,15 @@
 class QuaternionParameterization : public ceres::LocalParameterization
 {
 	public:
+
+		Eigen::Quaterniond DeltaQ(const Eigen::Vector3d& dAlpha)
+		{
+			Eigen::Vector4d dq;
+			double halfnorm = 0.5 * dAlpha.norm();
+			dq.head(3) = sinc(halfnorm) * 0.5 * dAlpha;
+			dq[3] = cos(halfnorm);
+			return Eigen::Quaterniond(dq);
+		}
 		
 		bool Plus(const double* x, const double* delta,
 							double* x_plus_delta) const
@@ -22,11 +31,7 @@ class QuaternionParameterization : public ceres::LocalParameterization
 			const Eigen::Quaterniond q(x[3], x[0], x[1], x[2]);
 
 			// apply delta to quaternion
-			Eigen::Vector4d dq;
-			double halfnorm = 0.5 * delta_mapped.norm();
-			dq.template head<3>() = sinc(halfnorm) * 0.5 * delta_mapped;
-			dq[3] = cos(halfnorm);
-			Eigen::Quaterniond q_plus_delta = Eigen::Quaterniond(dq) * q;
+			Eigen::Quaterniond q_plus_delta = DeltaQ(delta_mapped);
 			q_plus_delta.normalize();
 			
 			const Eigen::Vector4d q_vec = q_plus_delta.coeffs();
