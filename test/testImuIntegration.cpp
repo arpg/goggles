@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.21;
+  const double duration = 0.25;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 
@@ -236,11 +236,11 @@ TEST(goggleTests, ImuIntegration)
 	imu_cost_func->Evaluate(parameters, residuals.data(), jacobians);
 
 	double dx = 1e-10;
-
+	
 	QuaternionParameterization dq;
 	if (!dq.Verify(parameters[0],dx))
 		LOG(ERROR) << "verification of parameterization failed";
-
+	
 	Eigen::Matrix<double,12,3> J0_numDiff;
 	for (size_t i=0; i<3; i++)
 	{
@@ -341,7 +341,7 @@ TEST(goggleTests, ImuIntegration)
 			<< "\nuser provided J3:\n" << J3
 			<< "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
 	}
-	/*
+	
 	Eigen::Matrix<double,12,3> J4_numDiff;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -458,7 +458,7 @@ TEST(goggleTests, ImuIntegration)
                                     << "  estimated: " << v_s.transpose() << '\n'
                                     << "groundtruth: " << v_s_1.transpose();
 
-  */
+	  
 }
 
 int main(int argc, char **argv)
