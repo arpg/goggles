@@ -29,7 +29,7 @@
 
   <!-- Static transform from radar frame to imu frame -->
   <node pkg="tf" type="static_transform_publisher" name="radar_to_imu"
-    args="0 0 0 3.1415 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
+    args="0 0 0 0.0 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
 
 
   <!-- launch goggles velocity estimation node -->

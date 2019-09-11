@@ -82,6 +82,12 @@ public:
     // Reject clutter
     Declutter(cloud);
     
+		for (int i = 0; i < cloud->size(); i++)
+		{
+			cloud->at(i).y *= -1.0;
+			cloud->at(i).z *= -1.0;
+		}
+
     Eigen::Vector3d coeffs = Eigen::Vector3d::Zero();
     
     if (cloud->size() < 10)
