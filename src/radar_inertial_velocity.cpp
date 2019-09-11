@@ -83,11 +83,11 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 5;
+    window_size_ = 10;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(0.1);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    doppler_loss_ = new ceres::CauchyLoss(.05);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
@@ -96,7 +96,7 @@ public:
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-4;
     solver_options_.num_threads = 8;
-    solver_options_.max_num_iterations = 100;
+    solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-6;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
@@ -172,8 +172,9 @@ public:
 				no_doppler = false;
 		}
 		if (no_doppler)
+		{
 			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
-
+		}
 		// transform to imu frame
 		//pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
     cloud = raw_cloud;
@@ -181,10 +182,6 @@ public:
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
-		// should be able to function without this
-		//if (no_doppler)
-		//	return;
-
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
 
@@ -297,7 +294,7 @@ private:
 		attitudes_.push_front(
 				new Eigen::Quaterniond(attitude_initial));
 
-		initialized_ = true;
+		//initialized_ = true;
 		LOG(INFO) << "initialized!";
 		LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
 	}
@@ -333,9 +330,15 @@ private:
     problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-		//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-		//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
-    if (attitudes_.size() > window_size_)
+		if (!initialized_)
+		{
+			problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
+			initialized_ = true;
+    }
+		if (attitudes_.size() > window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
@@ -350,6 +353,12 @@ private:
 			speeds_and_biases_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
+
+			// set last parameter blocks as constant
+			problem_->SetParameterBlockConstant(attitudes_.back()->coeffs().data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->head(3).data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->segment(3,3).data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->tail(3).data());
     }
     
 		double min_intensity, max_intensity;
@@ -361,7 +370,10 @@ private:
       // calculate weight as normalized intensity
       double weight = (cloud->at(i).intensity - min_intensity)
                        / (max_intensity - min_intensity);
-      Eigen::Vector3d target(cloud->at(i).x,
+      
+			//if (cloud->at(i).doppler == 0) continue;
+
+			Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
       ceres::CostFunction* doppler_cost_function = 
