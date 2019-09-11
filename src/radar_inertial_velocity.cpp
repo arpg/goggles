@@ -87,7 +87,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),100.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
@@ -98,7 +98,7 @@ public:
     solver_options_.num_threads = 8;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
-    solver_options_.function_tolerance = 1e-6;
+    solver_options_.function_tolerance = 1e-10;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
@@ -294,7 +294,17 @@ private:
 		attitudes_.push_front(
 				new Eigen::Quaterniond(attitude_initial));
 
-		//initialized_ = true;
+		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
+		problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
+		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
+		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
+		problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
+		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
+		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
+		
+		initialized_ = true;
 		LOG(INFO) << "initialized!";
 		LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
 	}
@@ -320,24 +330,19 @@ private:
 						new Eigen::Matrix<double,9,1>(*speeds_and_biases_.front()));
 			attitudes_.push_front(
 						new Eigen::Quaterniond(*attitudes_.front()));
+			problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
+			problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
+    	problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
+			problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
+			problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
+			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
-		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
-		problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
-		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
-		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-		if (!initialized_)
-		{
-			problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
-			initialized_ = true;
-    }
+		
 		if (attitudes_.size() > window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)

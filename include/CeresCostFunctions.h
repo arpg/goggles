@@ -405,7 +405,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 
       Eigen::LLT<Eigen::Matrix<double,12,12>> lltOfInformation(information);
       Eigen::Matrix<double,12,12> square_root_information = lltOfInformation.matrixU();
-      weighted_error = /*square_root_information */ error;
+      weighted_error = square_root_information * error;
 
 			// get jacobians if requested
       if (jacobians != NULL)
@@ -415,7 +415,7 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         {
           // get minimal representation (3x12)
           Eigen::Matrix<double,12,3> J0_minimal;
-          J0_minimal = /*square_root_information */ F.block<12,3>(0,0);
+          J0_minimal = square_root_information * F.block<12,3>(0,0);
           
 					// get lift jacobian 
           // shifts minimal 3d representation to overparameterized 4d representation
@@ -424,32 +424,31 @@ class ImuVelocityCostFunction : public ceres::CostFunction
 					qp.liftJacobian(parameters[0], J_lift.data());
           Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
 					J0_mapped = J0_minimal * J_lift;
-					std::cout << J0_minimal << std::endl;
         }
         // jacobian of residuals w.r.t. velocity at t0
         if (jacobians[1] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1_mapped(jacobians[1]);
-					J1_mapped = /*square_root_information */ F.block<12,3>(0,3);
+					J1_mapped = square_root_information * F.block<12,3>(0,3);
         }
         // jacobian of residuals w.r.t. gyro bias at t0
         if (jacobians[2] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2_mapped(jacobians[2]);
-          J2_mapped = /*square_root_information */ F.block<12,3>(0,6);
+          J2_mapped = square_root_information * F.block<12,3>(0,6);
         }
         // jacobian of residuals w.r.t. accel bias at t0
         if (jacobians[3] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3_mapped(jacobians[3]);
-          J3_mapped = /*square_root_information */ F.block<12,3>(0,9);
+          J3_mapped = square_root_information * F.block<12,3>(0,9);
         }
         // jacobian of residuals w.r.t. orientation at t1
         if (jacobians[4] != NULL)
         {
           // get minimal representation
           Eigen::Matrix<double,12,3> J4_minimal;
-          J4_minimal = /*square_root_information */ F1.block<12,3>(0,0);
+          J4_minimal = square_root_information * F1.block<12,3>(0,0);
 
           // get lift jacobian
           // shifts minimal 3d representation to overparameterized 4d representation
@@ -464,19 +463,19 @@ class ImuVelocityCostFunction : public ceres::CostFunction
         if (jacobians[5] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_mapped(jacobians[5]);
-          J5_mapped = /*square_root_information */ F1.block<12,3>(0,3);
+          J5_mapped = square_root_information * F1.block<12,3>(0,3);
         }
         // jacobian of residuals w.r.t. gyro bias at t1
         if (jacobians[6] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_mapped(jacobians[6]);
-          J6_mapped = /*square_root_information */ F1.block<12,3>(0,6);
+          J6_mapped = square_root_information * F1.block<12,3>(0,6);
         }
         // jacobian of residuals w.r.t. accel bias at t1
         if (jacobians[7] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_mapped(jacobians[7]);
-          J7_mapped = /*square_root_information */ F1.block<12,3>(0,9);
+          J7_mapped = square_root_information * F1.block<12,3>(0,9);
         }
       }
       return true;
