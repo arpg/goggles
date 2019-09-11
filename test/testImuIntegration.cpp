@@ -25,7 +25,7 @@ double sinc_test(double x)
   }
 }
 
-const double jacobianTolerance = 1.0e-4;
+const double jacobianTolerance = 1.0e-6;
 
 TEST(goggleTests, ImuIntegration)
 {
@@ -60,7 +60,7 @@ TEST(goggleTests, ImuIntegration)
   const double m_a_W_y = Eigen::internal::random(0.1,10.0);
   const double m_a_W_z = Eigen::internal::random(0.1,10.0);
 
-  const double duration = 0.22;
+  const double duration = 0.21;
   const double dt = 1.0 / imu_rate;
   std::vector<ImuMeasurement> imuMeasurements;
 

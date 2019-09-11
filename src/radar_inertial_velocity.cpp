@@ -155,6 +155,13 @@ public:
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::fromROSMsg(*msg, *raw_cloud);
+
+		// undo stupid left-handed coordinate system from radar
+		for (int i = 0; i < raw_cloud->size(); i++)
+		{
+			raw_cloud->at(i).y *= -1.0;
+			raw_cloud->at(i).z *= -1.0;
+		}
     
 		// Reject clutter
     Declutter(raw_cloud);
@@ -168,15 +175,15 @@ public:
 			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
 
 		// transform to imu frame
-		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    
+		//pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
+    cloud = raw_cloud;
 		
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
 		// should be able to function without this
-		if (no_doppler)
-			return;
+		//if (no_doppler)
+		//	return;
 
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
@@ -326,6 +333,8 @@ private:
     problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
 		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
+		//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+		//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
     if (attitudes_.size() > window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)
@@ -345,7 +354,8 @@ private:
     
 		double min_intensity, max_intensity;
     getIntensityBounds(min_intensity,max_intensity,cloud);
-    // add residuals on doppler readings
+    
+		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
       // calculate weight as normalized intensity
