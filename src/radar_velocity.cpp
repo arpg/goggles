@@ -88,24 +88,39 @@ public:
 			cloud->at(i).z *= -1.0;
 		}
 
-    Eigen::Vector3d coeffs = Eigen::Vector3d::Zero();
     
     if (cloud->size() < 10)
-      LOG(WARNING) << "input cloud has less than 10 points, output will be unreliable";
-    
-    geometry_msgs::TwistWithCovarianceStamped vel_out;
-    vel_out.header.stamp = msg->header.stamp;
+		{
+      LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
+		}
 
-    // Get velocity measurements
-    auto start = std::chrono::high_resolution_clock::now();
-    GetVelocityCeres(cloud, coeffs, timestamp, vel_out);
-    //GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    sum_time_ += elapsed.count();
-    num_iter_++;
-    std::cout << "execution time: " << sum_time_ / double(num_iter_) << std::endl;
-    pub_.publish(vel_out);
+		bool no_doppler = true;
+		for (int i = 0; i < cloud->size(); i++)
+		{
+			if (cloud->at(i).doppler > 0)
+				no_doppler = false;
+		}
+		if (no_doppler)
+		{
+			LOG(ERROR) << "no doppler reading in current cloud";
+		}
+		else
+		{
+			LOG(ERROR) << "getting velocity";
+    	geometry_msgs::TwistWithCovarianceStamped vel_out;
+    	vel_out.header.stamp = msg->header.stamp;
+
+    	// Get velocity measurements
+    	auto start = std::chrono::high_resolution_clock::now();
+    	GetVelocityCeres(cloud, timestamp, vel_out);
+    	//GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
+    	auto finish = std::chrono::high_resolution_clock::now();
+    	std::chrono::duration<double> elapsed = finish - start;
+    	sum_time_ += elapsed.count();
+    	num_iter_++;
+    	LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
+    	pub_.publish(vel_out);
+		}
   }
 
 private:
@@ -252,21 +267,27 @@ private:
 
   /** \brief uses ceres solver to estimate the body velocity from the input 
     * point cloud
-    * \param[out] the resultant body velocity
     * \param[out] the resultant velocity and covariance in ros message form
     */
   void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud, 
-                   Eigen::Vector3d &velocity, 
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
     // add latest parameter block and remove old one if necessary
-    velocities_.push_front(new Eigen::Vector3d());
-    std::vector<ceres::ResidualBlockId> residuals;
+    if (velocities_.size() == 0)
+		{
+			velocities_.push_front(new Eigen::Vector3d());
+			velocities_.front()->setZero();
+		}
+		else
+		{
+			velocities_.push_front(new Eigen::Vector3d(*velocities_.front()));
+		}
+		std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
     problem_->AddParameterBlock(velocities_.front()->data(),3);
-    if (velocities_.size() >= window_size_)
+    if (velocities_.size() > window_size_)
     {
       for (int i = 0; i < residual_blks_.back().size(); i++)
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
@@ -284,7 +305,11 @@ private:
     for (int i = 0; i < cloud->size(); i++)
     {
       // calculate weight as normalized intensity
-      double weight = (cloud->at(i).intensity - min_intensity)
+      double weight;
+			if (max_intensity - min_intensity < 0.01)
+				weight = 0.01;
+			else
+				weight = (cloud->at(i).intensity - min_intensity)
                        / (max_intensity - min_intensity);
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
@@ -294,9 +319,10 @@ private:
                                       target,
                                       weight);
       // add residual block to ceres problem
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(doppler_cost_function, 
-                                                                 doppler_loss_, 
-                                                                 velocity.data());
+      ceres::ResidualBlockId res_id = 
+					problem_->AddResidualBlock(doppler_cost_function, 
+                                     doppler_loss_, 
+                                     velocities_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
     
@@ -306,19 +332,18 @@ private:
       double delta_t = timestamps_[0] - timestamps_[1];
       ceres::CostFunction* vel_change_cost_func = 
         new VelocityChangeCostFunction(delta_t);
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(vel_change_cost_func, 
-                                                                 accel_loss_, 
-                                                                 velocities_[0]->data(), 
-                                                                 velocities_[1]->data());
+      ceres::ResidualBlockId res_id = 
+						problem_->AddResidualBlock(vel_change_cost_func, 
+                                       accel_loss_, 
+                                       velocities_[0]->data(), 
+                                       velocities_[1]->data());
       residual_blks_[1].push_back(res_id);
     }
-
 // solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
-
-    VLOG(3) << summary.FullReport();
-    VLOG(2) << "velocity from ceres: " << velocities_.front()->transpose();
+    LOG(INFO) << summary.FullReport();
+    LOG(INFO) << "velocity from ceres: " << velocities_.front()->transpose();
 
     // get estimate covariance
     /*
@@ -340,7 +365,7 @@ private:
     VLOG(2) << "covariance: \n" << covariance_matrix;
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-    populateMessage(vel_out,velocity,covariance_matrix);
+    populateMessage(vel_out,*velocities_.front(),covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance

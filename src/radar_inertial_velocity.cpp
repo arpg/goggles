@@ -73,7 +73,7 @@ public:
 																ros::Time(0.0), 
 																radar_to_imu_);
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
+    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/velocity",1);
     
 		
 		radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
@@ -174,6 +174,7 @@ public:
 		if (no_doppler)
 		{
 			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
+			return;
 		}
 		// transform to imu frame
 		//pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
