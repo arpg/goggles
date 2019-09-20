@@ -64,6 +64,19 @@ class ImuBuffer
 			return true;
 		}
 
+		bool WaitForMeasurements()
+		{
+			std::unique_lock<std::mutex> lk(mtx_);
+			if (!cv_.wait_for(lk,
+												timeout_,
+												[this]{return measurements_.size() > 0;}))
+			{
+				LOG(ERROR) << "waiting for imu measurements has failed";
+				return false;
+			}
+			return true;
+		}
+
 		// get a range of measurements from the buffer
 		// returns a vector of ImuMeasurements
 		// the first element in the vector will have a timestamp less than
@@ -75,11 +88,6 @@ class ImuBuffer
 		std::vector<ImuMeasurement> GetRange(double t0, double t1, bool delete_old)
 		{
 			std::vector<ImuMeasurement> meas_range;
-			if (measurements_.size() == 0)
-			{
-				LOG(ERROR) << "No IMU measurements in buffer";
-				return meas_range;
-			}
 			
 			if (t0 < GetStartTime())
 				LOG(ERROR) << "start time of requested range ("
