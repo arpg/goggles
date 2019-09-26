@@ -1,8 +1,9 @@
 #include "glog/logging.h"
 #include "ceres/ceres.h"
 #include <gtest/gtest.h>
-#include "CeresCostFunctions.h"
-#include "QuaternionParameterization.h"
+#include <ImuVelocityCostFunction.h>
+#include <VelocityMeasCostFunction.h>
+#include <QuaternionParameterization.h>
 #include <Eigen/Core>
 #include <boost/numeric/odeint.hpp>
 #include <fstream>

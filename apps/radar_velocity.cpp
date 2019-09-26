@@ -14,7 +14,8 @@
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
-#include <CeresCostFunctions.h>
+#include <BodyVelocityCostFunction.h>
+#include <VelocityChangeCostFunction.h>
 #include <chrono>
 
 struct RadarPoint

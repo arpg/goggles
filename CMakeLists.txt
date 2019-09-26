@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(goggles)
+set(CMAKE_CXX_STANDARD 11)
 
 ## Add support for C++11, supported in ROS Kinetic and newer
 add_definitions(-std=c++11)
@@ -58,12 +59,21 @@ set( INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set( APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps)
 set( HEADERS
-  ${INC_DIR}/CeresCostFunctions.h
+  ${INC_DIR}/BodyVelocityCostFunction.h
+  ${INC_DIR}/VelocityChangeCostFunction.h
+  ${INC_DIR}/VelocityMeasCostFunction.h
+  ${INC_DIR}/ImuVelocityCostFunction.h
+  ${INC_DIR}/ImuIntegrator.h
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
 )
 
 set( SOURCES 
+  ${SRC_DIR}/BodyVelocityCostFunction.cpp
+  ${SRC_DIR}/VelocityChangeCostFunction.cpp
+  ${SRC_DIR}/VelocityMeasCostFunction.cpp
+  ${SRC_DIR}/ImuVelocityCostFunction.cpp
+  ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
   )
 

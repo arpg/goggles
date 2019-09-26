@@ -17,8 +17,9 @@
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
-#include "QuaternionParameterization.h"
-#include "CeresCostFunctions.h"
+#include <QuaternionParameterization.h>
+#include <ImuVelocityCostFunction.h>
+#include <BodyVelocityCostFunction.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
 #include <chrono>

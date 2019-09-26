@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <iomanip>
 #include <atomic>
 #include <condition_variable>
 #include <thread>
