@@ -25,10 +25,23 @@ bool MarginalizationError::MarginalizeOut(
 
 }
 
+bool MarginalizationError::ComputeDeltaChi(
+  Eigen::VectorXd& Delta_chi) const
+{
+
+}
+
+bool MarginalizationError::ComputeDeltaChi(
+  double const* const * parameters,
+  Eigen::VectorXd& Delta_chi) const
+{
+  
+}
+
 bool MarginalizationError::Evaluate(
   double const* const* parameters,
   double* residuals,
   double** jacobians) const
 {
-  
+
 }
