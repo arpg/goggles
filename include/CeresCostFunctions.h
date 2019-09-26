@@ -1,7 +1,7 @@
 #include <boost/numeric/odeint.hpp>
 #include <Eigen/Core>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "QuaternionParameterization.h"
+#include <QuaternionParameterization.h>
 #include "DataTypes.h"
 #include <ceres/ceres.h>
 

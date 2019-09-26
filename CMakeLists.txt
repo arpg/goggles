@@ -56,18 +56,23 @@ list(APPEND LINK_LIBS
 ###########
 set( INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set( APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps)
 set( HEADERS
   ${INC_DIR}/CeresCostFunctions.h
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
+)
+
+set( SOURCES 
+  ${SRC_DIR}/QuaternionParameterization.cpp
   )
 
 set( RAD_VEL_SRCS
-  ${SRC_DIR}/radar_velocity.cpp
+  ${APP_DIR}/radar_velocity.cpp
   )
 
 set( RAD_IN_VEL_SRCS
-  ${SRC_DIR}/radar_inertial_velocity.cpp
+  ${APP_DIR}/radar_inertial_velocity.cpp
   )
 
 ## Specify additional locations of header files
@@ -95,12 +100,12 @@ add_definitions(${PCL_DEFINITIONS})
 catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp)
 target_link_libraries(testImuIntegration ${LINK_LIBS})
 
-add_executable(radar_velocity ${RAD_VEL_SRCS} ${HEADERS})
+add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity
    ${LINK_LIBS}
 )
 
-add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${HEADERS})
+add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_inertial_velocity
    ${LINK_LIBS}
 )

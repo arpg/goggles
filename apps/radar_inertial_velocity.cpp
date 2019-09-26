@@ -10,6 +10,7 @@
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
 #include <glog/logging.h>
+#include <gtest/gtest.h>
 #include <Eigen/Core>
 #include <fstream>
 #include <iostream>
