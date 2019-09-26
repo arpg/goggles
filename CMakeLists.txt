@@ -64,6 +64,7 @@ set( HEADERS
   ${INC_DIR}/VelocityMeasCostFunction.h
   ${INC_DIR}/ImuVelocityCostFunction.h
   ${INC_DIR}/ImuIntegrator.h
+  ${INC_DIR}/MarginalizationError.h
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
 )
@@ -74,6 +75,7 @@ set( SOURCES
   ${SRC_DIR}/VelocityMeasCostFunction.cpp
   ${SRC_DIR}/ImuVelocityCostFunction.cpp
   ${SRC_DIR}/ImuIntegrator.cpp
+  ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
   )
 
