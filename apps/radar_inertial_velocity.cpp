@@ -89,7 +89,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),100.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
@@ -179,9 +179,9 @@ public:
 			return;
 		}
 		// transform to imu frame
-		//pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    cloud = raw_cloud;
-		
+		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
+    //cloud = raw_cloud;
+		LOG(ERROR) << "cloud size: " << cloud->size();
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
@@ -244,10 +244,11 @@ private:
 		*/
 	void InitializeImu()
 	{
-		LOG(INFO) << "initializing imu";
+		LOG(ERROR) << "initializing imu";
+		imu_buffer_.WaitForMeasurements();
 		double t0 = imu_buffer_.GetStartTime();
 		std::vector<ImuMeasurement> measurements = 
-					imu_buffer_.GetRange(t0, t0 + 0.1, false);
+					imu_buffer_.GetRange(t0, t0 + 0.2, false);
 
 		// find gravity vector and average stationary gyro reading
 		Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
@@ -370,15 +371,16 @@ private:
     }
     
 		double min_intensity, max_intensity;
-    getIntensityBounds(min_intensity,max_intensity,cloud);
-    
+    //getIntensityBounds(min_intensity,max_intensity,cloud);
+    double sum_intensity = getSumIntensities(cloud);
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
       // calculate weight as normalized intensity
-      double weight = (cloud->at(i).intensity - min_intensity)
-                       / (max_intensity - min_intensity);
-      
+      //double weight = (cloud->at(i).intensity - min_intensity)
+      //                 / (max_intensity - min_intensity);
+      double weight = cloud->at(i).intensity / sum_intensity;
+
 			//if (cloud->at(i).doppler == 0) continue;
 
 			Eigen::Vector3d target(cloud->at(i).x,
@@ -493,6 +495,19 @@ private:
         min_intensity = cloud->at(i).intensity;
     }
   }
+
+	double getSumIntensities(pcl::PointCloud<RadarPoint>::Ptr cloud)
+	{
+		double sum_intensity = 0.0;
+		for (int i = 0; i < cloud->size(); i++)
+		{
+			sum_intensity += cloud->at(i).doppler;
+		}
+		if (sum_intensity == 0.0)
+			return 1.0;
+		else
+			return sum_intensity;
+	}
 };
 
 int main(int argc, char** argv)
