@@ -70,13 +70,11 @@ bool MarginalizationError::AddResidualBlock(
   {
     // check if parameter block is already connected to the marginalization error
     ParameterBlockInfo info;
-    for (size_t j = 0; j < parameter_block_info_.size(); j++)
-    {
-      if (parameter_block_info_[j].parameter_block_ptr.get() == param_blks[i])
-        info = parameter_block_info_[j];
-    }
+    std::map<double*, size_t>::iterator it = 
+      parameter_block_id_2_block_info_idx_.find(param_blks[i]);
+    
     // if parameter block is not connected, add it
-    if (!info.parameter_block_ptr)
+    if (it == parameter_block_id_2_block_info_idx_.end())
     {
       // resize equation system
       const size_t orig_size = H_.cols();
@@ -97,9 +95,16 @@ bool MarginalizationError::AddResidualBlock(
                                 problem_,
                                 orig_size);
       parameter_block_info_.push_back(info);
+      parameter_block_id_2_block_info_idx_.insert(
+        std::pair<double*, size_t>(param_blks[i],
+                                   param_block_info_.size() - 1.0))
 
       // update base type bookkeeping
       base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
+    }
+    else
+    {
+      info = parameter_block_info_.at(it->second);
     }
   }
 
@@ -125,12 +130,8 @@ bool MarginalizationError::AddResidualBlock(
 
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    size_t idx = 0;
-    for (size_t j = 0; j < parameter_block_info_.size(); j++)
-    {
-      if (parameter_block_info_[j].parameter_block_ptr.get() == param_blks[i])
-        idx = j;
-    }
+    size_t idx = parameter_block_id_2_block_info_idx_.find(param_blks[i])->second;
+    
     parameters_raw[i] = parameter_block_info_[idx].linearization_point.get();
 
     jacobians_eigen[i].resize(cost_func->num_residuals(),
@@ -194,7 +195,55 @@ bool MarginalizationError::AddResidualBlock(
   // actually add blocks to lhs and rhs
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    // TODO
+    ParameterBlockInfo parameter_block_info_i = parameter_block_info_.at(
+      parameter_block_id_2_block_info_idx_[param_blks[i]]);
+
+    if (parameter_block_info_i.minimal_dimension == 0)
+      continue;
+
+    if (!H_.allFinite())
+      LOG(FATAL) << "H matrix has inf values prior to update";
+
+    H_.block(parameter_block_info_i.ordering_idx, 
+             parameter_block_info_i.ordering_idx,
+             parameter_block_info_i.minimal_dimension,
+             parameter_block_info_i.minimal_dimension) += jacobians_minimal_eigen.at(
+                i).transpose().eval() * jacobians_minimal_eigen.at(i);
+    b0_.segment(parameter_block_info_i.ordering_idx,
+                parameter_block_info_i.minimal_dimension) -= jacobians_minimal_eigen.at(
+                i).transpose().eval() * residuals_eigen;
+
+    if (!H_.allFinite())
+      LOG(FATAL) << "H matrix has inf values after update";
+
+    for (size_t j = 0; j < i; j++)
+    {
+      ParameterBlockInfo parameter_block_info_j = parameter_block_info_.at(
+        parameter_block_id_2_block_info_idx_[param_blks[j]]);
+
+      if (parameter_block_info_j.minimal_dimension == 0)
+        continue;
+
+      H_.block(parameter_block_info_i.ordering_idx,
+               parameter_block_info_j.ordering_idx,
+               parameter_block_info_i.minimal_dimension,
+               parameter_block_info_j.minimal_dimension) += 
+        jacobians_minimal_eigen.at(i).transpose().eval() 
+          * jacobians_minimal_eigen.at(j);
+
+      H_.block(parameter_block_info_j.ordering_idx,
+               parameter_block_info_i.ordering_idx,
+               parameter_block_info_j.minimal_dimension,
+               parameter_block_info_i.minimal_dimension) += 
+        jacobians_minimal_eigen.at(j).transpose().eval() 
+          * jacobians_minimal_eigen.at(i);
+    }
+
+    problem_->RemoveResidualBlock(residual_block_id);
+
+    delete[] parameters_raw;
+    delete[] jacobians_raw;
+    delete[] jacobians_minimal_raw;
   }
 
   return true;
@@ -224,6 +273,13 @@ bool MarginalizationError::Evaluate(
   double* residuals,
   double** jacobians) const
 {
+  return EvaluateWithMinimalJacobians(parameters, residuals, jacobians, NULL);
+}
+
+bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* parameters,
+                                    double* residuals, double** jacobians,
+                                    double** jacobians_minimal) const
+{
   if (!error_computation_valid_) 
     LOG(FATAL) << "trying to evaluate with invalid error computation";
 
@@ -236,6 +292,19 @@ bool MarginalizationError::Evaluate(
   {
     if (jacobians != NULL)
     {
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[i] != NULL)
+        {
+          Eigen::Map<
+            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
+            Eigen::RowMajor>> Jmin_i(
+              jacobians_minimal[i], e0_.rows(),
+              parameter_block_info_[i].minimal_dimension);
+          Jmin_i = J_.block(0, parameter_block_info_[i].ordering_idx, e0_.rows(),
+            parameter_block_info_[i].minimal_dimension);
+        }
+      }
       if (jacobians[i] != NULL)
       {
         // get minimal jacobian

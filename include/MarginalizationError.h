@@ -33,6 +33,10 @@ public:
                 double* residuals,
                 double** jacobians) const;
 
+  bool EvaluateWithMinimalJacobians(double const* const* parameters,
+                                    double* residuals, double** jacobians,
+                                    double** jacobians_minimal) const;
+
 protected:
 
   /// \brief Computes the linearized deviation from the references (linearization points)
@@ -41,6 +45,9 @@ protected:
   /// \brief Computes the linearized deviation from the references (linearization points)
   bool ComputeDeltaChi(double const* const * parameters,
                        Eigen::VectorXd& Delta_chi) const;
+
+  /// \brief checks the internal data structure
+  void Check();
 
   /// @name The internal storage of the linearised system.
   /// lhs and rhs:
@@ -121,7 +128,7 @@ protected:
   };
 
   std::vector<ParameterBlockInfo> parameter_block_info_;
-
+  std::map<double*, size_t> parameter_block_2_block_info_idx_;
 };
 
 #endif
