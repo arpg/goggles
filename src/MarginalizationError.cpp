@@ -60,7 +60,7 @@ bool MarginalizationError::Evaluate(
         // get minimal jacobian
         Eigen::Matrix<
             double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Jmin_i;
-        Jmin_i = J_.block(0, paremeter_block_info_[i].ordering_idx, e0_.rows(),
+        Jmin_i = J_.block(0, parameter_block_info_[i].ordering_idx, e0_.rows(),
                           parameter_block_info_[i].minimal_dimension);
 
         Eigen::Map<
@@ -68,17 +68,17 @@ bool MarginalizationError::Evaluate(
             Eigen::RowMajor>> J_i(jacobians[i], e0_.rows(),
                                   parameter_block_info_[i].dimension);
 
-        // if current paremeter block is overparameterized,
+        // if current paremeter block represents a quaternion,
         // get overparameterized jacobion
         if (parameter_block_info_[i].dimension 
-              != parameter_block_info_.minimal_dimension)
+              != parameter_block_info_[i].minimal_dimension)
         {
           Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> J_lift(
               parameter_block_info_[i].minimal_dimension,
               parameter_block_info_[i].dimension);
-          parameter_block_info_[i].parameter_block_ptr->
-              local_parameterization()->liftJacobian(
-                  parameter_block_info_[i].linearization_point.get(), J_lift.data());
+          QuaternionParameterization qp; 
+          qp.liftJacobian(
+              parameter_block_info_[i].linearization_point.get(), J_lift.data());
           J_i = Jmin_i * J_lift;
         }
         else

@@ -6,7 +6,7 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <QuaternionParameterization.h>
 #include "DataTypes.h"
-#include <ceres/ceres.h>
+#include "ceres/ceres.h"
 
 class MarginalizationError : public ceres::CostFunction
 {
@@ -64,53 +64,59 @@ protected:
   struct ParameterBlockInfo
   {
     uint64_t parameter_block_id;
-    std::shared_ptr<ceres::ParameterBlock> parameter_block_ptr;
+    std::shared_ptr<double> parameter_block_ptr;
     size_t ordering_idx;
     size_t dimension;
     size_t minimal_dimension;
     std::shared_ptr<double> linearization_point;
+    std::shared_ptr<ceres::Problem> problem;
 
     ParameterBlockInfo()
       : parameter_block_id(0),
-        parameter_block_ptr(std::shared_ptr<ceres::ParemeterBlock>()),
+        parameter_block_ptr(std::shared_ptr<double>()),
         ordering_idx(0),
         dimension(0),
         minimal_dimension(0)
     { 
     }
 
-    ParemeterBlockInfo(uint64_t parameter_block_id,
-                       std::shared_ptr<ceres::ParameterBlock> paremeter_block_ptr,
-                       size_t ordering_idx, bool is_landmark)
+    ParameterBlockInfo(uint64_t parameter_block_id,
+                       std::shared_ptr<double> parameter_block_ptr,
+                       std::shared_ptr<ceres::Problem> problem,
+                       size_t ordering_idx)
       : parameter_block_id(parameter_block_id),
-        parameter_block_ptr(paremeter_block_ptr),
+        parameter_block_ptr(parameter_block_ptr),
+        problem(problem),
         ordering_idx(ordering_idx)
     {
-      if (parameter_block_ptr->LocalParameterization())
+      if (problem->GetParameterization(parameter_block_ptr.get()))
       {
-        dimension = parameter_block_ptr->LocalParameterization()->GlobalSize();
-        minimal_dimension = parameter_block_ptr->LocalParameterization()->LocalSize();
+        dimension = problem->GetParameterization(
+            parameter_block_ptr.get())->GlobalSize();
+        minimal_dimension = problem->GetParameterization(
+            parameter_block_ptr.get())->LocalSize();
       }
       else
       {
-        dimension = parameter_block_ptr->Size();
+        dimension = problem->ParameterBlockSize(parameter_block_ptr.get());
         minimal_dimension = dimension;
       }
-      if (parameter_block_ptr->Fixed())
+      if (problem->IsParameterBlockConstant(parameter_block_ptr.get()));
       {
         minimal_dimension = 0;
       }
       linearization_point.reset(new double[dimension],
                                 std::default_delete<double[]>());
-      parameter_block_ptr->GetState(linearization_point.get());
+      ResetLinearizationPoint(parameter_block_ptr);
     }
 
     void ResetLinearizationPoint(
-        std::shared_ptr<ceres::ParameterBlock> parameter_block_ptr)
+        std::shared_ptr<double> parameter_block_ptr)
     {
-      parameter_block_ptr->GetState(linearization_point.get());
+      memcpy(linearization_point.get(), parameter_block_ptr.get(), 
+        dimension * sizeof(double));
     }
-  }
+  };
 
   std::vector<ParameterBlockInfo> parameter_block_info_;
 
