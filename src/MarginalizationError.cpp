@@ -58,7 +58,7 @@ bool MarginalizationError::AddResidualBlock(
   if (!cost_func)
     return false;
 
-  // TODO: cast cost function to error interface 
+  ErrorInterface* err_interface_ptr = cost_func;
 
   // get associated parameter blocks
   // should just be one parameter block unless it's an IMU error
@@ -111,7 +111,7 @@ bool MarginalizationError::AddResidualBlock(
   base_t::set_num_residuals(H_.cols());
 
   double** parameters_raw = new double*[param_blks.size()];
-  Eigen::VectorXd residuals_eigen(cost_func->num_residuals());
+  Eigen::VectorXd residuals_eigen(err_interface_ptr->ResidualDim());
   double* residuals_raw = residuals_eigen.data();
 
   double** jacobians_raw = new double*[param_blks.size()];
@@ -134,21 +134,21 @@ bool MarginalizationError::AddResidualBlock(
     
     parameters_raw[i] = parameter_block_info_[idx].linearization_point.get();
 
-    jacobians_eigen[i].resize(cost_func->num_residuals(),
+    jacobians_eigen[i].resize(err_interface_ptr->ResidualDim(),
                               parameter_block_info_[idx].dimension);
     jacobians_raw[i] = jacobians_eigen[i].data();
 
-    jacobians_minimal_eigen[i].resize(cost_func->num_residuals(),
+    jacobians_minimal_eigen[i].resize(err_interface_ptr->ResidualDim(),
                                       parameter_block_info_[idx].minimal_dimension);
     jacobians_minimal_raw[i] = jacobians_minimal_eigen[i].data();
   }
 
   // evaluate the residual
   // won't work as-is; need to implement error interface
-  cost_func->EvaluateWithMinimalJacobians(parameters_raw, 
-                                          residuals_raw, 
-                                          jacobians_raw,
-                                          jacobians_minimal_raw);
+  err_interface_ptr->EvaluateWithMinimalJacobians(parameters_raw, 
+                                                  residuals_raw, 
+                                                  jacobians_raw,
+                                                  jacobians_minimal_raw);
 
   // apply loss function
   ceres::LossFunction* loss_func = 
