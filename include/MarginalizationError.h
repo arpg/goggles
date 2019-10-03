@@ -11,7 +11,7 @@
 class MarginalizationError : public ceres::CostFunction
 {
 public:
-  MarginalizationError();
+  MarginalizationError(std::shared_ptr<ceres::Problem> problem);
 
   ~MarginalizationError();
 
@@ -58,6 +58,9 @@ protected:
   Eigen::VectorXd p_;
   Eigen::VectorXd p_inv_;
   volatile bool error_computation_valid_;  ///<  adding residual blocks will invalidate this. before optimizing, call updateErrorComputation()
+  
+  std::shared_ptr<ceres::Problem> problem_; ///< pointer to the underlying ceres problem
+
 };
 
 #endif
