@@ -1,5 +1,33 @@
 #include <MarginalizationError.h>
 
+inline void Resize(Eigen::MatrixXd& mat, int rows, int cols)
+{
+  Eigen::MatrixXd tmp(rows,cols);
+  const int common_rows = std::min(rows, (int)mat.rows());
+  const int common_cols = std::min(cols, (int)mat.cols());
+  tmp.topLoftCorner(common_rows, common_cols) 
+    = mat.topLoftCorner(common_rows, common_cols);
+  mat.swap(tmp);
+}
+
+inline void Resize(Eigen::VectorXd& vec, int size)
+{
+  if (vec.rows() == 1)
+  {
+    Eigen::VectorXd tmp(size);
+    const int common_size = std::min((int)vec.cols(), size);
+    tmp.head(common_size) = vec.head(common_size);
+    vec.swap(tmp);
+  }
+  else
+  {
+    Eigen::VectorXd tmp(size);
+    const int common_size = std::min((int) vec.rows(), size);
+    tmp.head(common_size) = vec.head(common_size);
+    vec.swap(tmp);
+  }
+}
+
 MarginalizationError::MarginalizationError(std::shared_ptr<ceres::Problem> problem)
 {
   problem_ = problem;
@@ -7,16 +35,169 @@ MarginalizationError::MarginalizationError(std::shared_ptr<ceres::Problem> probl
 
 MarginalizationError::~MarginalizationError(){}
 
+// Add set of residuals to this marginalization error
 bool MarginalizationError::AddResidualBlocks(
   const std::vector<ceres::ResidualBlockId> &residual_block_ids)
 {
-
+  for (size_t i = 0; i < residual_block_ids.size(); i++)
+  {
+    if (!AddResidualBlock(residual_block_ids[i]))
+      return false;
+  }
+  return true;
 }
 
+// Linearize a single residual, add it to the marginalization error
+// and remove the associated residual block
 bool MarginalizationError::AddResidualBlock(
   ceres::ResidualBlockId residual_block_id)
 {
+  // verify residual block exists
+  ceres::CostFunction* cost_func 
+    = problem->GetCostFunctionForResidualBlock(residual_block_id);
+  if (!cost_func)
+    return false;
 
+  // TODO: cast cost function to error interface 
+
+  // get associated parameter blocks
+  // should just be one parameter block unless it's an IMU error
+  std::vector<double*> param_blks;
+  problem_->GetParameterBlocksForResidualBlock(residual_block_id, &param_blks);
+
+  // go through all the associated parameter blocks
+  for (size_t i = 0; i < param_blks.size(); i++)
+  {
+    // check if parameter block is already connected to the marginalization error
+    ParameterBlockInfo info;
+    for (size_t j = 0; j < parameter_block_info_.size(); j++)
+    {
+      if (parameter_block_info_[j].parameter_block_ptr.get() == param_blks[i])
+        info = parameter_block_info_[j];
+    }
+    // if parameter block is not connected, add it
+    if (!info.parameter_block_ptr)
+    {
+      // resize equation system
+      const size_t orig_size = H_.cols();
+      size_t additional_size = info.minimal_dimension;
+
+      if (additional_size > 0) // will be zero for fixed parameter blocks
+      {
+        Resize(H_, orig_size + additional_size, orig_size + additional_size);
+        Resize(b0_, orig_size + additional_size);
+
+        H_.bottomRightCorner(H_.rows(), additional_size).setZero();
+        H_.bottomRightCorner(additional_size, H_.cols()).setZero();
+        b0_.tail(additional_size).setZero();
+      } 
+
+      // update bookkeeping
+      info = ParameterBlockInfo(std::shared_ptr<double>(param_blks[i]),
+                                problem_,
+                                orig_size);
+      parameter_block_info_.push_back(info);
+
+      // update base type bookkeeping
+      base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
+    }
+  }
+
+  base_t::set_num_residuals(H_.cols());
+
+  double** parameters_raw = new double*[param_blks.size()];
+  Eigen::VectorXd residuals_eigen(cost_func->num_residuals());
+  double* residuals_raw = residuals_eigen.data();
+
+  double** jacobians_raw = new double*[param_blks.size()];
+  std::vector<
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
+    Eigen::alligned_allocator<
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>> jacobians_eigen(
+      param_blks.size());
+
+  double** jacobians_minimal_raw = new double*[param_blks.size()];
+  std::vector<
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
+    Eigen::alligned_allocator<
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>> jacobians_minimal_eigen(
+      param_blks.size());
+
+  for (size_t i = 0; i < param_blks.size(); i++)
+  {
+    size_t idx = 0;
+    for (size_t j = 0; j < parameter_block_info_.size(); j++)
+    {
+      if (parameter_block_info_[j].parameter_block_ptr.get() == param_blks[i])
+        idx = j;
+    }
+    parameters_raw[i] = parameter_block_info_[idx].linearization_point.get();
+
+    jacobians_eigen[i].resize(cost_func->num_residuals(),
+                              parameter_block_info_[idx].dimension);
+    jacobians_raw[i] = jacobians_eigen[i].data();
+
+    jacobians_minimal_eigen[i].resize(cost_func->num_residuals(),
+                                      parameter_block_info_[idx].minimal_dimension);
+    jacobians_minimal_raw[i] = jacobians_minimal_eigen[i].data();
+  }
+
+  // evaluate the residual
+  // won't work as-is; need to implement error interface
+  cost_func->EvaluateWithMinimalJacobians(parameters_raw, 
+                                          residuals_raw, 
+                                          jacobians_raw,
+                                          jacobians_minimal_raw);
+
+  // apply loss function
+  ceres::LossFunction* loss_func = 
+    problem_->GetLossFunctionForResidualBlock(residual_block_id);
+
+  if (loss_func)
+  {
+    const double sq_norm = residuals_eigen.transpose() * residuals_eigen;
+    double rho[3];
+    loss_func->Evaluate(sq_norm, rho);
+    const double sqrt_rho = sqrt(rho);
+    double residual_scaling;
+    double alpha_sq_norm;
+    if ((sq_norm == 0.0) || (rho[2] <= 0.0))
+    {
+      residual_scaling = sqrt_rho;
+      alpha_sq_norm = 0.0;
+    }
+    else
+    {
+      const double D = 1.0 + 2.0 * sq_norm * rho[2] / rho[1];
+      const double alpha = 1.0 - sqrt(D);
+      if (std::isnan(alpha))
+        LOG(FATAL) << "alpha has nan value";
+
+      residual_scaling = sqrt_rho / (1.0 - alpha);
+      alpha_sq_norm = alpha / sq_norm;
+    }
+
+    // correct jacobians
+    // this won't work as-is, need a way to access the minimal jacobian representation
+    for (size_t i = 0; i < param_blks.size(); i++)
+    {
+      jacobians_minimal_eigen[i] = sqrt_rho
+        * (jacobians_minimal_eigen[i]
+          - alpha_sq_norm * residuals_eigen
+          * (residuals_eigen.transpose() * jacobians_minimal_eigen[i]));
+    }
+
+    // correct residuals
+    residuals_eigen *= residual_scaling;
+  }
+
+  // actually add blocks to lhs and rhs
+  for (size_t i = 0; i < param_blks.size(); i++)
+  {
+    // TODO
+  }
+
+  return true;
 }
 
 bool MarginalizationError::MarginalizeOut(

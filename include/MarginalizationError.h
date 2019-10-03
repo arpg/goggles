@@ -7,10 +7,16 @@
 #include <QuaternionParameterization.h>
 #include "DataTypes.h"
 #include "ceres/ceres.h"
+#include <algorithm>
 
 class MarginalizationError : public ceres::CostFunction
 {
 public:
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  typedef ceres::CostFunction base_t;
+
   MarginalizationError(std::shared_ptr<ceres::Problem> problem);
 
   ~MarginalizationError();
@@ -63,7 +69,6 @@ protected:
 
   struct ParameterBlockInfo
   {
-    uint64_t parameter_block_id;
     std::shared_ptr<double> parameter_block_ptr;
     size_t ordering_idx;
     size_t dimension;
@@ -72,20 +77,17 @@ protected:
     std::shared_ptr<ceres::Problem> problem;
 
     ParameterBlockInfo()
-      : parameter_block_id(0),
-        parameter_block_ptr(std::shared_ptr<double>()),
+      : parameter_block_ptr(std::shared_ptr<double>()),
         ordering_idx(0),
         dimension(0),
         minimal_dimension(0)
     { 
     }
 
-    ParameterBlockInfo(uint64_t parameter_block_id,
-                       std::shared_ptr<double> parameter_block_ptr,
+    ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
                        std::shared_ptr<ceres::Problem> problem,
                        size_t ordering_idx)
-      : parameter_block_id(parameter_block_id),
-        parameter_block_ptr(parameter_block_ptr),
+      : parameter_block_ptr(parameter_block_ptr),
         problem(problem),
         ordering_idx(ordering_idx)
     {
