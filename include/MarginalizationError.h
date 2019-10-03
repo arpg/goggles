@@ -61,6 +61,59 @@ protected:
   
   std::shared_ptr<ceres::Problem> problem_; ///< pointer to the underlying ceres problem
 
+  struct ParameterBlockInfo
+  {
+    uint64_t parameter_block_id;
+    std::shared_ptr<ceres::ParameterBlock> parameter_block_ptr;
+    size_t ordering_idx;
+    size_t dimension;
+    size_t minimal_dimension;
+    std::shared_ptr<double> linearization_point;
+
+    ParameterBlockInfo()
+      : parameter_block_id(0),
+        parameter_block_ptr(std::shared_ptr<ceres::ParemeterBlock>()),
+        ordering_idx(0),
+        dimension(0),
+        minimal_dimension(0)
+    { 
+    }
+
+    ParemeterBlockInfo(uint64_t parameter_block_id,
+                       std::shared_ptr<ceres::ParameterBlock> paremeter_block_ptr,
+                       size_t ordering_idx, bool is_landmark)
+      : parameter_block_id(parameter_block_id),
+        parameter_block_ptr(paremeter_block_ptr),
+        ordering_idx(ordering_idx)
+    {
+      if (parameter_block_ptr->LocalParameterization())
+      {
+        dimension = parameter_block_ptr->LocalParameterization()->GlobalSize();
+        minimal_dimension = parameter_block_ptr->LocalParameterization()->LocalSize();
+      }
+      else
+      {
+        dimension = parameter_block_ptr->Size();
+        minimal_dimension = dimension;
+      }
+      if (parameter_block_ptr->Fixed())
+      {
+        minimal_dimension = 0;
+      }
+      linearization_point.reset(new double[dimension],
+                                std::default_delete<double[]>());
+      parameter_block_ptr->GetState(linearization_point.get());
+    }
+
+    void ResetLinearizationPoint(
+        std::shared_ptr<ceres::ParameterBlock> parameter_block_ptr)
+    {
+      parameter_block_ptr->GetState(linearization_point.get());
+    }
+  }
+
+  std::vector<ParameterBlockInfo> parameter_block_info_;
+
 };
 
 #endif

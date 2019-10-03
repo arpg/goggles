@@ -51,26 +51,46 @@ bool MarginalizationError::Evaluate(
 
   // will only work with radar-inertial
   // want to be able to work with radar-only as well
-  if (jacobians != NULL)
+  for (size_t i = 0; i < parameter_block_info_.size(); i++)
   {
-    if (jacobians[0] != NULL)
+    if (jacobians != NULL)
     {
+      if (jacobians[i] != NULL)
+      {
+        // get minimal jacobian
+        Eigen::Matrix<
+            double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Jmin_i;
+        Jmin_i = J_.block(0, paremeter_block_info_[i].ordering_idx, e0_.rows(),
+                          parameter_block_info_[i].minimal_dimension);
 
-    }
-    if (jacobians[1] != NULL)
-    {
+        Eigen::Map<
+            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, 
+            Eigen::RowMajor>> J_i(jacobians[i], e0_.rows(),
+                                  parameter_block_info_[i].dimension);
 
-    }
-    if (jacobians[2] != NULL)
-    {
-
-    }
-    if (jacobians[3] != NULL)
-    {
-
+        // if current paremeter block is overparameterized,
+        // get overparameterized jacobion
+        if (parameter_block_info_[i].dimension 
+              != parameter_block_info_.minimal_dimension)
+        {
+          Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> J_lift(
+              parameter_block_info_[i].minimal_dimension,
+              parameter_block_info_[i].dimension);
+          parameter_block_info_[i].parameter_block_ptr->
+              local_parameterization()->liftJacobian(
+                  parameter_block_info_[i].linearization_point.get(), J_lift.data());
+          J_i = Jmin_i * J_lift;
+        }
+        else
+        {
+          J_i = Jmin_i;
+        }
+      }
     }
   }
 
   Eigen::Map<Eigen::VectorXd> e(residuals, e0_.rows());
   e = e0_ + J_ * Delta_Chi;
+
+  return true;
 }
