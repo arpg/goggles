@@ -9,7 +9,7 @@
 #include "ceres/ceres.h"
 #include <algorithm>
 
-class MarginalizationError : public ceres::CostFunction
+class MarginalizationError : public ceres::CostFunction, public ErrorInterface
 {
 public:
 
@@ -36,6 +36,11 @@ public:
   bool EvaluateWithMinimalJacobians(double const* const* parameters,
                                     double* residuals, double** jacobians,
                                     double** jacobians_minimal) const;
+
+  size_t ResidualDim() const
+  {
+    return base_t::num_residuals();
+  }
 
 protected:
 
