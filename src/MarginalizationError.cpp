@@ -412,7 +412,16 @@ bool MarginalizationError::MarginalizeOut(
 bool MarginalizationError::ComputeDeltaChi(
   Eigen::VectorXd& Delta_chi) const
 {
-
+  Delta_chi.resize(H_.rows());
+  for (size_t i = 0; i < param_block_info_.size(); i++)
+  {
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
+    {
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
+      
+    }
+  }
 }
 
 bool MarginalizationError::ComputeDeltaChi(
@@ -424,7 +433,44 @@ bool MarginalizationError::ComputeDeltaChi(
 
 void MarginalizationError::UpdateErrorComputation()
 {
+  if (error_computation_valid_)
+    return;
 
+  // update error dimension
+  base_t::set_num_residuals(H_.cols());
+
+  // preconditioner
+  Eigen::VectorXd p = (H_.diagonal().array() > 1.0e-9).select(
+    H_.diagonal().cwiseSqrt(),1.0e-3);
+  Eigen::VectorXd p_inv = p.cwiseInverse();
+
+  // lhs SVD: H = J^T*J = USV^T
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(
+    0.5 * p_inv.asDiagonal() * (H_ + H_.transpose()) * p_inv.asDiagonal());
+
+  static const double epsilon = std::numeric_limits<double>::epsilon();
+  double tolerance = epsilon * H_.cols()
+    * saes.eigenvalues().array().maxCoeff();
+  S_ = Eigen::VectorXd(
+    (saes.eigenvalues().array() > tolerance).select(
+      saes.eigenvalues().array(), 0));
+  S_pinv_ = Eigen::VectorXd(
+    (saes.eigenvalues().array() > tolerance).select(
+      saes.eigenvalues().array().inverse(), 0));
+
+  S_sqrt_ = S_.cwiseSqrt();
+  S_pinv_sqrt_ = S_pinv_.cwiseSqrt();
+
+  // assign jacobians
+  J_ = (p.asDiagonal() * saes.eigenvectors() * (S_sqrt_.asDiagonal())).transpose();
+
+  // error e0 := (-pinv(J^T) * b)
+  Eigen::MatrixXd J_pinv_T = (S_pinv_sqrt_.asDiagonal())
+    * saes.eigenvectors().transpose() * p_inv.asDiagonal();
+
+  e0_ = (-J_pinv_T * b0_);
+
+  error_computation_valid_ = true;
 }
 
 template<typename Derived_A, typename Derived_U, 
