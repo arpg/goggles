@@ -3,10 +3,12 @@
 #include <gtest/gtest.h>
 #include <ImuVelocityCostFunction.h>
 #include <VelocityMeasCostFunction.h>
+#include <BodyVelocityCostFunction.h>
 #include <QuaternionParameterization.h>
 #include <Eigen/Core>
 #include <boost/numeric/odeint.hpp>
 #include <fstream>
+#include <random>
 
 double sinc_test(double x)
 {
