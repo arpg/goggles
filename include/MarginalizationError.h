@@ -75,6 +75,21 @@ protected:
     const Eigen::MatrixBase<Derived_b_a>& b_a,
     const Eigen::MatrixBase<Derived_b_b>& b_b);
 
+  /// \brief Pseudo inversion of a symmetric matrix
+  template<typename Derived>
+  static bool PseudoInverseSymm(
+    const Eigen::MatrixBase<Derived>& a,
+    const Eigen::MatrixBase<Derived>& result,
+    double epsilon = std::numeric_limits<typename Derived::Scalar>epsilon(),
+    int *rank = 0);
+
+  template<typename Derived>
+  bool PseudoInverseSymmSqrt(
+    const Eigen::MatrixBase<Derived>& a,
+    const Eigen::MatrixBase<Derived>& result,
+    double epsilon,
+    int *rank);
+
   /// @name The internal storage of the linearised system.
   /// lhs and rhs:
   /// H*delta_Chi = _b - H*Delta_Chi .

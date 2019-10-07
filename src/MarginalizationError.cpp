@@ -545,6 +545,71 @@ void MarginalizationError::SplitVector(
   }
 }
 
+template<typename Derived>
+bool MarginalizationError::PseudoInverseSymm(
+  const Eigen::MatrixBase<Derived>& a,
+  const Eigen::MatrixBase<Derived>& result,
+  double epsilon,
+  int *rank)
+{
+  if (a.rows() != a.cols()) LOG(FATAL) << "supplied matrix is not square";
+
+  Eigen::SelfAdjointEigenSolver<Derived> saes(a);
+
+  typename Derived::Scalar tolerance = epsilon * a.cols() 
+    * saes.eigenvalues().array().maxCoeff();
+
+  const_cast<Eigen::MatrixBase<Derived>&>(result) = (saes.eigenvectors())
+    * Eigen::VectorXd(
+      (saes.eigenvalues().array() > tolerance).select(
+        saes.eigenvalues().array().inverse(), 0)).asDiagonal()
+    * (saes.eigenvectors().transpose());
+
+  if (rank)
+  {
+    *rank = 0;
+    for (int i = 0; i < a.rows(); i++)
+    {
+      if (saes.eigenvalues()[i] > tolerance)
+        (*rank)++;
+    }
+  }
+
+  return true;
+}
+
+template<typename Derived>
+bool MarginalizationError::PseudoInverseSymmSqrt(
+  const Eigen::MatrixBase<Derived>& a,
+  const Eigen::MatrixBase<Derived>& result,
+  double epsilon,
+  int *rank)
+{
+  if (a.rows() != a.cols()) LOG(FATAL) << "supplied matrix is not square";
+
+  Eigen::SelfAdjointEigenSolver<Derived> saes(a);
+
+  typename Derived::Scalar tolerance = epsilon * a.cols()
+    * saes.eigenvalues().array().maxCoeff();
+
+  const_cast<Eigen::MatrixBase<Derived>&>(result) = (saes.eigenvectors())
+    * Eigen::VectorXd(
+      Eigen::VectorXd(
+        (saes.eigenvalues().array() > tolerance).select(
+          saes.eigenvalues.array().inverse(), 0)).array().sqrt()).asDiagonal();
+
+  if (rank)
+  {
+    *rank = 0;
+    for (int i = 0; i < a.rows(); i++)
+    {
+      if (saes.eigenvalues()[i] > tolerance)
+        (*rank)++;
+    }
+  }
+  return true;
+}
+
 bool MarginalizationError::Evaluate(
   double const* const* parameters,
   double* residuals,
