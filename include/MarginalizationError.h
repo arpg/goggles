@@ -28,7 +28,7 @@ public:
   bool AddResidualBlock(
     ceres::ResidualBlockId residual_block_id);
 
-  bool MarginalizeOut(const std::vector<uint64_t> & parameter_block_ids);
+  bool MarginalizeOut(const std::vector<double*> & parameter_blocks);
 
   bool Evaluate(double const* const* parameters,
                 double* residuals,
@@ -42,6 +42,8 @@ public:
   {
     return base_t::num_residuals();
   }
+
+  void updateErrorComputation();
 
 protected:
 

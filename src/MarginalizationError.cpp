@@ -251,9 +251,162 @@ bool MarginalizationError::AddResidualBlock(
 }
 
 bool MarginalizationError::MarginalizeOut(
-  const std::vector<uint64_t> & parameter_block_ids)
+  const std::vector<double*> & parameter_blocks)
 {
+  if (parameter_blocks.size() == 0)
+    return false;
 
+  // make copy so we can manipulate
+  std::vector<double*> parameter_blocks_copy = parameter_blocks;
+
+  // decide which blocks need to be marginalized
+  std::vector<std::pair<int, int>> marginalization_start_idx_and_length_pairs;
+  size_t marginalization_parameters = 0;
+
+  // make sure there are no duplicates
+  std::sort(parameter_blocks_copy.begin(), parameter_blocks_copy.end());
+  for (size_t i = 1; i < parameter_blocks_copy.size(); i++)
+  {
+    if (parameter_blocks_copy[i] == parameter_blocks_copy[i-1])
+    {
+      parameter_blocks_copy.erase(parameter_blocks_copy.begin() + i);
+      i--;
+    }
+  }
+
+  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  {
+    std::map<double*, size_t>::iterator it = 
+      parameter_block_id_2_block_info_idx_.find(parameter_blocks_copy[i]);
+
+    if (it == parameter_block_id_2_block_info_idx_.end())
+    {
+      LOG(ERROR) << "trying to marginalize unconnected unconnected parameter block";
+      return false;
+    }
+
+    size_t start_idx = param_block_info_.at(it->second).ordering_idx;
+    size_t min_dim = param_block_info_.at(it->second).minimal_dimension;
+
+    marginalization_start_idx_and_length_pairs.push_back(
+      std::pair<int,int>(start_idx, min_dim));
+    marginalization_parameters += min_dim;
+  }
+
+  // ensure marginalization pairs are ordered
+  std::sort(marginalization_start_idx_and_length_pairs.begin(),
+            marginalization_start_idx_and_length_pairs.end(),
+            [](std::pair<int,int> left, std::pair<int,int> right) 
+            { return left.first < right.first; } 
+            );
+
+  // unify contiguous blocks
+  for (size_t i < 1; i < marginalization_start_idx_and_length_pairs.size(); i++)
+  {
+    if (marginalization_start_idx_and_length_pairs.at(i-1).first
+        + marginalization_start_idx_and_length_pairs.at(i-1).second
+        == marginalization_start_idx_and_length_pairs.at(i).first)
+    {
+      marginalization_start_idx_and_length_pairs.at(i-1).second +=
+        marginalization_start_idx_and_length_pairs.at(i).second;
+
+      marginalization_start_idx_and_length_pairs.erase(
+        marginalization_start_idx_and_length_pairs.begin() + i);
+
+      i--;
+    }
+  }
+
+  error_computation_valid_ = false;
+
+  if (marginalization_start_idx_and_length_pairs.size() > 0)
+  {
+    // preconditioner
+    Eigen::VectorXd p = (H_.diagonal().array() > 1.0e-9).select(
+      H_.diagonal().cwiseSqrt(),1.0e-3);
+    Eigen::VectorXd p_inv = p.cwiseInverse();
+
+    // scale H and b
+    H_ = p_inv.asDiagonal() * H_ * p_inv.asDiagonal();
+    b0_ = p_inv.asDiagonal() * b0_;
+
+    Eigen::MatrixXd U(H_.rows() - marginalization_parameters,
+                      H_.rows() - marginalization_parameters);
+    Eigen::MatrixXd V(marginalization_parameters, marginalization_parameters);
+    Eigen::MatrixXd W(H_.rows() - marginalization_parameters,
+                      marginalization_parameters);
+    Eigen::MatrixXd b_a(H_.rows() - marginalization_parameters);
+    Eigen::MatrixXd b_b(marginalization_parameters);
+
+    // split preconditioner
+    Eigen::MatrixXd p_a(H_.rows() - marginalization_parameters);
+    Eigen::MatrixXd p_b(marginalization_parameters);
+    SplitVector(marginalization_start_idx_and_length_pairs, p, p_a, p_b);
+
+    // split lhs
+    SplitSymmetricMatrix(marginalization_start_idx_and_length_pairs, H_, U, W, V);
+
+    // split rhs
+    SplitVector(marginalization_start_idx_and_length_pairs, b0_, b_a, b_b);
+
+    // invert marginalization block
+    Eigen::MatrixXd V_inverse_sqrt(V.rows(), V.cols());
+    Eigen::MatrixXd V1 = 0.5 * (V + V.transpose());
+    PseudoInverseSymmSqrt(V1, V_inverse_sqrt);
+
+    // Schur
+    Eigen::MatrixXd M = W * V_inverse_sqrt;
+    b0_.resize(b_a.rows());
+    b0_ = (b_a - M * V_inverse_sqrt.transpose() * b_b);
+    H_.resize(U.rows(), U.cols());
+    H_ = (U - M * M.transpose());
+
+    // unscale
+    H_ = p_a.asDiagonal() * H_ * p_a.asDiagonal();
+    b0_ = p_a.asDiagonal() * b_0;
+  }
+
+  // update internal ceres size info
+  base_t::set_num_residuals(base_t::num_residuals() - marginalization_parameters);
+
+  // delete bookkeeping
+  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  {
+    size_t idx = parameter_block_id_2_block_info_idx_.find(
+      parameter_blocks_copy[i])->second;
+    int margSize = param_block_info_.at(idx).minimal_dimension;
+    param_block_info_.erase(param_block_info_.begin() + idx);
+
+    for (size_t j = idx; j < param_block_info_.size(); j++)
+    {
+      param_block_info_.at(j).ordering_idx -= margSize;
+      parameter_block_id_2_block_info_idx_.at(
+        param_block_info_.at(j).parameter_block_ptr) -=1;
+    }
+
+    parameter_block_id_2_block_info_idx_.erase(parameter_blocks_copy[i]);
+
+    base_t::mutable_parameter_block_sizes()->erase(
+      mutable_parameter_block_sizes()->begin() + idx);
+  }
+
+  // check if any residuals are still connected to these parameter blocks
+  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  {
+    std::vector<ceres::ResidualBlockId> res_blks;
+    problem_->GetResidualBlocksForParameterBlock(parameter_blocks_copy[i]);
+    if (res_blks.size() != 0)
+    {
+      LOG(FATAL) << "trying to marginalize out a parameter block that is still"
+                 << " connected to error terms."
+    }
+  }
+
+  // actually remove the parameter blocks
+  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  {
+    problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
+  }
 }
 
 bool MarginalizationError::ComputeDeltaChi(
@@ -267,6 +420,11 @@ bool MarginalizationError::ComputeDeltaChi(
   Eigen::VectorXd& Delta_chi) const
 {
   
+}
+
+void MarginalizationError::UpdateErrorComputation()
+{
+
 }
 
 bool MarginalizationError::Evaluate(
