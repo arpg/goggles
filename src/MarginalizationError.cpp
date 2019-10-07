@@ -335,12 +335,12 @@ bool MarginalizationError::MarginalizeOut(
     Eigen::MatrixXd V(marginalization_parameters, marginalization_parameters);
     Eigen::MatrixXd W(H_.rows() - marginalization_parameters,
                       marginalization_parameters);
-    Eigen::MatrixXd b_a(H_.rows() - marginalization_parameters);
-    Eigen::MatrixXd b_b(marginalization_parameters);
+    Eigen::VectorXd b_a(H_.rows() - marginalization_parameters);
+    Eigen::VectorXd b_b(marginalization_parameters);
 
     // split preconditioner
-    Eigen::MatrixXd p_a(H_.rows() - marginalization_parameters);
-    Eigen::MatrixXd p_b(marginalization_parameters);
+    Eigen::VectorXd p_a(H_.rows() - marginalization_parameters);
+    Eigen::VectorXd p_b(marginalization_parameters);
     SplitVector(marginalization_start_idx_and_length_pairs, p, p_a, p_b);
 
     // split lhs
@@ -363,7 +363,7 @@ bool MarginalizationError::MarginalizeOut(
 
     // unscale
     H_ = p_a.asDiagonal() * H_ * p_a.asDiagonal();
-    b0_ = p_a.asDiagonal() * b_0;
+    b0_ = p_a.asDiagonal() * b0_;
   }
 
   // update internal ceres size info
@@ -381,7 +381,7 @@ bool MarginalizationError::MarginalizeOut(
     {
       param_block_info_.at(j).ordering_idx -= margSize;
       parameter_block_id_2_block_info_idx_.at(
-        param_block_info_.at(j).parameter_block_ptr) -=1;
+        param_block_info_.at(j).parameter_block_ptr.get()) -= 1;
     }
 
     parameter_block_id_2_block_info_idx_.erase(parameter_blocks_copy[i]);
@@ -394,11 +394,11 @@ bool MarginalizationError::MarginalizeOut(
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
     std::vector<ceres::ResidualBlockId> res_blks;
-    problem_->GetResidualBlocksForParameterBlock(parameter_blocks_copy[i]);
+    problem_->GetResidualBlocksForParameterBlock(parameter_blocks_copy[i], &res_blks);
     if (res_blks.size() != 0)
     {
       LOG(FATAL) << "trying to marginalize out a parameter block that is still"
-                 << " connected to error terms."
+                 << " connected to error terms.";
     }
   }
 
@@ -438,7 +438,7 @@ void MarginalizationError::SplitSymmetricMatrix(
 {
   // sanity checks
   const int size = A.cols();
-  if (size =! A.rows()) LOG(FATAL) << "A matrix not square";
+  if (size != A.rows()) LOG(FATAL) << "A matrix not square";
   if (V.cols() != V.rows()) LOG(FATAL) << "V matrix not square";
   if (V.cols() != W.cols()) LOG(FATAL) << "V width not equal to W  width";
   if (U.rows() != W.rows()) LOG(FATAL) << "U height not equal to W height";
@@ -596,7 +596,7 @@ bool MarginalizationError::PseudoInverseSymmSqrt(
     * Eigen::VectorXd(
       Eigen::VectorXd(
         (saes.eigenvalues().array() > tolerance).select(
-          saes.eigenvalues.array().inverse(), 0)).array().sqrt()).asDiagonal();
+          saes.eigenvalues().array().inverse(), 0)).array().sqrt()).asDiagonal();
 
   if (rank)
   {

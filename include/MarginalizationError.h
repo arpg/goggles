@@ -43,7 +43,7 @@ public:
     return base_t::num_residuals();
   }
 
-  void updateErrorComputation();
+  void UpdateErrorComputation();
 
 protected:
 
@@ -80,15 +80,15 @@ protected:
   static bool PseudoInverseSymm(
     const Eigen::MatrixBase<Derived>& a,
     const Eigen::MatrixBase<Derived>& result,
-    double epsilon = std::numeric_limits<typename Derived::Scalar>epsilon(),
+    double epsilon = std::numeric_limits<typename Derived::Scalar>::epsilon(),
     int *rank = 0);
 
   template<typename Derived>
   bool PseudoInverseSymmSqrt(
     const Eigen::MatrixBase<Derived>& a,
     const Eigen::MatrixBase<Derived>& result,
-    double epsilon,
-    int *rank);
+    double epsilon = std::numeric_limits<typename Derived::Scalar>::epsilon(),
+    int *rank = NULL);
 
   /// @name The internal storage of the linearised system.
   /// lhs and rhs:
