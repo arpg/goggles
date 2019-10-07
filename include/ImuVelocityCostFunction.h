@@ -5,10 +5,11 @@
 #include <Eigen/Core>
 #include <unsupported/Eigen/MatrixFunctions>
 #include <QuaternionParameterization.h>
+#include <ErrorInterface.h>
 #include "DataTypes.h"
 #include <ceres/ceres.h>
 
-class ImuVelocityCostFunction : public ceres::CostFunction
+class ImuVelocityCostFunction : public ceres::CostFunction, public ErrorInterface
 {
 
   typedef std::vector<double> ImuState;
@@ -24,6 +25,14 @@ public:
   bool Evaluate(double const* const* parameters,
                 double* residuals,
                 double** jacobians) const;
+
+  bool EvaluateWithMinimalJacobians(
+      double const* const* parameters, 
+      double* residuals, 
+      double** jacobians,
+      double** jacobians_minimal) const;
+
+  size_t ResidualDim() const;
 
 protected:
   double t0_;

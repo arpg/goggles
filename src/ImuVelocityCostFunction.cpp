@@ -23,6 +23,15 @@ bool ImuVelocityCostFunction::Evaluate(double const* const* parameters,
   double* residuals,
   double** jacobians) const
 {
+  return EvaluateWithMinimalJacobians(parameters, residuals, jacobians, NULL);
+}
+
+bool ImuVelocityCostFunction::EvaluateWithMinimalJacobians(
+      double const* const* parameters, 
+      double* residuals, 
+      double** jacobians,
+      double** jacobians_minimal) const
+{
       // map parameter blocks to eigen containers
   Eigen::Map<const Eigen::Quaterniond> q_ws_0(&parameters[0][0]);
   Eigen::Map<const Eigen::Vector3d> v_s_0(&parameters[1][0]);
@@ -203,24 +212,68 @@ bool ImuVelocityCostFunction::Evaluate(double const* const* parameters,
       qp.liftJacobian(parameters[0], J_lift.data());
       Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[0] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> 
+            J0_minimal_mapped(jacobians_minimal[0]);
+          J0_minimal_mapped = J0_minimal;
+        }
+      }
     }
     // jacobian of residuals w.r.t. velocity at t0
     if (jacobians[1] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1_mapped(jacobians[1]);
       J1_mapped = square_root_information * F.block<12,3>(0,3);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[1] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J1_minimal_mapped(jacobians_minimal[1]);
+          J1_minimal_mapped = J1_mapped;
+        }
+      }
     }
     // jacobian of residuals w.r.t. gyro bias at t0
     if (jacobians[2] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2_mapped(jacobians[2]);
       J2_mapped = square_root_information * F.block<12,3>(0,6);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[2] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J2_minimal_mapped(jacobians_minimal[2]);
+          J2_minimal_mapped = J2_mapped;
+        }
+      }
     }
     // jacobian of residuals w.r.t. accel bias at t0
     if (jacobians[3] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3_mapped(jacobians[3]);
       J3_mapped = square_root_information * F.block<12,3>(0,9);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[3] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J3_minimal_mapped(jacobians_minimal[3]);
+          J3_minimal_mapped = J3_mapped;
+        }
+      }
     }
     // jacobian of residuals w.r.t. orientation at t1
     if (jacobians[4] != NULL)
@@ -237,25 +290,74 @@ bool ImuVelocityCostFunction::Evaluate(double const* const* parameters,
 
       Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4_mapped(jacobians[4]);
       J4_mapped = J4_minimal * J_lift;
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[4] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J4_minimal_mapped(jacobians_minimal[4]);
+          J4_minimal_mapped = J4_minimal;
+        }
+      }
     }
     // jacobian of residuals w.r.t. velocity at t1
     if (jacobians[5] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_mapped(jacobians[5]);
       J5_mapped = square_root_information * F1.block<12,3>(0,3);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[5] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J5_minimal_mapped(jacobians_minimal[5]);
+          J5_minimal_mapped = J5_mapped;
+        }
+      }
     }
     // jacobian of residuals w.r.t. gyro bias at t1
     if (jacobians[6] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_mapped(jacobians[6]);
       J6_mapped = square_root_information * F1.block<12,3>(0,6);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[6] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J6_minimal_mapped(jacobians_minimal[6]);
+          J6_minimal_mapped = J6_mapped;
+        }
+      }
     }
     // jacobian of residuals w.r.t. accel bias at t1
     if (jacobians[7] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_mapped(jacobians[7]);
       J7_mapped = square_root_information * F1.block<12,3>(0,9);
+
+      // get minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[7] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>>
+            J7_minimal_mapped(jacobians_minimal[7]);
+          J7_minimal_mapped = J7_mapped;
+        }
+      }
     }
   }
   return true;
+}
+
+size_t ImuVelocityCostFunction::ResidualDim() const
+{
+  return num_residuals();
 }

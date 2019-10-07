@@ -20,6 +20,14 @@ public:
     double* residuals,
     double** jacobians) const;
 
+  bool EvaluateWithMinimalJacobians(
+      double const* const* parameters, 
+      double* residuals, 
+      double** jacobians,
+      double** jacobians_minimal) const;
+
+  size_t ResidualDim() const;
+
 protected:
   const Eigen::Vector3d v_meas_;
 };

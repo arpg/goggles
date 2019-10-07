@@ -59,6 +59,7 @@ set( INC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set( SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set( APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps)
 set( HEADERS
+  ${INC_DIR}/ErrorInterface.h
   ${INC_DIR}/BodyVelocityCostFunction.h
   ${INC_DIR}/VelocityChangeCostFunction.h
   ${INC_DIR}/VelocityMeasCostFunction.h

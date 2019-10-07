@@ -6,9 +6,10 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <QuaternionParameterization.h>
 #include "DataTypes.h"
+#include <ErrorInterface.h>
 #include <ceres/ceres.h>
 
-class BodyVelocityCostFunction : public ceres::CostFunction
+class BodyVelocityCostFunction : public ceres::CostFunction, public ErrorInterface
 {
   public:
     BodyVelocityCostFunction(double doppler,
@@ -20,6 +21,14 @@ class BodyVelocityCostFunction : public ceres::CostFunction
     bool Evaluate(double const* const* parameters,
                   double* residuals,
                   double** jacobians) const;
+
+    bool EvaluateWithMinimalJacobians(
+      double const* const* parameters, 
+      double* residuals, 
+      double** jacobians,
+      double** jacobians_minimal) const;
+
+    size_t ResidualDim() const;
 
   protected:
     double doppler_;
