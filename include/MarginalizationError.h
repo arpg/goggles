@@ -57,6 +57,24 @@ protected:
   /// \brief checks the internal data structure
   void Check();
 
+  /// \brief Split matrix for Schur complement operation
+  template<typename Derived_A, typename Derived_U, typename Derived_W,
+    typename Derived_V>
+  static void SplitSymmetricMatrix(
+    const std::vector<std::pair<int,int>>& marginalization_start_idx_and_length_pairs,
+    const Eigen::MatrixBase<Derived_A>& A,
+    const Eigen::MatrixBase<Derived_U>& U,
+    const Eigen::MatrixBase<Derived_W>& W,
+    const Eigen::MatrixBase<Derived_V>& V);
+
+  /// \brief Split vector for Schur complement operation
+  template<typename Derived_b, typename Derived_b_a, typename Derived_b_b>
+  static void SplitVector(
+    const std::vector<std::pair<int,int>>& marginalization_start_idx_and_length_pairs,
+    const Eigen::MatrixBase<Derived_b>& b,
+    const Eigen::MatrixBase<Derived_b_a>& b_a,
+    const Eigen::MatrixBase<Derived_b_b>& b_b);
+
   /// @name The internal storage of the linearised system.
   /// lhs and rhs:
   /// H*delta_Chi = _b - H*Delta_Chi .

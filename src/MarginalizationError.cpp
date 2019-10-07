@@ -301,7 +301,7 @@ bool MarginalizationError::MarginalizeOut(
             );
 
   // unify contiguous blocks
-  for (size_t i < 1; i < marginalization_start_idx_and_length_pairs.size(); i++)
+  for (size_t i = 1; i < marginalization_start_idx_and_length_pairs.size(); i++)
   {
     if (marginalization_start_idx_and_length_pairs.at(i-1).first
         + marginalization_start_idx_and_length_pairs.at(i-1).second
@@ -423,6 +423,84 @@ bool MarginalizationError::ComputeDeltaChi(
 }
 
 void MarginalizationError::UpdateErrorComputation()
+{
+
+}
+
+template<typename Derived_A, typename Derived_U, 
+         typename Derived_W, typename Derived_V>
+void MarginalizationError::SplitSymmetricMatrix(
+  const std::vector<std::pair<int,int>>& marginalization_start_idx_and_length_pairs,
+  const Eigen::MatrixBase<Derived_A>& A,
+  const Eigen::MatrixBase<Derived_U>& U,
+  const Eigen::MatrixBase<Derived_W>& W,
+  const Eigen::MatrixBase<Derived_V>& V)
+{
+  // sanity checks
+  const int size = A.cols();
+  if (size =! A.rows()) LOG(FATAL) << "A matrix not square";
+  if (V.cols() != V.rows()) LOG(FATAL) << "V matrix not square";
+  if (V.cols() != W.cols()) LOG(FATAL) << "V width not equal to W  width";
+  if (U.rows() != W.rows()) LOG(FATAL) << "U height not equal to W height";
+  if (V.rows() + U.rows() != size) 
+    LOG(FATAL) << "supplied matrices do not form exact upper triangular blocks"
+               << " of the original matrix";
+  if (U.cols() != U.rows()) LOG(FATAL) << "U matrix not square";
+
+  std::vector<std::pair<int,int>> marginalization_start_idx_and_length_pairs2 = 
+    marginalization_start_idx_and_length_pairs;
+  marginalization_start_idx_and_length_pairs2.push_back(
+    std::pair<int,int>(size, 0));
+
+  const size_t length = marginalization_start_idx_and_length_pairs2.size();
+
+  int lastIdx_row = 0;
+  int start_a_i = 0;
+  int start_b_i = 0;
+  for (size_t i = 0; i < length; i++)
+  {
+    int lastIdx_col = 0;
+    int start_a_j = 0;
+    int start_b_j = 0;
+    int thisIdx_row = marginalization_start_idx_and_length_pairs2[i].first;
+    const int size_a_i = thisIdx_row - lastIdx_row;
+    const int size_b_i = marginalization_start_idx_and_length_pairs2[i].second;
+    for (size_t j = 0; j < length; j++)
+    {
+      int thisIdx_col = marginalization_start_idx_and_length_pairs2[j].first;
+      const int size_a_j = thisIdx_col - lastIdx_col;
+      const int size_b_j = marginalization_start_idx_and_length_pairs2[j].second;
+
+      if (size_a_j > 0 && size_a_i > 0)
+      {
+        const_cast<Eigen::MatrixBase<Derived_U>&>(U).block(start_a_i, start_a_j,
+                                                           start_a_i, start_a_j)
+          = A.block(lastIdx_row, lastIdx_col, size_a_i, size_a_j);
+      }
+
+      if (size_b_j > 0 && size_b_i > 0)
+      {
+        const_cast<Eigen::MatrixBase<Derived_V>&>(V).block(start_b_i, start_b_j,
+                                                           start_b_i, start_b_j)
+          = A.block(thisIdx_row, thisIdx_col, size_b_i, size_b_j);
+      }
+
+      lastIdx_col = thisIdx_col + size_b_j;
+      start_a_j += size_a_j;
+      start_b_j += size_b_j;
+    }
+    lastIdx_row = thisIdx_row + size_b_i;
+    start_a_i += size_a_i;
+    start_b_i += size_b_i;
+  }
+}
+
+template<typename Derived_b, typename Derived_b_a, typename Derived_b_b>
+void MarginalizationError::SplitVector(
+  const std::vector<std::pair<int,int>>& marginalization_start_idx_and_length_pairs,
+  const Eigen::MatrixBase<Derived_b>& b,
+  const Eigen::MatrixBase<Derived_b_a>& b_a,
+  const Eigen::MatrixBase<Derived_b_b>& b_b)
 {
 
 }
