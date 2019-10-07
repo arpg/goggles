@@ -425,7 +425,7 @@ TEST(googleTests, testMarginalization)
   marginalize_param_blocks.push_back(v_s_0_est.data());
   marginalize_param_blocks.push_back(b_g_0_est.data());
   marginalize_param_blocks.push_back(b_a_0_est.data());
-  LOG(INFO) << "Marginalizing parameter blocks";
+  LOG(INFO) << "Marginalizing parameter blocks"; // currently fails at this step
   marginalization_error.MarginalizeOut(marginalize_param_blocks);
 
   // add marginalization error to problem
