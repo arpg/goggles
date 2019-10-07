@@ -419,16 +419,69 @@ bool MarginalizationError::ComputeDeltaChi(
       param_block_info_[i].parameter_block_ptr.get())))
     {
       Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
-      
+
+      // get local parameterization
+      const ceres::LocalParameterization* local_param = 
+        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
+
+      if (local_param) // only quaternions will have a local parameterization
+      {
+        QuaternionParameterization qp;
+        qp.Minus(param_block_info_[i].linearization_point.get(),
+                 param_block_info_[i].parameter_block_ptr.get(),
+                 Delta_chi_i.data());
+      }
+      else
+      {
+        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
+        {
+          Delta_chi_i[j] = param_block_info_[i].linearization_point.get()[j]
+                            - param_block_info_[i].parameter_block_ptr.get()[j];
+        }
+      }
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
     }
   }
+  return true;
 }
 
 bool MarginalizationError::ComputeDeltaChi(
   double const* const * parameters,
   Eigen::VectorXd& Delta_chi) const
 {
-  
+  Delta_chi.resize(H_.rows());
+  for (size_t i = 0; i < param_block_info_.size(); i++)
+  {
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
+    {
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
+
+      // get local parameterization
+      const ceres::LocalParameterization* local_param =
+        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
+
+      if (local_param) // only quaternions will have a local parameterization
+      {
+        QuaternionParameterization qp;
+        qp.Minus(param_block_info_[i].linearization_point.get(),
+                 param_block_info_[i].parameter_block_ptr.get(),
+                 Delta_chi_i.data());
+      }
+      else
+      {
+        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
+        {
+          Delta_chi_i[j] = param_block_info_[i].linearization_point.get()[j]
+                            - parameters[i][j];
+        }
+      }
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
+    }
+  }
+  return true;
 }
 
 void MarginalizationError::UpdateErrorComputation()
