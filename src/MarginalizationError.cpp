@@ -5,8 +5,8 @@ inline void Resize(Eigen::MatrixXd& mat, int rows, int cols)
   Eigen::MatrixXd tmp(rows,cols);
   const int common_rows = std::min(rows, (int)mat.rows());
   const int common_cols = std::min(cols, (int)mat.cols());
-  tmp.topLoftCorner(common_rows, common_cols) 
-    = mat.topLoftCorner(common_rows, common_cols);
+  tmp.topLeftCorner(common_rows, common_cols) 
+    = mat.topLeftCorner(common_rows, common_cols);
   mat.swap(tmp);
 }
 
@@ -53,12 +53,13 @@ bool MarginalizationError::AddResidualBlock(
   ceres::ResidualBlockId residual_block_id)
 {
   // verify residual block exists
-  ceres::CostFunction* cost_func 
-    = problem->GetCostFunctionForResidualBlock(residual_block_id);
-  if (!cost_func)
+  const ceres::CostFunction* const_cost_func 
+    = problem_->GetCostFunctionForResidualBlock(residual_block_id);
+  if (!const_cost_func)
     return false;
 
-  ErrorInterface* err_interface_ptr = cost_func;
+  ceres::CostFunction* cost_func = const_cast<ceres::CostFunction*>(const_cost_func);
+  ErrorInterface* err_interface_ptr = dynamic_cast<ErrorInterface*>(cost_func);
 
   // get associated parameter blocks
   // should just be one parameter block unless it's an IMU error
@@ -94,17 +95,17 @@ bool MarginalizationError::AddResidualBlock(
       info = ParameterBlockInfo(std::shared_ptr<double>(param_blks[i]),
                                 problem_,
                                 orig_size);
-      parameter_block_info_.push_back(info);
+      param_block_info_.push_back(info);
       parameter_block_id_2_block_info_idx_.insert(
         std::pair<double*, size_t>(param_blks[i],
-                                   param_block_info_.size() - 1.0))
+                                   param_block_info_.size() - 1.0));
 
       // update base type bookkeeping
       base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
     }
     else
     {
-      info = parameter_block_info_.at(it->second);
+      info = param_block_info_.at(it->second);
     }
   }
 
@@ -117,14 +118,14 @@ bool MarginalizationError::AddResidualBlock(
   double** jacobians_raw = new double*[param_blks.size()];
   std::vector<
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
-    Eigen::alligned_allocator<
+    Eigen::aligned_allocator<
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>> jacobians_eigen(
       param_blks.size());
 
   double** jacobians_minimal_raw = new double*[param_blks.size()];
   std::vector<
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>,
-    Eigen::alligned_allocator<
+    Eigen::aligned_allocator<
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>> jacobians_minimal_eigen(
       param_blks.size());
 
@@ -132,14 +133,14 @@ bool MarginalizationError::AddResidualBlock(
   {
     size_t idx = parameter_block_id_2_block_info_idx_.find(param_blks[i])->second;
     
-    parameters_raw[i] = parameter_block_info_[idx].linearization_point.get();
+    parameters_raw[i] = param_block_info_[idx].linearization_point.get();
 
     jacobians_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                              parameter_block_info_[idx].dimension);
+                              param_block_info_[idx].dimension);
     jacobians_raw[i] = jacobians_eigen[i].data();
 
     jacobians_minimal_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                                      parameter_block_info_[idx].minimal_dimension);
+                                      param_block_info_[idx].minimal_dimension);
     jacobians_minimal_raw[i] = jacobians_minimal_eigen[i].data();
   }
 
@@ -151,7 +152,7 @@ bool MarginalizationError::AddResidualBlock(
                                                   jacobians_minimal_raw);
 
   // apply loss function
-  ceres::LossFunction* loss_func = 
+  const ceres::LossFunction* loss_func = 
     problem_->GetLossFunctionForResidualBlock(residual_block_id);
 
   if (loss_func)
@@ -159,12 +160,12 @@ bool MarginalizationError::AddResidualBlock(
     const double sq_norm = residuals_eigen.transpose() * residuals_eigen;
     double rho[3];
     loss_func->Evaluate(sq_norm, rho);
-    const double sqrt_rho = sqrt(rho);
+    const double sqrt_rho1 = sqrt(rho[1]);
     double residual_scaling;
     double alpha_sq_norm;
     if ((sq_norm == 0.0) || (rho[2] <= 0.0))
     {
-      residual_scaling = sqrt_rho;
+      residual_scaling = sqrt_rho1;
       alpha_sq_norm = 0.0;
     }
     else
@@ -174,7 +175,7 @@ bool MarginalizationError::AddResidualBlock(
       if (std::isnan(alpha))
         LOG(FATAL) << "alpha has nan value";
 
-      residual_scaling = sqrt_rho / (1.0 - alpha);
+      residual_scaling = sqrt_rho1 / (1.0 - alpha);
       alpha_sq_norm = alpha / sq_norm;
     }
 
@@ -182,7 +183,7 @@ bool MarginalizationError::AddResidualBlock(
     // this won't work as-is, need a way to access the minimal jacobian representation
     for (size_t i = 0; i < param_blks.size(); i++)
     {
-      jacobians_minimal_eigen[i] = sqrt_rho
+      jacobians_minimal_eigen[i] = sqrt_rho1
         * (jacobians_minimal_eigen[i]
           - alpha_sq_norm * residuals_eigen
           * (residuals_eigen.transpose() * jacobians_minimal_eigen[i]));
@@ -195,7 +196,7 @@ bool MarginalizationError::AddResidualBlock(
   // actually add blocks to lhs and rhs
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    ParameterBlockInfo parameter_block_info_i = parameter_block_info_.at(
+    ParameterBlockInfo parameter_block_info_i = param_block_info_.at(
       parameter_block_id_2_block_info_idx_[param_blks[i]]);
 
     if (parameter_block_info_i.minimal_dimension == 0)
@@ -218,7 +219,7 @@ bool MarginalizationError::AddResidualBlock(
 
     for (size_t j = 0; j < i; j++)
     {
-      ParameterBlockInfo parameter_block_info_j = parameter_block_info_.at(
+      ParameterBlockInfo parameter_block_info_j = param_block_info_.at(
         parameter_block_id_2_block_info_idx_[param_blks[j]]);
 
       if (parameter_block_info_j.minimal_dimension == 0)
@@ -288,7 +289,7 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
 
   // will only work with radar-inertial
   // want to be able to work with radar-only as well
-  for (size_t i = 0; i < parameter_block_info_.size(); i++)
+  for (size_t i = 0; i < param_block_info_.size(); i++)
   {
     if (jacobians != NULL)
     {
@@ -300,9 +301,9 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
             Eigen::RowMajor>> Jmin_i(
               jacobians_minimal[i], e0_.rows(),
-              parameter_block_info_[i].minimal_dimension);
-          Jmin_i = J_.block(0, parameter_block_info_[i].ordering_idx, e0_.rows(),
-            parameter_block_info_[i].minimal_dimension);
+              param_block_info_[i].minimal_dimension);
+          Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+            param_block_info_[i].minimal_dimension);
         }
       }
       if (jacobians[i] != NULL)
@@ -310,25 +311,25 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
         // get minimal jacobian
         Eigen::Matrix<
             double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Jmin_i;
-        Jmin_i = J_.block(0, parameter_block_info_[i].ordering_idx, e0_.rows(),
-                          parameter_block_info_[i].minimal_dimension);
+        Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+                          param_block_info_[i].minimal_dimension);
 
         Eigen::Map<
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, 
             Eigen::RowMajor>> J_i(jacobians[i], e0_.rows(),
-                                  parameter_block_info_[i].dimension);
+                                  param_block_info_[i].dimension);
 
         // if current paremeter block represents a quaternion,
         // get overparameterized jacobion
-        if (parameter_block_info_[i].dimension 
-              != parameter_block_info_[i].minimal_dimension)
+        if (param_block_info_[i].dimension 
+              != param_block_info_[i].minimal_dimension)
         {
           Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> J_lift(
-              parameter_block_info_[i].minimal_dimension,
-              parameter_block_info_[i].dimension);
+              param_block_info_[i].minimal_dimension,
+              param_block_info_[i].dimension);
           QuaternionParameterization qp; 
           qp.liftJacobian(
-              parameter_block_info_[i].linearization_point.get(), J_lift.data());
+              param_block_info_[i].linearization_point.get(), J_lift.data());
           J_i = Jmin_i * J_lift;
         }
         else

@@ -133,8 +133,8 @@ protected:
     }
   };
 
-  std::vector<ParameterBlockInfo> parameter_block_info_;
-  std::map<double*, size_t> parameter_block_2_block_info_idx_;
+  std::vector<ParameterBlockInfo> param_block_info_;
+  std::map<double*, size_t> parameter_block_id_2_block_info_idx_;
 };
 
 #endif
