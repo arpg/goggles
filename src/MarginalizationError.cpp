@@ -502,7 +502,47 @@ void MarginalizationError::SplitVector(
   const Eigen::MatrixBase<Derived_b_a>& b_a,
   const Eigen::MatrixBase<Derived_b_b>& b_b)
 {
+  const int size = b.rows();
 
+  if (b.cols() != 1) LOG(FATAL) << "supplied vector not Nx1";
+  if (b_a.cols() != 1) LOG(FATAL) << "supplied vector not Nx1";
+  if (b_b.cols() != 1) LOG(FATAL) << "supplied vector not Nx1";
+  if (b_a.rows() + b_b.rows() != size) 
+    LOG(FATAL) << "supplied split vector sizes not equal to "
+               << "original vector size";
+
+  std::vector<std::pair<int,int>> marginalization_start_idx_and_length_pairs2 = 
+    marginalization_start_idx_and_length_pairs;
+  marginalization_start_idx_and_length_pairs2.push_back(
+    std::pair<int,int>(size,0));
+
+  const size_t length = marginalization_start_idx_and_length_pairs2.size();
+
+  int lastIdx_row = 0;
+  int start_a_i = 0;
+  int start_b_i = 0;
+  for (size_t i = 0; i < length; i++)
+  {
+    int thisIdx_row = marginalization_start_idx_and_length_pairs2[i].first;
+    const int size_b_i = marginalization_start_idx_and_length_pairs2[i].second;
+    const int size_a_i = thisIdx_row - lastIdx_row;
+
+    if (size_a_i > 0)
+    {
+      const_cast<Eigen::MatrixBase<Derived_b_a>&>(b_a).segment(
+        start_a_i, size_a_i) = b.segment(lastIdx_row, size_a_i);
+    }
+
+    if (size_b_i > 0)
+    {
+      const_cast<Eigen::MatrixBase<Derived_b_b>&>(b_b).segment(
+        start_b_i, size_b_i) = b.segment(thisIdx_row, size_b_i);
+    }
+
+    lastIdx_row = thisIdx_row + size_b_i;
+    start_a_i += size_a_i;
+    start_b_i += size_b_i;
+  }
 }
 
 bool MarginalizationError::Evaluate(
