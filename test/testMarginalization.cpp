@@ -490,6 +490,11 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << " accel bias with full problem: " << b_a_2_prev.transpose()
             << "\nwith first state marginalized: " << b_a_2_est.transpose()
             << "\n                  groundtruth: " << b_a_2.transpose();
+
+  delete q_ws_0_est;
+  delete v_s_0_est;
+  delete b_a_0_est;
+  delete b_g_0_est;
   
 }
 
