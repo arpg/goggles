@@ -5,6 +5,7 @@
 <launch>
 
   <!-- set default for ti_mmwave_rospkg args -->
+  <arg name="launch_radar" default="true" doc="launch radar in addition to velocity estimator?"/>
   <arg name="config" default="rangeRes_0-12_velRes_0-04_rangeMax_12-79_3d_10Hz" doc="3d best velocity resolution - Doppler peak grouping enabled"/>
   <arg name="sdk" default="03_02_00_04"/>
   <arg name="command_port" default="/dev/ttyACM0"/>
@@ -14,7 +15,7 @@
   <arg name="rviz" default="false"/>
 
   <!-- Call mmWave sensor launch file -->
-  <include file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
+  <include if="$(arg launch_radar)" file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
     <arg name="device" value="1843" doc="TI mmWave sensor device type [1443, 1642, 1843]"/>
     <arg name="config" value="$(arg config)"/>
     <arg name="sdk" value="$(arg sdk)" doc="version of SDK that firmware is compiled for - use 03_02_00_04"/>
