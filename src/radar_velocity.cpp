@@ -356,15 +356,15 @@ private:
     vel.twist.twist.linear.y = velocity[1];
     vel.twist.twist.linear.z = velocity[2];
 
-		// vel.twist.covariance[1] = covariance(1,1);
-		// vel.twist.covariance[7] = covariance(2,2);
-		// vel.twist.covariance[15] = covariance(3,3);
+		vel.twist.covariance[0] = covariance(0,0);
+		vel.twist.covariance[7] = covariance(1,1);
+		vel.twist.covariance[14] = covariance(2,2);
 
-    for (int i = 0; i < 3; i++)
-    {
-      for (int j = 0; j < 3; j++)
-        vel.twist.covariance[(i*6)+j] = covariance(i,j);
-    }
+    // for (int i = 0; i < 3; i++)
+    // {
+    //   for (int j = 0; j < 3; j++)
+    //     vel.twist.covariance[(i*6)+j] = covariance(i,j);
+    // }
   }
 
   /** \brief get the maximum and minimum intensity in the input cloud
