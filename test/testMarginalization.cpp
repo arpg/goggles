@@ -169,6 +169,7 @@ TEST(googleTests, testMarginalization)
     if (i > int((duration*imu_rate) / 2.0) - 5)
       imuMeasurements1.push_back(new_meas);
   }
+
   Eigen::Quaterniond q_ws_0_est = q_ws_0;
   Eigen::Vector3d v_s_0_est = v_s_0;
   Eigen::Vector3d b_g_0_est = b_g_0;
@@ -206,7 +207,11 @@ TEST(googleTests, testMarginalization)
   problem.AddParameterBlock(b_a_2_est.data(),3);
   problem.SetParameterization(q_ws_2_est.coeffs().data(), quat_param);
 
+  problem.SetParameterBlockConstant(b_a_0_est.data());
+  problem.SetParameterBlockConstant(b_g_0_est.data());
+
   // create the IMU error terms
+  
   ceres::CostFunction* imu_cost_func_0 = 
       new ImuVelocityCostFunction(t0, t1,
                                   imuMeasurements0,
@@ -238,7 +243,7 @@ TEST(googleTests, testMarginalization)
                             v_s_2_est.data(),
                             b_g_2_est.data(),
                             b_a_2_est.data());
-
+  
   // create doppler measurements
   std::vector<std::pair<double,Eigen::Vector3d>> targets_0;
   std::vector<std::pair<double,Eigen::Vector3d>> targets_1;
@@ -247,10 +252,11 @@ TEST(googleTests, testMarginalization)
   double x = 10.0;
   std::random_device rd{};
   std::mt19937 gen{rd()};
-  std::normal_distribution<double> d(0, 1.0);
-  for (size_t y = -5; y < 5; y++)
+  std::normal_distribution<double> d(0, 0.05);
+  
+  for (int y = -5; y < 5; y += 3)
   {
-    for (size_t z = -5; z < 5; z++)
+    for (int z = -5; z < 5; z += 3)
     {
       Eigen::Vector3d point;
       point << x, y, z;
@@ -260,16 +266,16 @@ TEST(googleTests, testMarginalization)
       Eigen::Vector3d v_target_1 = -1.0 * v_s_1;
       Eigen::Vector3d v_target_2 = -1.0 * v_s_2;
 
-      double doppler_0 = v_target_0.dot(ray) + d(gen);
-      double doppler_1 = v_target_1.dot(ray) + d(gen);
-      double doppler_2 = v_target_2.dot(ray) + d(gen);
+      double doppler_0 = v_target_0.dot(ray);// + d(gen);
+      double doppler_1 = v_target_1.dot(ray);// + d(gen);
+      double doppler_2 = v_target_2.dot(ray);// + d(gen);
 
       targets_0.push_back(std::pair<double,Eigen::Vector3d>(doppler_0, point));
       targets_1.push_back(std::pair<double,Eigen::Vector3d>(doppler_1, point));
       targets_2.push_back(std::pair<double,Eigen::Vector3d>(doppler_2, point));
     }
   }
-
+  
   // create and add residuals and record their ids
   std::vector<ceres::ResidualBlockId> state_0_residuals;
   for (size_t i = 0; i < targets_0.size(); i++)
@@ -277,7 +283,7 @@ TEST(googleTests, testMarginalization)
     ceres::CostFunction* v_cost_func_0 = 
       new BodyVelocityCostFunction(targets_0[i].first,
                                    targets_0[i].second,
-                                   1.0);
+                                   0.01);
     ceres::ResidualBlockId id_0 = problem.AddResidualBlock(v_cost_func_0,
                                                          NULL,
                                                          v_s_0_est.data());
@@ -291,7 +297,7 @@ TEST(googleTests, testMarginalization)
     ceres::CostFunction* v_cost_func_1 = 
       new BodyVelocityCostFunction(targets_1[i].first,
                                    targets_1[i].second,
-                                   1.0);
+                                   0.01);
     ceres::ResidualBlockId id_1 = problem.AddResidualBlock(v_cost_func_1,
                                                          NULL,
                                                          v_s_1_est.data());
@@ -306,7 +312,7 @@ TEST(googleTests, testMarginalization)
     ceres::CostFunction* v_cost_func_2 = 
       new BodyVelocityCostFunction(targets_2[i].first,
                                    targets_2[i].second,
-                                   1.0);
+                                   0.01);
     ceres::ResidualBlockId id_2 = problem.AddResidualBlock(v_cost_func_2,
                                                          NULL,
                                                          v_s_2_est.data());
@@ -319,6 +325,34 @@ TEST(googleTests, testMarginalization)
   ceres::Solve(options, &problem, &summary);
 
   //LOG(INFO) << summary.FullReport();
+
+  LOG(INFO) << " q_ws_0 gt: " << q_ws_0.coeffs().transpose();
+  LOG(INFO) << "q_ws_0 est: " << q_ws_0_est.coeffs().transpose();
+  LOG(INFO) << "  v_s_0 gt: " << v_s_0.transpose();
+  LOG(INFO) << " v_s_0 est: " << v_s_0_est.transpose();
+  LOG(INFO) << "  b_g_0 gt: " << b_g_0.transpose();
+  LOG(INFO) << " b_g_0 est: " << b_g_0_est.transpose();
+  LOG(INFO) << "  b_a_0 gt: " << b_a_0.transpose();
+  LOG(INFO) << " b_a_0 est: " << b_a_0_est.transpose() << "\n\n";
+
+  LOG(INFO) << " q_ws_1 gt: " << q_ws_1.coeffs().transpose();
+  LOG(INFO) << "q_ws_1 est: " << q_ws_1_est.coeffs().transpose();
+  LOG(INFO) << "  v_s_1 gt: " << v_s_1.transpose();
+  LOG(INFO) << " v_s_1 est: " << v_s_1_est.transpose();
+  LOG(INFO) << "  b_g_1 gt: " << b_g_1.transpose();
+  LOG(INFO) << " b_g_1 est: " << b_g_1_est.transpose();
+  LOG(INFO) << "  b_a_1 gt: " << b_a_1.transpose();
+  LOG(INFO) << " b_a_1 est: " << b_a_1_est.transpose() << "\n\n";
+
+  LOG(INFO) << " q_ws_2 gt: " << q_ws_2.coeffs().transpose();
+  LOG(INFO) << "q_ws_2 est: " << q_ws_2_est.coeffs().transpose();
+  LOG(INFO) << "  v_s_2 gt: " << v_s_2.transpose();
+  LOG(INFO) << " v_s_2 est: " << v_s_2_est.transpose();
+  LOG(INFO) << "  b_g_2 gt: " << b_g_2.transpose();
+  LOG(INFO) << " b_g_2 est: " << b_g_2_est.transpose();
+  LOG(INFO) << "  b_a_2 gt: " << b_a_2.transpose();
+  LOG(INFO) << " b_a_2 est: " << b_a_2_est.transpose() << "\n\n";
+
   Eigen::Quaterniond q_0_err = q_ws_0_est * q_ws_0.inverse();
   Eigen::Vector3d v_0_err = v_s_0_est - v_s_0;
   Eigen::Vector3d b_g_0_err = b_g_0_est - b_g_0;
@@ -348,13 +382,13 @@ TEST(googleTests, testMarginalization)
   ASSERT_TRUE(b_g_0_err.norm() < err_lim) << "gyro bias error at t0 of " << b_g_0_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_0.transpose() << '\n'
-                                        << "groundtruth: " << b_g_0_est.transpose();
+                                        << "  estimated: " << b_g_0_est.transpose() << '\n'
+                                        << "groundtruth: " << b_g_0.transpose();
   ASSERT_TRUE(b_a_0_err.norm() < err_lim) << "accel bias error at t0 of " << b_a_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_0.transpose() << '\n'
-                                        << "groundtruth: " << b_a_0_est.transpose();
+                                        << "  estimated: " << b_a_0_est.transpose() << '\n'
+                                        << "groundtruth: " << b_a_0.transpose();
 
   ASSERT_TRUE(q_1_err.coeffs().head(3).norm() < err_lim) << "orientation error at t1 of " 
                                         << q_1_err.coeffs().head(3).norm()
@@ -370,13 +404,13 @@ TEST(googleTests, testMarginalization)
   ASSERT_TRUE(b_g_1_err.norm() < err_lim) << "gyro bias error at t1 of " << b_g_1_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_1.transpose() << '\n'
-                                        << "groundtruth: " << b_g_1_est.transpose();
+                                        << "  estimated: " << b_g_1_est.transpose() << '\n'
+                                        << "groundtruth: " << b_g_1.transpose();
   ASSERT_TRUE(b_a_1_err.norm() < err_lim) << "accel bias error at t1 of " << b_a_1_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_1.transpose() << '\n'
-                                        << "groundtruth: " << b_a_1_est.transpose();
+                                        << "  estimated: " << b_a_1_est.transpose() << '\n'
+                                        << "groundtruth: " << b_a_1.transpose();
 
   ASSERT_TRUE(q_2_err.coeffs().head(3).norm() < err_lim) << "orientation error at t2 of " 
                                         << q_2_err.coeffs().head(3).norm()
@@ -387,22 +421,21 @@ TEST(googleTests, testMarginalization)
   ASSERT_TRUE(v_2_err.norm() < err_lim) << "velocity error at t2 of " << v_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << v_s.transpose() << '\n'
-                                        << "groundtruth: " << v_s_1.transpose();
+                                        << "  estimated: " << v_s_2_est.transpose() << '\n'
+                                        << "groundtruth: " << v_s_2.transpose();
   ASSERT_TRUE(b_g_2_err.norm() < err_lim) << "gyro bias error at t2 of " << b_g_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_2.transpose() << '\n'
-                                        << "groundtruth: " << b_g_2_est.transpose();
+                                        << "  estimated: " << b_g_2_est.transpose() << '\n'
+                                        << "groundtruth: " << b_g_2.transpose();
   ASSERT_TRUE(b_a_2_err.norm() < err_lim) << "accel bias error at t2 of " << b_a_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_2.transpose() << '\n'
-                                        << "groundtruth: " << b_a_2_est.transpose();
-
+                                        << "  estimated: " << b_a_2_est.transpose() << '\n'
+                                        << "groundtruth: " << b_a_2.transpose();
 
   /*---- marginalize out last state and associated measurements ----*/
-
+  
   // save previous estimates
   Eigen::Quaterniond q_ws_1_prev = q_ws_1_est;
   Eigen::Vector3d v_s_1_prev = v_s_1_est;
@@ -418,7 +451,7 @@ TEST(googleTests, testMarginalization)
   MarginalizationError marginalization_error(problem_ptr);
 
   // add residuals and states
-  LOG(INFO) << "Adding residual blocks";
+  LOG(INFO) << "Adding " << state_0_residuals.size() << " residual blocks";
   marginalization_error.AddResidualBlocks(state_0_residuals);
   std::vector<double*> marginalize_param_blocks;
   marginalize_param_blocks.push_back(q_ws_0_est.coeffs().data());
@@ -456,6 +489,7 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << " accel bias with full problem: " << b_a_2_prev.transpose()
             << "\nwith first state marginalized: " << b_a_2_est.transpose()
             << "\n                  groundtruth: " << b_a_2.transpose();
+  
 }
 
 int main(int argc, char **argv)

@@ -132,8 +132,8 @@ protected:
     { 
     }
 
-    ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
-                       std::shared_ptr<ceres::Problem> problem,
+    ParameterBlockInfo(std::shared_ptr<double> &parameter_block_ptr,
+                       std::shared_ptr<ceres::Problem> &problem,
                        size_t ordering_idx)
       : parameter_block_ptr(parameter_block_ptr),
         problem(problem),
