@@ -80,12 +80,11 @@ bool MarginalizationError::AddResidualBlock(
       LOG(INFO) << "residual not associated to existing parameter block, adding new block";
 
       // get current parameter block info
-      info = ParameterBlockInfo(std::shared_ptr<double>(param_blks[i]),
-                                problem_,
-                                0);
-      info.minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
-      info.dimension = problem_->ParameterBlockSize(param_blks[i]);
-
+      size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
+      size_t dimension = problem_->ParameterBlockSize(param_blks[i]);
+      std::shared_ptr<double> param_ptr = std::make_shared<double>(dimension);
+      param_ptr.reset(param_blks[i], std::default_delete<double[]>());
+      info = ParameterBlockInfo(param_ptr, 0, dimension, minimal_dimension);
 
       // resize equation system
       const size_t orig_size = H_.cols();
@@ -111,8 +110,8 @@ bool MarginalizationError::AddResidualBlock(
       LOG(INFO) << "minimal dim: " << info.minimal_dimension;
       LOG(INFO) << "   full dim: " << info.dimension;
       LOG(INFO) << "ordering id: " << info.ordering_idx;
-      if (info.linearization_point.get()) LOG(INFO) << "linearization point set";
-      if (info.parameter_block_ptr.get()) LOG(INFO) << "param block pointer set";
+      if (info.linearization_point) LOG(INFO) << "linearization point set";
+      if (info.parameter_block_ptr) LOG(INFO) << "param block pointer set";
 
       // update base type bookkeeping
       base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
@@ -123,9 +122,7 @@ bool MarginalizationError::AddResidualBlock(
       info = param_block_info_.at(it->second);
     }
   }
-
   base_t::set_num_residuals(H_.cols());
-
   double** parameters_raw = new double*[param_blks.size()];
   Eigen::VectorXd residuals_eigen(err_interface_ptr->ResidualDim());
   double* residuals_raw = residuals_eigen.data();
@@ -160,7 +157,6 @@ bool MarginalizationError::AddResidualBlock(
   }
 
   // evaluate the residual
-  // won't work as-is; need to implement error interface
   err_interface_ptr->EvaluateWithMinimalJacobians(parameters_raw, 
                                                   residuals_raw, 
                                                   jacobians_raw,
@@ -410,10 +406,7 @@ bool MarginalizationError::MarginalizeOut(
     LOG(INFO) << "geting param block idx";
     size_t idx = parameter_block_id_2_block_info_idx_.find(
       parameter_blocks_copy[i])->second;
-    LOG(INFO) << "getting minimal dim for param block at index " << idx;
     int margSize = param_block_info_.at(idx).minimal_dimension;
-    LOG(INFO) << "erasing param block info entry";
-    LOG(INFO) << "param block info size: " << param_block_info_.size();
 
     param_block_info_.erase(param_block_info_.begin() + idx);
 

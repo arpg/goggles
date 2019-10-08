@@ -170,10 +170,10 @@ TEST(googleTests, testMarginalization)
       imuMeasurements1.push_back(new_meas);
   }
 
-  Eigen::Quaterniond q_ws_0_est = q_ws_0;
-  Eigen::Vector3d v_s_0_est = v_s_0;
-  Eigen::Vector3d b_g_0_est = b_g_0;
-  Eigen::Vector3d b_a_0_est = b_a_0;
+  Eigen::Quaterniond* q_ws_0_est = new Eigen::Quaterniond(q_ws_0);
+  Eigen::Vector3d* v_s_0_est = new Eigen::Vector3d(v_s_0);
+  Eigen::Vector3d* b_g_0_est = new Eigen::Vector3d(b_g_0);
+  Eigen::Vector3d* b_a_0_est = new Eigen::Vector3d(b_a_0);
 
   Eigen::Quaterniond q_ws_1_est = q_ws_1;
   Eigen::Vector3d v_s_1_est = v_s_1;
@@ -191,11 +191,11 @@ TEST(googleTests, testMarginalization)
 
   // add (fixed) initial state parameter blocks
   ceres::LocalParameterization* quat_param = new QuaternionParameterization;
-  problem.AddParameterBlock(v_s_0_est.data(),3);
-  problem.AddParameterBlock(q_ws_0_est.coeffs().data(),4);
-  problem.AddParameterBlock(b_g_0_est.data(),3);
-  problem.AddParameterBlock(b_a_0_est.data(),3);
-  problem.SetParameterization(q_ws_0_est.coeffs().data(), quat_param);
+  problem.AddParameterBlock(v_s_0_est->data(),3);
+  problem.AddParameterBlock(q_ws_0_est->coeffs().data(),4);
+  problem.AddParameterBlock(b_g_0_est->data(),3);
+  problem.AddParameterBlock(b_a_0_est->data(),3);
+  problem.SetParameterization(q_ws_0_est->coeffs().data(), quat_param);
   problem.AddParameterBlock(v_s_1_est.data(),3);
   problem.AddParameterBlock(q_ws_1_est.coeffs().data(),4);
   problem.AddParameterBlock(b_g_1_est.data(),3);
@@ -207,8 +207,8 @@ TEST(googleTests, testMarginalization)
   problem.AddParameterBlock(b_a_2_est.data(),3);
   problem.SetParameterization(q_ws_2_est.coeffs().data(), quat_param);
 
-  problem.SetParameterBlockConstant(b_a_0_est.data());
-  problem.SetParameterBlockConstant(b_g_0_est.data());
+  problem.SetParameterBlockConstant(b_a_0_est->data());
+  problem.SetParameterBlockConstant(b_g_0_est->data());
 
   // create the IMU error terms
   
@@ -219,10 +219,10 @@ TEST(googleTests, testMarginalization)
   ceres::ResidualBlockId imu_id_0 = 
     problem.AddResidualBlock(imu_cost_func_0,
                             NULL,
-                            q_ws_0_est.coeffs().data(),
-                            v_s_0_est.data(),
-                            b_g_0_est.data(),
-                            b_a_0_est.data(),
+                            q_ws_0_est->coeffs().data(),
+                            v_s_0_est->data(),
+                            b_g_0_est->data(),
+                            b_a_0_est->data(),
                             q_ws_1_est.coeffs().data(),
                             v_s_1_est.data(),
                             b_g_1_est.data(),
@@ -286,7 +286,7 @@ TEST(googleTests, testMarginalization)
                                    0.01);
     ceres::ResidualBlockId id_0 = problem.AddResidualBlock(v_cost_func_0,
                                                          NULL,
-                                                         v_s_0_est.data());
+                                                         v_s_0_est->data());
     state_0_residuals.push_back(id_0);
   }
   state_0_residuals.push_back(imu_id_0);
@@ -327,13 +327,13 @@ TEST(googleTests, testMarginalization)
   //LOG(INFO) << summary.FullReport();
 
   LOG(INFO) << " q_ws_0 gt: " << q_ws_0.coeffs().transpose();
-  LOG(INFO) << "q_ws_0 est: " << q_ws_0_est.coeffs().transpose();
+  LOG(INFO) << "q_ws_0 est: " << q_ws_0_est->coeffs().transpose();
   LOG(INFO) << "  v_s_0 gt: " << v_s_0.transpose();
-  LOG(INFO) << " v_s_0 est: " << v_s_0_est.transpose();
+  LOG(INFO) << " v_s_0 est: " << v_s_0_est->transpose();
   LOG(INFO) << "  b_g_0 gt: " << b_g_0.transpose();
-  LOG(INFO) << " b_g_0 est: " << b_g_0_est.transpose();
+  LOG(INFO) << " b_g_0 est: " << b_g_0_est->transpose();
   LOG(INFO) << "  b_a_0 gt: " << b_a_0.transpose();
-  LOG(INFO) << " b_a_0 est: " << b_a_0_est.transpose() << "\n\n";
+  LOG(INFO) << " b_a_0 est: " << b_a_0_est->transpose() << "\n\n";
 
   LOG(INFO) << " q_ws_1 gt: " << q_ws_1.coeffs().transpose();
   LOG(INFO) << "q_ws_1 est: " << q_ws_1_est.coeffs().transpose();
@@ -353,10 +353,10 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << "  b_a_2 gt: " << b_a_2.transpose();
   LOG(INFO) << " b_a_2 est: " << b_a_2_est.transpose() << "\n\n";
 
-  Eigen::Quaterniond q_0_err = q_ws_0_est * q_ws_0.inverse();
-  Eigen::Vector3d v_0_err = v_s_0_est - v_s_0;
-  Eigen::Vector3d b_g_0_err = b_g_0_est - b_g_0;
-  Eigen::Vector3d b_a_0_err = b_a_0_est - b_a_0;
+  Eigen::Quaterniond q_0_err = *q_ws_0_est * q_ws_0.inverse();
+  Eigen::Vector3d v_0_err = *v_s_0_est - v_s_0;
+  Eigen::Vector3d b_g_0_err = *b_g_0_est - b_g_0;
+  Eigen::Vector3d b_a_0_err = *b_a_0_est - b_a_0;
   Eigen::Quaterniond q_1_err = q_ws_1_est * q_ws_1.inverse();
   Eigen::Vector3d v_1_err = v_s_1_est - v_s_1;
   Eigen::Vector3d b_g_1_err = b_g_1_est - b_g_1;
@@ -367,27 +367,27 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d b_a_2_err = b_a_2_est - b_a_2;
 
   double err_lim = 1.0e-1;
-
+  
   ASSERT_TRUE(q_0_err.coeffs().head(3).norm() < err_lim) << "orientation error at t0 of " 
                                         << q_0_err.coeffs().head(3).norm()
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << q_ws_0_est.coeffs().transpose() << '\n'
+                                        << "  estimated: " << q_ws_0_est->coeffs().transpose() << '\n'
                                         << "groundtruth: " << q_ws_0.coeffs().transpose();
   ASSERT_TRUE(v_0_err.norm() < err_lim) << "velocity error at t0 of " << v_0_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << v_s_0_est.transpose() << '\n'
+                                        << "  estimated: " << v_s_0_est->transpose() << '\n'
                                         << "groundtruth: " << v_s_0.transpose();
   ASSERT_TRUE(b_g_0_err.norm() < err_lim) << "gyro bias error at t0 of " << b_g_0_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_0_est.transpose() << '\n'
+                                        << "  estimated: " << b_g_0_est->transpose() << '\n'
                                         << "groundtruth: " << b_g_0.transpose();
   ASSERT_TRUE(b_a_0_err.norm() < err_lim) << "accel bias error at t0 of " << b_a_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_0_est.transpose() << '\n'
+                                        << "  estimated: " << b_a_0_est->transpose() << '\n'
                                         << "groundtruth: " << b_a_0.transpose();
 
   ASSERT_TRUE(q_1_err.coeffs().head(3).norm() < err_lim) << "orientation error at t1 of " 
@@ -433,7 +433,7 @@ TEST(googleTests, testMarginalization)
                                         << err_lim << "\n"
                                         << "  estimated: " << b_a_2_est.transpose() << '\n'
                                         << "groundtruth: " << b_a_2.transpose();
-
+	
   /*---- marginalize out last state and associated measurements ----*/
   
   // save previous estimates
@@ -454,12 +454,13 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << "Adding " << state_0_residuals.size() << " residual blocks";
   marginalization_error.AddResidualBlocks(state_0_residuals);
   std::vector<double*> marginalize_param_blocks;
-  marginalize_param_blocks.push_back(q_ws_0_est.coeffs().data());
-  marginalize_param_blocks.push_back(v_s_0_est.data());
-  marginalize_param_blocks.push_back(b_g_0_est.data());
-  marginalize_param_blocks.push_back(b_a_0_est.data());
+  marginalize_param_blocks.push_back(q_ws_0_est->coeffs().data());
+  marginalize_param_blocks.push_back(v_s_0_est->data());
+  marginalize_param_blocks.push_back(b_g_0_est->data());
+  marginalize_param_blocks.push_back(b_a_0_est->data());
   LOG(INFO) << "Marginalizing parameter blocks"; // currently fails at this step
   marginalization_error.MarginalizeOut(marginalize_param_blocks);
+  marginalization_error.UpdateErrorComputation();
 
   // add marginalization error to problem
   LOG(INFO) << "Adding marginalization residual to problem";

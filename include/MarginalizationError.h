@@ -122,7 +122,6 @@ protected:
     size_t dimension;
     size_t minimal_dimension;
     std::shared_ptr<double> linearization_point;
-    std::shared_ptr<ceres::Problem> problem;
 
     ParameterBlockInfo()
       : parameter_block_ptr(std::shared_ptr<double>()),
@@ -132,38 +131,23 @@ protected:
     { 
     }
 
-    ParameterBlockInfo(std::shared_ptr<double> &parameter_block_ptr,
-                       std::shared_ptr<ceres::Problem> &problem,
-                       size_t ordering_idx)
+    ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
+                       size_t ordering_idx,
+                       size_t dimension,
+                       size_t minimal_dimension)
       : parameter_block_ptr(parameter_block_ptr),
-        problem(problem),
-        ordering_idx(ordering_idx)
+        ordering_idx(ordering_idx),
+        dimension(dimension),
+        minimal_dimension(minimal_dimension)
     {
-      if (problem->GetParameterization(parameter_block_ptr.get()))
-      {
-        dimension = problem->GetParameterization(
-            parameter_block_ptr.get())->GlobalSize();
-        minimal_dimension = problem->GetParameterization(
-            parameter_block_ptr.get())->LocalSize();
-      }
-      else
-      {
-        dimension = problem->ParameterBlockSize(parameter_block_ptr.get());
-        minimal_dimension = dimension;
-      }
-      if (problem->IsParameterBlockConstant(parameter_block_ptr.get()));
-      {
-        minimal_dimension = 0;
-      }
       linearization_point.reset(new double[dimension],
-                                std::default_delete<double[]>());
+                               std::default_delete<double[]>());
       ResetLinearizationPoint(parameter_block_ptr);
     }
 
-    void ResetLinearizationPoint(
-        std::shared_ptr<double> parameter_block_ptr)
+    void ResetLinearizationPoint(std::shared_ptr<double> param_ptr)
     {
-      memcpy(linearization_point.get(), parameter_block_ptr.get(), 
+      memcpy(linearization_point.get(), param_ptr.get(), 
         dimension * sizeof(double));
     }
   };
