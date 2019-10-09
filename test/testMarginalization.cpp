@@ -28,7 +28,7 @@ double sinc_test(double x)
   }
 }
 
-
+const double jacobianTolerance = 1.0e-6;
 
 TEST(googleTests, testMarginalization)
 {
@@ -175,37 +175,37 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d* b_g_0_est = new Eigen::Vector3d(b_g_0);
   Eigen::Vector3d* b_a_0_est = new Eigen::Vector3d(b_a_0);
 
-  Eigen::Quaterniond q_ws_1_est = q_ws_1;
-  Eigen::Vector3d v_s_1_est = v_s_1;
-  Eigen::Vector3d b_g_1_est = b_g_1;
-  Eigen::Vector3d b_a_1_est = b_a_1;
+  Eigen::Quaterniond* q_ws_1_est = new Eigen::Quaterniond(q_ws_1);
+  Eigen::Vector3d* v_s_1_est = new Eigen::Vector3d(v_s_1);
+  Eigen::Vector3d* b_g_1_est = new Eigen::Vector3d(b_g_1);
+  Eigen::Vector3d* b_a_1_est = new Eigen::Vector3d(b_a_1);
 
-  Eigen::Quaterniond q_ws_2_est = q_ws_2;
-  Eigen::Vector3d v_s_2_est = v_s_2;
-  Eigen::Vector3d b_g_2_est = b_g_2;
-  Eigen::Vector3d b_a_2_est = b_a_2;
+  Eigen::Quaterniond* q_ws_2_est = new Eigen::Quaterniond(q_ws_2);
+  Eigen::Vector3d* v_s_2_est = new Eigen::Vector3d(v_s_2);
+  Eigen::Vector3d* b_g_2_est = new Eigen::Vector3d(b_g_2);
+  Eigen::Vector3d* b_a_2_est = new Eigen::Vector3d(b_a_2);
   
   // create ceres problem
   ceres::Problem problem;
   ceres::Solver::Options options;
 
   // add (fixed) initial state parameter blocks
-  ceres::LocalParameterization* quat_param = new QuaternionParameterization;
+  QuaternionParameterization* quat_param = new QuaternionParameterization;
   problem.AddParameterBlock(v_s_0_est->data(),3);
   problem.AddParameterBlock(q_ws_0_est->coeffs().data(),4);
   problem.AddParameterBlock(b_g_0_est->data(),3);
   problem.AddParameterBlock(b_a_0_est->data(),3);
   problem.SetParameterization(q_ws_0_est->coeffs().data(), quat_param);
-  problem.AddParameterBlock(v_s_1_est.data(),3);
-  problem.AddParameterBlock(q_ws_1_est.coeffs().data(),4);
-  problem.AddParameterBlock(b_g_1_est.data(),3);
-  problem.AddParameterBlock(b_a_1_est.data(),3);
-  problem.SetParameterization(q_ws_1_est.coeffs().data(), quat_param);
-  problem.AddParameterBlock(v_s_2_est.data(),3);
-  problem.AddParameterBlock(q_ws_2_est.coeffs().data(),4);
-  problem.AddParameterBlock(b_g_2_est.data(),3);
-  problem.AddParameterBlock(b_a_2_est.data(),3);
-  problem.SetParameterization(q_ws_2_est.coeffs().data(), quat_param);
+  problem.AddParameterBlock(v_s_1_est->data(),3);
+  problem.AddParameterBlock(q_ws_1_est->coeffs().data(),4);
+  problem.AddParameterBlock(b_g_1_est->data(),3);
+  problem.AddParameterBlock(b_a_1_est->data(),3);
+  problem.SetParameterization(q_ws_1_est->coeffs().data(), quat_param);
+  problem.AddParameterBlock(v_s_2_est->data(),3);
+  problem.AddParameterBlock(q_ws_2_est->coeffs().data(),4);
+  problem.AddParameterBlock(b_g_2_est->data(),3);
+  problem.AddParameterBlock(b_a_2_est->data(),3);
+  problem.SetParameterization(q_ws_2_est->coeffs().data(), quat_param);
 
   problem.SetParameterBlockConstant(b_a_0_est->data());
   problem.SetParameterBlockConstant(b_g_0_est->data());
@@ -223,10 +223,10 @@ TEST(googleTests, testMarginalization)
                             v_s_0_est->data(),
                             b_g_0_est->data(),
                             b_a_0_est->data(),
-                            q_ws_1_est.coeffs().data(),
-                            v_s_1_est.data(),
-                            b_g_1_est.data(),
-                            b_a_1_est.data());
+                            q_ws_1_est->coeffs().data(),
+                            v_s_1_est->data(),
+                            b_g_1_est->data(),
+                            b_a_1_est->data());
 
   ceres::CostFunction* imu_cost_func_1 = 
       new ImuVelocityCostFunction(t1, t2,
@@ -235,14 +235,14 @@ TEST(googleTests, testMarginalization)
   ceres::ResidualBlockId imu_id_1 =
     problem.AddResidualBlock(imu_cost_func_1,
                             NULL,
-                            q_ws_1_est.coeffs().data(),
-                            v_s_1_est.data(),
-                            b_g_1_est.data(),
-                            b_a_1_est.data(),
-                            q_ws_2_est.coeffs().data(),
-                            v_s_2_est.data(),
-                            b_g_2_est.data(),
-                            b_a_2_est.data());
+                            q_ws_1_est->coeffs().data(),
+                            v_s_1_est->data(),
+                            b_g_1_est->data(),
+                            b_a_1_est->data(),
+                            q_ws_2_est->coeffs().data(),
+                            v_s_2_est->data(),
+                            b_g_2_est->data(),
+                            b_a_2_est->data());
   
   // create doppler measurements
   std::vector<std::pair<double,Eigen::Vector3d>> targets_0;
@@ -266,9 +266,9 @@ TEST(googleTests, testMarginalization)
       Eigen::Vector3d v_target_1 = -1.0 * v_s_1;
       Eigen::Vector3d v_target_2 = -1.0 * v_s_2;
 
-      double doppler_0 = v_target_0.dot(ray);// + d(gen);
-      double doppler_1 = v_target_1.dot(ray);// + d(gen);
-      double doppler_2 = v_target_2.dot(ray);// + d(gen);
+      double doppler_0 = v_target_0.dot(ray) + d(gen);
+      double doppler_1 = v_target_1.dot(ray) + d(gen);
+      double doppler_2 = v_target_2.dot(ray) + d(gen);
 
       targets_0.push_back(std::pair<double,Eigen::Vector3d>(doppler_0, point));
       targets_1.push_back(std::pair<double,Eigen::Vector3d>(doppler_1, point));
@@ -300,7 +300,7 @@ TEST(googleTests, testMarginalization)
                                    0.01);
     ceres::ResidualBlockId id_1 = problem.AddResidualBlock(v_cost_func_1,
                                                          NULL,
-                                                         v_s_1_est.data());
+                                                         v_s_1_est->data());
     state_1_residuals.push_back(id_1);
   }
   state_1_residuals.push_back(imu_id_0);
@@ -315,7 +315,7 @@ TEST(googleTests, testMarginalization)
                                    0.01);
     ceres::ResidualBlockId id_2 = problem.AddResidualBlock(v_cost_func_2,
                                                          NULL,
-                                                         v_s_2_est.data());
+                                                         v_s_2_est->data());
     state_2_residuals.push_back(id_2);
   }
   state_2_residuals.push_back(imu_id_1);
@@ -336,35 +336,35 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << " b_a_0 est: " << b_a_0_est->transpose() << "\n\n";
 
   LOG(INFO) << " q_ws_1 gt: " << q_ws_1.coeffs().transpose();
-  LOG(INFO) << "q_ws_1 est: " << q_ws_1_est.coeffs().transpose();
+  LOG(INFO) << "q_ws_1 est: " << q_ws_1_est->coeffs().transpose();
   LOG(INFO) << "  v_s_1 gt: " << v_s_1.transpose();
-  LOG(INFO) << " v_s_1 est: " << v_s_1_est.transpose();
+  LOG(INFO) << " v_s_1 est: " << v_s_1_est->transpose();
   LOG(INFO) << "  b_g_1 gt: " << b_g_1.transpose();
-  LOG(INFO) << " b_g_1 est: " << b_g_1_est.transpose();
+  LOG(INFO) << " b_g_1 est: " << b_g_1_est->transpose();
   LOG(INFO) << "  b_a_1 gt: " << b_a_1.transpose();
-  LOG(INFO) << " b_a_1 est: " << b_a_1_est.transpose() << "\n\n";
+  LOG(INFO) << " b_a_1 est: " << b_a_1_est->transpose() << "\n\n";
 
   LOG(INFO) << " q_ws_2 gt: " << q_ws_2.coeffs().transpose();
-  LOG(INFO) << "q_ws_2 est: " << q_ws_2_est.coeffs().transpose();
+  LOG(INFO) << "q_ws_2 est: " << q_ws_2_est->coeffs().transpose();
   LOG(INFO) << "  v_s_2 gt: " << v_s_2.transpose();
-  LOG(INFO) << " v_s_2 est: " << v_s_2_est.transpose();
+  LOG(INFO) << " v_s_2 est: " << v_s_2_est->transpose();
   LOG(INFO) << "  b_g_2 gt: " << b_g_2.transpose();
-  LOG(INFO) << " b_g_2 est: " << b_g_2_est.transpose();
+  LOG(INFO) << " b_g_2 est: " << b_g_2_est->transpose();
   LOG(INFO) << "  b_a_2 gt: " << b_a_2.transpose();
-  LOG(INFO) << " b_a_2 est: " << b_a_2_est.transpose() << "\n\n";
+  LOG(INFO) << " b_a_2 est: " << b_a_2_est->transpose() << "\n\n";
 
   Eigen::Quaterniond q_0_err = *q_ws_0_est * q_ws_0.inverse();
   Eigen::Vector3d v_0_err = *v_s_0_est - v_s_0;
   Eigen::Vector3d b_g_0_err = *b_g_0_est - b_g_0;
   Eigen::Vector3d b_a_0_err = *b_a_0_est - b_a_0;
-  Eigen::Quaterniond q_1_err = q_ws_1_est * q_ws_1.inverse();
-  Eigen::Vector3d v_1_err = v_s_1_est - v_s_1;
-  Eigen::Vector3d b_g_1_err = b_g_1_est - b_g_1;
-  Eigen::Vector3d b_a_1_err = b_a_1_est - b_a_1;
-  Eigen::Quaterniond q_2_err = q_ws_2_est * q_ws_2.inverse();
-  Eigen::Vector3d v_2_err = v_s_2_est - v_s_2;
-  Eigen::Vector3d b_g_2_err = b_g_2_est - b_g_2;
-  Eigen::Vector3d b_a_2_err = b_a_2_est - b_a_2;
+  Eigen::Quaterniond q_1_err = *q_ws_1_est * q_ws_1.inverse();
+  Eigen::Vector3d v_1_err = *v_s_1_est - v_s_1;
+  Eigen::Vector3d b_g_1_err = *b_g_1_est - b_g_1;
+  Eigen::Vector3d b_a_1_err = *b_a_1_est - b_a_1;
+  Eigen::Quaterniond q_2_err = *q_ws_2_est * q_ws_2.inverse();
+  Eigen::Vector3d v_2_err = *v_s_2_est - v_s_2;
+  Eigen::Vector3d b_g_2_err = *b_g_2_est - b_g_2;
+  Eigen::Vector3d b_a_2_err = *b_a_2_est - b_a_2;
 
   double err_lim = 1.0e-1;
   
@@ -394,57 +394,57 @@ TEST(googleTests, testMarginalization)
                                         << q_1_err.coeffs().head(3).norm()
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << q_ws_1_est.coeffs().transpose() << '\n'
+                                        << "  estimated: " << q_ws_1_est->coeffs().transpose() << '\n'
                                         << "groundtruth: " << q_ws_1.coeffs().transpose();
   ASSERT_TRUE(v_1_err.norm() < err_lim) << "velocity error at t1 of " << v_1_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << v_s_1_est.transpose() << '\n'
+                                        << "  estimated: " << v_s_1_est->transpose() << '\n'
                                         << "groundtruth: " << v_s_1.transpose();
   ASSERT_TRUE(b_g_1_err.norm() < err_lim) << "gyro bias error at t1 of " << b_g_1_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_1_est.transpose() << '\n'
+                                        << "  estimated: " << b_g_1_est->transpose() << '\n'
                                         << "groundtruth: " << b_g_1.transpose();
   ASSERT_TRUE(b_a_1_err.norm() < err_lim) << "accel bias error at t1 of " << b_a_1_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_1_est.transpose() << '\n'
+                                        << "  estimated: " << b_a_1_est->transpose() << '\n'
                                         << "groundtruth: " << b_a_1.transpose();
 
   ASSERT_TRUE(q_2_err.coeffs().head(3).norm() < err_lim) << "orientation error at t2 of " 
                                         << q_2_err.coeffs().head(3).norm()
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << q_ws_2_est.coeffs().transpose() << '\n'
+                                        << "  estimated: " << q_ws_2_est->coeffs().transpose() << '\n'
                                         << "groundtruth: " << q_ws_2.coeffs().transpose();
   ASSERT_TRUE(v_2_err.norm() < err_lim) << "velocity error at t2 of " << v_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << v_s_2_est.transpose() << '\n'
+                                        << "  estimated: " << v_s_2_est->transpose() << '\n'
                                         << "groundtruth: " << v_s_2.transpose();
   ASSERT_TRUE(b_g_2_err.norm() < err_lim) << "gyro bias error at t2 of " << b_g_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_g_2_est.transpose() << '\n'
+                                        << "  estimated: " << b_g_2_est->transpose() << '\n'
                                         << "groundtruth: " << b_g_2.transpose();
   ASSERT_TRUE(b_a_2_err.norm() < err_lim) << "accel bias error at t2 of " << b_a_2_err.norm() 
                                         << " is greater than the tolerance of " 
                                         << err_lim << "\n"
-                                        << "  estimated: " << b_a_2_est.transpose() << '\n'
+                                        << "  estimated: " << b_a_2_est->transpose() << '\n'
                                         << "groundtruth: " << b_a_2.transpose();
 	
   /*---- marginalize out last state and associated measurements ----*/
   
   // save previous estimates
-  Eigen::Quaterniond q_ws_1_prev = q_ws_1_est;
-  Eigen::Vector3d v_s_1_prev = v_s_1_est;
-  Eigen::Vector3d b_g_1_prev = b_g_1_est;
-  Eigen::Vector3d b_a_1_prev = b_a_1_est;
-  Eigen::Quaterniond q_ws_2_prev = q_ws_2_est;
-  Eigen::Vector3d v_s_2_prev = v_s_2_est;
-  Eigen::Vector3d b_g_2_prev = b_g_2_est;
-  Eigen::Vector3d b_a_2_prev = b_a_2_est;
+  Eigen::Quaterniond q_ws_1_prev = *q_ws_1_est;
+  Eigen::Vector3d v_s_1_prev = *v_s_1_est;
+  Eigen::Vector3d b_g_1_prev = *b_g_1_est;
+  Eigen::Vector3d b_a_1_prev = *b_a_1_est;
+  Eigen::Quaterniond q_ws_2_prev = *q_ws_2_est;
+  Eigen::Vector3d v_s_2_prev = *v_s_2_est;
+  Eigen::Vector3d b_g_2_prev = *b_g_2_est;
+  Eigen::Vector3d b_a_2_prev = *b_a_2_est;
 
   // set up marginalization error term
   std::shared_ptr<ceres::Problem> problem_ptr(&problem);
@@ -466,40 +466,192 @@ TEST(googleTests, testMarginalization)
   LOG(INFO) << "Adding marginalization residual to problem";
   problem.AddResidualBlock(&marginalization_error, 
                            NULL, 
-                           q_ws_1_est.coeffs().data(),
-                           v_s_1_est.data(),
-                           b_g_1_est.data(),
-                           b_a_1_est.data());
+                           q_ws_1_est->coeffs().data(),
+                           v_s_1_est->data(),
+                           b_g_1_est->data(),
+                           b_a_1_est->data());
+  
+  // check marginalization jacobians by finite differences
+  double* parameters[4];
+  parameters[0] = q_ws_1.coeffs().data();
+  parameters[1] = v_s_1.data();
+  parameters[2] = b_g_1.data();
+  parameters[3] = b_a_1.data();
 
+  double* jacobians_minimal[4];
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J0_min; // w.r.t. orientation at t1
+  jacobians_minimal[0] = J0_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J1_min; // w.r.t. velocity at t1
+  jacobians_minimal[1] = J1_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J2_min; // w.r.t. gyro bias at t1
+  jacobians_minimal[2] = J2_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J3_min; // w.r.t. accel bias at t1
+  jacobians_minimal[3] = J3_min.data();
+
+  double* jacobians[4];
+  Eigen::Matrix<double,12,4,Eigen::RowMajor> J0; // w.r.t. orientation at t1
+  jacobians[0] = J0.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J1; // w.r.t. velocity at t1
+  jacobians[1] = J1.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J2; // w.r.t. gyro bias at t1
+  jacobians[2] = J2.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J3; // w.r.t. accel bias at t1
+  jacobians[3] = J3.data();
+
+  Eigen::Matrix<double,12,1> residuals;
+
+  marginalization_error.EvaluateWithMinimalJacobians(parameters, 
+                                                      residuals.data(), 
+                                                      jacobians,
+                                                      jacobians_minimal);
+
+  double dx = 1e-6;
+
+  Eigen::Matrix<double,12,4> J0_numDiff;
+  Eigen::Matrix<double,12,3> J0_min_numDiff;
+  for (size_t i=0; i<3; i++)
+  {
+    Eigen::Vector3d dp_0;
+    Eigen::Matrix<double,12,1> residuals_p;
+    Eigen::Matrix<double,12,1> residuals_m;
+    dp_0.setZero();
+    dp_0[i] = dx;
+    Eigen::Quaterniond q_ws_1_temp = q_ws_1;
+    quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
+    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    q_ws_1 = q_ws_1_temp; // reset to initial value
+    dp_0[i] = -dx;
+    quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
+    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    q_ws_1 = q_ws_1_temp; // reset again
+    J0_min_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
+  }
+  Eigen::Matrix<double,3,4,Eigen::RowMajor> J0_lift;
+  quat_param->liftJacobian(parameters[0], J0_lift.data());
+
+  J0_numDiff = J0_min_numDiff * J0_lift;
+  if ((J0 - J0_numDiff).norm() > jacobianTolerance)
+  {
+    LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
+      << '\n' << "user provided J0: \n" << J0
+      << '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
+  }
+
+  Eigen::Matrix<double,12,3> J1_numDiff;
+  for (size_t i = 0; i < 3; i++)
+  {
+    Eigen::Vector3d dp_1;
+    Eigen::Matrix<double,12,1> residuals_p;
+    Eigen::Matrix<double,12,1> residuals_m;
+    dp_1.setZero();
+    dp_1[i] = dx;
+    Eigen::Vector3d v_s_1_temp = v_s_1; // save initial state
+    v_s_1 = v_s_1 + dp_1;
+    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    v_s_1 = v_s_1_temp; // reset
+    v_s_1 = v_s_1 - dp_1;
+    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    v_s_1 = v_s_1_temp;
+    J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
+  }
+  
+  if ((J1 - J1_numDiff).norm() > jacobianTolerance)
+  {
+    LOG(ERROR) << "User provided jacobian 1 does not agree with num diff: "
+      << "\nuser provided J1: \n" << J1 
+      << "\n\nnum diff J1:\n" << J1_numDiff << "\n\n";
+  }
+
+  Eigen::Matrix<double,12,3> J2_numDiff;
+  for (size_t i = 0; i < 3; i++)
+  {
+    Eigen::Vector3d dp_2;
+    Eigen::Matrix<double,12,1> residuals_p;
+    Eigen::Matrix<double,12,1> residuals_m;
+    dp_2.setZero();
+    dp_2[i] = dx;
+    Eigen::Vector3d b_g_1_temp = b_g_1; // save initial state
+    b_g_1 = b_g_1 + dp_2;
+    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    b_g_1 = b_g_1_temp; // reset
+    b_g_1 = b_g_1 - dp_2;
+    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    b_g_1 = b_g_1_temp;
+    J2_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
+  }
+  
+  if ((J2 - J2_numDiff).norm() > jacobianTolerance)
+  {
+    LOG(ERROR) << "User provided jacobian 2 does not agree with num diff: "
+      << "\nuser provided J2: \n" << J2 
+      << "\n\nnum diff J2:\n" << J2_numDiff << "\n\n";
+  }
+
+  Eigen::Matrix<double,12,3> J3_numDiff;
+  for (size_t i = 0; i < 3; i++)
+  {
+    Eigen::Vector3d dp_3;
+    Eigen::Matrix<double,12,1> residuals_p;
+    Eigen::Matrix<double,12,1> residuals_m;
+    dp_3.setZero();
+    dp_3[i] = dx;
+    Eigen::Vector3d b_a_1_temp = b_a_1; // save initial state
+    b_a_1 = b_a_1 + dp_3;
+    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    b_a_1 = b_a_1_temp; // reset
+    b_a_1 = b_a_1 - dp_3;
+    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    b_a_1 = b_a_1_temp;
+    J3_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
+  }
+  
+  if ((J3 - J3_numDiff).norm() > jacobianTolerance)
+  {
+    LOG(ERROR) << "User provided jacobian 3 does not agree with num diff: "
+      << "\nuser provided J3: \n" << J3 
+      << "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
+  }
+  
   // solve problem again and compare to earlier estimates
-  LOG(INFO) << "solving problem";
+  LOG(ERROR) << "solving problem";
   ceres::Solve(options, &problem, &summary);
-  LOG(INFO) << "problem solved";
+  LOG(ERROR) << "problem solved";
 
-  LOG(INFO) << summary.FullReport();
+  LOG(ERROR) << summary.FullReport();
 
-  LOG(INFO) << "orientation with full problem: " << q_ws_2_prev.coeffs().transpose() 
-            << "\nwith first state marginalized: " << q_ws_2_est.coeffs().transpose()
-            << "\n                  groundtruth: " << q_ws_2.coeffs().transpose();
-  LOG(INFO) << "   velocity with full problem: " << v_s_2_prev.transpose()
-            << "\nwith first state marginalized: " << v_s_2_est.transpose()
-            << "\n                  groundtruth: " << v_s_2.transpose();
-  LOG(INFO) << "  gyro bias with full problem: " << b_g_2_prev.transpose()
-            << "\nwith first state marginalized: " << b_g_2_est.transpose()
-            << "\n                  groundtruth: " << b_g_2.transpose();
-  LOG(INFO) << " accel bias with full problem: " << b_a_2_prev.transpose()
-            << "\nwith first state marginalized: " << b_a_2_est.transpose()
-            << "\n                  groundtruth: " << b_a_2.transpose();
-
+  LOG(ERROR) << "orientation with full problem: " << q_ws_2_prev.coeffs().transpose() 
+             << "\nwith first state marginalized: " << q_ws_2_est->coeffs().transpose()
+             << "\n                  groundtruth: " << q_ws_2.coeffs().transpose();
+  LOG(ERROR) << "   velocity with full problem: " << v_s_2_prev.transpose()
+             << "\nwith first state marginalized: " << v_s_2_est->transpose()
+             << "\n                  groundtruth: " << v_s_2.transpose();
+  LOG(ERROR) << "  gyro bias with full problem: " << b_g_2_prev.transpose()
+             << "\nwith first state marginalized: " << b_g_2_est->transpose()
+             << "\n                  groundtruth: " << b_g_2.transpose();
+  LOG(ERROR) << " accel bias with full problem: " << b_a_2_prev.transpose()
+             << "\nwith first state marginalized: " << b_a_2_est->transpose()
+             << "\n                  groundtruth: " << b_a_2.transpose();
+  
   delete q_ws_0_est;
   delete v_s_0_est;
   delete b_a_0_est;
   delete b_g_0_est;
+
+  delete q_ws_1_est;
+  delete v_s_1_est;
+  delete b_a_1_est;
+  delete b_g_1_est;
+
+  delete q_ws_2_est;
+  delete v_s_2_est;
+  delete b_a_2_est;
+  delete b_g_2_est;
   
 }
 
 int main(int argc, char **argv)
 {
+  google::InitGoogleLogging(argv[0]);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
