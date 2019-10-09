@@ -77,7 +77,6 @@ bool MarginalizationError::AddResidualBlock(
     // if parameter block is not connected, add it
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
-      LOG(INFO) << "residual not associated to existing parameter block, adding new block";
 
       // get current parameter block info
       size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
@@ -107,18 +106,17 @@ bool MarginalizationError::AddResidualBlock(
         std::pair<double*, size_t>(param_blks[i],
                                    param_block_info_.size() - 1.0));
 
-      LOG(INFO) << "minimal dim: " << info.minimal_dimension;
-      LOG(INFO) << "   full dim: " << info.dimension;
-      LOG(INFO) << "ordering id: " << info.ordering_idx;
-      if (info.linearization_point) LOG(INFO) << "linearization point set";
-      if (info.parameter_block_ptr) LOG(INFO) << "param block pointer set";
+      //LOG(INFO) << "minimal dim: " << info.minimal_dimension;
+      //LOG(INFO) << "   full dim: " << info.dimension;
+      //LOG(INFO) << "ordering id: " << info.ordering_idx;
+      //if (info.linearization_point) LOG(INFO) << "linearization point set";
+      //if (info.parameter_block_ptr) LOG(INFO) << "param block pointer set";
 
       // update base type bookkeeping
       base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
     }
     else
     {
-      LOG(INFO) << "residual associated to existing parameter block";
       info = param_block_info_.at(it->second);
     }
   }
@@ -163,10 +161,8 @@ bool MarginalizationError::AddResidualBlock(
                                                   jacobians_minimal_raw);
 
   // apply loss function
-  LOG(INFO) << "getting loss function";
   const ceres::LossFunction* loss_func = 
     problem_->GetLossFunctionForResidualBlock(residual_block_id);
-  LOG(INFO) << "loss function found";
   if (loss_func)
   {
     const double sq_norm = residuals_eigen.transpose() * residuals_eigen;
@@ -184,6 +180,7 @@ bool MarginalizationError::AddResidualBlock(
     {
       const double D = 1.0 + 2.0 * sq_norm * rho[2] / rho[1];
       const double alpha = 1.0 - sqrt(D);
+      
       if (std::isnan(alpha))
         LOG(FATAL) << "alpha has nan value";
 
@@ -253,9 +250,7 @@ bool MarginalizationError::AddResidualBlock(
     }
   }
 
-  LOG(INFO) << "removing residual block";
   problem_->RemoveResidualBlock(residual_block_id);
-  LOG(INFO) << "residual block removed" << "\n\n";
 
   delete[] parameters_raw;
   delete[] jacobians_raw;
@@ -274,12 +269,10 @@ bool MarginalizationError::MarginalizeOut(
   std::vector<double*> parameter_blocks_copy = parameter_blocks;
 
   // decide which blocks need to be marginalized
-  LOG(INFO) << "getting param blocks to be marginalized";
   std::vector<std::pair<int, int>> marginalization_start_idx_and_length_pairs;
   size_t marginalization_parameters = 0;
 
   // make sure there are no duplicates
-  LOG(INFO) << "checking for duplicates";
   std::sort(parameter_blocks_copy.begin(), parameter_blocks_copy.end());
   for (size_t i = 1; i < parameter_blocks_copy.size(); i++)
   {
@@ -291,7 +284,6 @@ bool MarginalizationError::MarginalizeOut(
   }
 
   // find start idx and dimension of param blocks in H matrix
-  LOG(INFO) << "finding start idx and length";
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
     std::map<double*, size_t>::iterator it = 
@@ -319,7 +311,6 @@ bool MarginalizationError::MarginalizeOut(
             );
 
   // unify contiguous blocks
-  LOG(INFO) << "unifying contiguous blocks";
   for (size_t i = 1; i < marginalization_start_idx_and_length_pairs.size(); i++)
   {
     if (marginalization_start_idx_and_length_pairs.at(i-1).first
@@ -338,21 +329,18 @@ bool MarginalizationError::MarginalizeOut(
 
   error_computation_valid_ = false;
 
-  LOG(INFO) << "marginalizing states";
+  // actually marginalize states
   if (marginalization_start_idx_and_length_pairs.size() > 0)
   {
     // preconditioner
-    LOG(INFO) << "preconditioning";
     Eigen::VectorXd p = (H_.diagonal().array() > 1.0e-9).select(
       H_.diagonal().cwiseSqrt(),1.0e-3);
     Eigen::VectorXd p_inv = p.cwiseInverse();
 
     // scale H and b
-    LOG(INFO) << "scaling";
     H_ = p_inv.asDiagonal() * H_ * p_inv.asDiagonal();
     b0_ = p_inv.asDiagonal() * b0_;
 
-    LOG(INFO) << "building output matrices";
     Eigen::MatrixXd U(H_.rows() - marginalization_parameters,
                       H_.rows() - marginalization_parameters);
     Eigen::MatrixXd V(marginalization_parameters, marginalization_parameters);
@@ -365,25 +353,20 @@ bool MarginalizationError::MarginalizeOut(
     Eigen::VectorXd p_a(H_.rows() - marginalization_parameters);
     Eigen::VectorXd p_b(marginalization_parameters);
 
-    LOG(INFO) << "splitting preconditioner";
     SplitVector(marginalization_start_idx_and_length_pairs, p, p_a, p_b);
 
     // split lhs
-    LOG(INFO) << "splitting H matrix";
     SplitSymmetricMatrix(marginalization_start_idx_and_length_pairs, H_, U, W, V);
 
     // split rhs
-    LOG(INFO) << "splitting b vector";
     SplitVector(marginalization_start_idx_and_length_pairs, b0_, b_a, b_b);
 
     // invert marginalization block
-    LOG(INFO) << "getting pseudo inverse sqrt";
     Eigen::MatrixXd V_inverse_sqrt(V.rows(), V.cols());
     Eigen::MatrixXd V1 = 0.5 * (V + V.transpose());
     PseudoInverseSymmSqrt(V1, V_inverse_sqrt);
 
     // Schur
-    LOG(INFO) << "schur complement";
     Eigen::MatrixXd M = W * V_inverse_sqrt;
     b0_.resize(b_a.rows());
     b0_ = (b_a - M * V_inverse_sqrt.transpose() * b_b);
@@ -391,7 +374,6 @@ bool MarginalizationError::MarginalizeOut(
     H_ = (U - M * M.transpose());
 
     // unscale
-    LOG(INFO) << "unscaling";
     H_ = p_a.asDiagonal() * H_ * p_a.asDiagonal();
     b0_ = p_a.asDiagonal() * b0_;
   }
@@ -400,17 +382,17 @@ bool MarginalizationError::MarginalizeOut(
   base_t::set_num_residuals(base_t::num_residuals() - marginalization_parameters);
 
   // delete bookkeeping
-  LOG(INFO) << "updating bookkeeping for: " << parameter_blocks_copy.size() << " parameter blocks";
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
-    LOG(INFO) << "geting param block idx";
+    // get parameter block index
     size_t idx = parameter_block_id_2_block_info_idx_.find(
       parameter_blocks_copy[i])->second;
     int margSize = param_block_info_.at(idx).minimal_dimension;
 
+    // erase parameter block from info vector
     param_block_info_.erase(param_block_info_.begin() + idx);
 
-    LOG(INFO) << "updating subsequent entries";
+    // update subsequent entries in info vector and indices map
     for (size_t j = idx; j < param_block_info_.size(); j++)
     {
       param_block_info_.at(j).ordering_idx -= margSize;
@@ -418,16 +400,15 @@ bool MarginalizationError::MarginalizeOut(
         param_block_info_.at(j).parameter_block_ptr.get()) -= 1;
     }
 
-    LOG(INFO) << "erasing entry in param block to info idx map";
+    // erase entry in indices map
     parameter_block_id_2_block_info_idx_.erase(parameter_blocks_copy[i]);
 
-    LOG(INFO) << "updating ceres internal bookkeeping";
+    // update internal bookkeeping
     base_t::mutable_parameter_block_sizes()->erase(
       mutable_parameter_block_sizes()->begin() + idx);
   }
 
   // check if any residuals are still connected to these parameter blocks
-  LOG(INFO) << "checking for still-connected residuals";
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
     std::vector<ceres::ResidualBlockId> res_blks;
@@ -440,12 +421,10 @@ bool MarginalizationError::MarginalizeOut(
   }
 
   // actually remove the parameter blocks
-  LOG(INFO) << "removing parameter block";
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
     problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
   }
-  LOG(INFO) << "parameter block successfully removed";
 }
 
 bool MarginalizationError::ComputeDeltaChi(
@@ -505,7 +484,7 @@ bool MarginalizationError::ComputeDeltaChi(
       {
         QuaternionParameterization qp;
         qp.Minus(param_block_info_[i].linearization_point.get(),
-                 param_block_info_[i].parameter_block_ptr.get(),
+                 parameters[i],
                  Delta_chi_i.data());
       }
       else
@@ -787,7 +766,7 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
             Eigen::RowMajor>> Jmin_i(
               jacobians_minimal[i], e0_.rows(),
               param_block_info_[i].minimal_dimension);
-          Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+          Jmin_i = -J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
             param_block_info_[i].minimal_dimension);
         }
       }
@@ -819,7 +798,7 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
         }
         else
         {
-          J_i = Jmin_i;
+          J_i = -Jmin_i;
         }
       }
     }
