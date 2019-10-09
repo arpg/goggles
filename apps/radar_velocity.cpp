@@ -16,6 +16,7 @@
 #include <ceres/ceres.h>
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
+#include <MarginalizationError.h>
 #include <chrono>
 
 struct RadarPoint
@@ -136,6 +137,8 @@ private:
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<ceres::Problem> problem_;
+  std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
+  ceres::ResidualBlockId marginalization_id_;
   ceres::Solver::Options solver_options_;
   int window_size_;
   double min_range_;
@@ -291,28 +294,55 @@ private:
     problem_->AddParameterBlock(velocities_.front()->data(),3);
     if (velocities_.size() > window_size_)
     {
-      for (int i = 0; i < residual_blks_.back().size(); i++)
-        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
+      // remove marginalization error from problem if it's
+      // already initialized
+      if (marginalization_error_ptr_ && marginalization_id_)
+      {
+        residual_blks_.pop_back();
+      timestamps_.pop_back();problem_->RemoveResidualBlock(marginalization_id_);
+        marginalization_id_ = 0;
+      }
 
-      problem_->RemoveParameterBlock(velocities_.back()->data());
+      // if the marginalization error has not been initialized
+      // initialize it
+      if (!marginalization_error_ptr_)
+      {
+        marginalization_error_ptr_.reset(
+          new MarginalizationError(problem_));
+      }
+
+      // add last state and associated residuals to marginalization error
+      marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back());
+      std::vector<double*> state_to_marginalize;
+      state_to_marginalize.push_back(velocities_.back()->data());
+      marginalization_error_ptr_->MarginalizeOut(state_to_marginalize);
+      marginalization_error_ptr_->UpdateErrorComputation();
+
       delete velocities_.back();
       velocities_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
+
+      // discard marginalization error if it has no residuals
+      if (marginalization_error_ptr_->num_residuals() == 0)
+        marginalization_error_ptr_.reset();
+
+      // add marginalization term back to the problem
+      if (marginalization_error_ptr_)
+      {
+        marginalization_id_ = problem_->AddResidualBlock(
+          marginalization_error_ptr_.get(), 
+          NULL,
+          velocities_.back()->data());
+      }
     }
     
-    double min_intensity, max_intensity;
-    getIntensityBounds(min_intensity,max_intensity,cloud);
+    // calculate uniform weighting for doppler measurements
+    double weight = 1.0 / cloud->size();
+
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
-      // calculate weight as normalized intensity
-      double weight;
-			if (max_intensity - min_intensity < 0.01)
-				weight = 0.01;
-			else
-				weight = (cloud->at(i).intensity - min_intensity)
-                       / (max_intensity - min_intensity);
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
@@ -337,11 +367,11 @@ private:
       ceres::ResidualBlockId res_id = 
 						problem_->AddResidualBlock(vel_change_cost_func, 
                                        accel_loss_, 
-                                       velocities_[0]->data(), 
-                                       velocities_[1]->data());
+                                       velocities_[1]->data(), 
+                                       velocities_[0]->data());
       residual_blks_[1].push_back(res_id);
     }
-// solve the ceres problem and get result
+    // solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
     LOG(INFO) << summary.FullReport();
