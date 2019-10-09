@@ -81,6 +81,11 @@ bool MarginalizationError::AddResidualBlock(
       // get current parameter block info
       size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
       size_t dimension = problem_->ParameterBlockSize(param_blks[i]);
+      if (problem_->IsParameterBlockConstant(param_blks[i]))
+      {
+        minimal_dimension = 0;
+        dimension = 0;
+      }
       std::shared_ptr<double> param_ptr;
       param_ptr.reset(param_blks[i], std::default_delete<double[]>());
       info = ParameterBlockInfo(param_ptr, 0, dimension, minimal_dimension);
@@ -433,8 +438,8 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (true)//!(problem_->IsParameterBlockConstant(
-      //param_block_info_[i].parameter_block_ptr.get())))
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
     {
       Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 
@@ -471,8 +476,8 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (true)//!(problem_->IsParameterBlockConstant(
-      //param_block_info_[i].parameter_block_ptr.get())))
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
     {
       Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 

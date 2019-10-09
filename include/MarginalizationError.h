@@ -130,7 +130,7 @@ protected:
         minimal_dimension(0)
     { 
     }
-
+    /*
     ~ParameterBlockInfo()
     {
       LOG(ERROR) << "deleting linearization point";
@@ -139,7 +139,7 @@ protected:
       parameter_block_ptr.reset();
       LOG(ERROR) << "everything deleted";
     }
-
+    */
     ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
                        size_t ordering_idx,
                        size_t dimension,
