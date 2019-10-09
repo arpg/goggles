@@ -110,8 +110,8 @@ add_definitions(${PCL_DEFINITIONS})
 
 #add_subdirectory(test)
 
-#catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
-#target_link_libraries(testImuIntegration ${LINK_LIBS})
+catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testImuIntegration ${LINK_LIBS})
 catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
 target_link_libraries(testMarginalization ${LINK_LIBS})
 
