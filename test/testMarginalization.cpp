@@ -175,10 +175,10 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d* b_g_0_est = new Eigen::Vector3d(b_g_0);
   Eigen::Vector3d* b_a_0_est = new Eigen::Vector3d(b_a_0);
 
-  std::shared_ptr<double> q_ws_1_shared(q_ws_1_est->coeffs().data());
-  std::shared_ptr<double> v_s_1_shared(v_s_1_est->data());
-  std::shared_ptr<double> b_g_1_shared(b_g_1_est->data());
-  std::shared_ptr<double> b_a_1_shared(b_a_1_est->data());
+  Eigen::Quaterniond* q_ws_1_est = new Eigen::Quaterniond(q_ws_1);
+  Eigen::Vector3d* v_s_1_est = new Eigen::Vector3d(v_s_1);
+  Eigen::Vector3d* b_g_1_est = new Eigen::Vector3d(b_g_1);
+  Eigen::Vector3d* b_a_1_est = new Eigen::Vector3d(b_a_1);
 
   Eigen::Quaterniond* q_ws_2_est = new Eigen::Quaterniond(q_ws_2);
   Eigen::Vector3d* v_s_2_est = new Eigen::Vector3d(v_s_2);
@@ -186,29 +186,30 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d* b_a_2_est = new Eigen::Vector3d(b_a_2);
   
   // create ceres problem
-  ceres::Problem problem;
+  std::shared_ptr<ceres::Problem> problem 
+    = std::shared_ptr<ceres::Problem>(new ceres::Problem());
   ceres::Solver::Options options;
 
   // add (fixed) initial state parameter blocks
   QuaternionParameterization* quat_param = new QuaternionParameterization;
-  problem.AddParameterBlock(v_s_0_est->data(),3);
-  problem.AddParameterBlock(q_ws_0_est->coeffs().data(),4);
-  problem.AddParameterBlock(b_g_0_est->data(),3);
-  problem.AddParameterBlock(b_a_0_est->data(),3);
-  problem.SetParameterization(q_ws_0_est->coeffs().data(), quat_param);
-  problem.AddParameterBlock(v_s_1_est->data(),3);
-  problem.AddParameterBlock(q_ws_1_est->coeffs().data(),4);
-  problem.AddParameterBlock(b_g_1_est->data(),3);
-  problem.AddParameterBlock(b_a_1_est->data(),3);
-  problem.SetParameterization(q_ws_1_est->coeffs().data(), quat_param);
-  problem.AddParameterBlock(v_s_2_est->data(),3);
-  problem.AddParameterBlock(q_ws_2_est->coeffs().data(),4);
-  problem.AddParameterBlock(b_g_2_est->data(),3);
-  problem.AddParameterBlock(b_a_2_est->data(),3);
-  problem.SetParameterization(q_ws_2_est->coeffs().data(), quat_param);
+  problem->AddParameterBlock(v_s_0_est->data(),3);
+  problem->AddParameterBlock(q_ws_0_est->coeffs().data(),4);
+  problem->AddParameterBlock(b_g_0_est->data(),3);
+  problem->AddParameterBlock(b_a_0_est->data(),3);
+  problem->SetParameterization(q_ws_0_est->coeffs().data(), quat_param);
+  problem->AddParameterBlock(v_s_1_est->data(),3);
+  problem->AddParameterBlock(q_ws_1_est->coeffs().data(),4);
+  problem->AddParameterBlock(b_g_1_est->data(),3);
+  problem->AddParameterBlock(b_a_1_est->data(),3);
+  problem->SetParameterization(q_ws_1_est->coeffs().data(), quat_param);
+  problem->AddParameterBlock(v_s_2_est->data(),3);
+  problem->AddParameterBlock(q_ws_2_est->coeffs().data(),4);
+  problem->AddParameterBlock(b_g_2_est->data(),3);
+  problem->AddParameterBlock(b_a_2_est->data(),3);
+  problem->SetParameterization(q_ws_2_est->coeffs().data(), quat_param);
 
-  problem.SetParameterBlockConstant(b_a_0_est->data());
-  problem.SetParameterBlockConstant(b_g_0_est->data());
+  problem->SetParameterBlockConstant(b_a_0_est->data());
+  problem->SetParameterBlockConstant(b_g_0_est->data());
 
   // create the IMU error terms
   
@@ -217,7 +218,7 @@ TEST(googleTests, testMarginalization)
                                   imuMeasurements0,
                                   imuParameters);
   ceres::ResidualBlockId imu_id_0 = 
-    problem.AddResidualBlock(imu_cost_func_0,
+    problem->AddResidualBlock(imu_cost_func_0,
                             NULL,
                             q_ws_0_est->coeffs().data(),
                             v_s_0_est->data(),
@@ -233,7 +234,7 @@ TEST(googleTests, testMarginalization)
                                   imuMeasurements1,
                                   imuParameters);
   ceres::ResidualBlockId imu_id_1 =
-    problem.AddResidualBlock(imu_cost_func_1,
+    problem->AddResidualBlock(imu_cost_func_1,
                             NULL,
                             q_ws_1_est->coeffs().data(),
                             v_s_1_est->data(),
@@ -284,7 +285,7 @@ TEST(googleTests, testMarginalization)
       new BodyVelocityCostFunction(targets_0[i].first,
                                    targets_0[i].second,
                                    0.01);
-    ceres::ResidualBlockId id_0 = problem.AddResidualBlock(v_cost_func_0,
+    ceres::ResidualBlockId id_0 = problem->AddResidualBlock(v_cost_func_0,
                                                          NULL,
                                                          v_s_0_est->data());
     state_0_residuals.push_back(id_0);
@@ -298,7 +299,7 @@ TEST(googleTests, testMarginalization)
       new BodyVelocityCostFunction(targets_1[i].first,
                                    targets_1[i].second,
                                    0.01);
-    ceres::ResidualBlockId id_1 = problem.AddResidualBlock(v_cost_func_1,
+    ceres::ResidualBlockId id_1 = problem->AddResidualBlock(v_cost_func_1,
                                                          NULL,
                                                          v_s_1_est->data());
     state_1_residuals.push_back(id_1);
@@ -313,7 +314,7 @@ TEST(googleTests, testMarginalization)
       new BodyVelocityCostFunction(targets_2[i].first,
                                    targets_2[i].second,
                                    0.01);
-    ceres::ResidualBlockId id_2 = problem.AddResidualBlock(v_cost_func_2,
+    ceres::ResidualBlockId id_2 = problem->AddResidualBlock(v_cost_func_2,
                                                          NULL,
                                                          v_s_2_est->data());
     state_2_residuals.push_back(id_2);
@@ -322,9 +323,9 @@ TEST(googleTests, testMarginalization)
 
   // solve the problem and save the state estimates
   ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
+  ceres::Solve(options, problem.get(), &summary);
 
-  //LOG(INFO) << summary.FullReport();
+  LOG(INFO) << summary.FullReport();
 
   Eigen::Quaterniond q_0_err = *q_ws_0_est * q_ws_0.inverse();
   Eigen::Vector3d v_0_err = *v_s_0_est - v_s_0;
@@ -420,24 +421,24 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d b_a_2_prev = *b_a_2_est;
 
   // set up marginalization error term
-  std::shared_ptr<ceres::Problem> problem_ptr(&problem);
-  MarginalizationError marginalization_error(problem_ptr);
+  MarginalizationError* marginalization_error
+      = new MarginalizationError(problem);
 
   // add residuals and states
   LOG(INFO) << "Adding " << state_0_residuals.size() << " residual blocks";
-  marginalization_error.AddResidualBlocks(state_0_residuals);
+  marginalization_error->AddResidualBlocks(state_0_residuals);
   std::vector<double*> marginalize_param_blocks;
   marginalize_param_blocks.push_back(q_ws_0_est->coeffs().data());
   marginalize_param_blocks.push_back(v_s_0_est->data());
   marginalize_param_blocks.push_back(b_g_0_est->data());
   marginalize_param_blocks.push_back(b_a_0_est->data());
   LOG(INFO) << "Marginalizing parameter blocks"; // currently fails at this step
-  marginalization_error.MarginalizeOut(marginalize_param_blocks);
-  marginalization_error.UpdateErrorComputation();
+  marginalization_error->MarginalizeOut(marginalize_param_blocks);
+  marginalization_error->UpdateErrorComputation();
 
   // add marginalization error to problem
   LOG(INFO) << "Adding marginalization residual to problem";
-  problem.AddResidualBlock(&marginalization_error, 
+  problem->AddResidualBlock(marginalization_error, 
                            NULL, 
                            q_ws_1_est->coeffs().data(),
                            v_s_1_est->data(),
@@ -473,7 +474,7 @@ TEST(googleTests, testMarginalization)
 
   Eigen::Matrix<double,12,1> residuals;
 
-  marginalization_error.EvaluateWithMinimalJacobians(parameters, 
+  marginalization_error->EvaluateWithMinimalJacobians(parameters, 
                                                       residuals.data(), 
                                                       jacobians,
                                                       jacobians_minimal);
@@ -491,11 +492,11 @@ TEST(googleTests, testMarginalization)
     dp_0[i] = dx;
     Eigen::Quaterniond q_ws_1_temp = q_ws_1;
     quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
-    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
     q_ws_1 = q_ws_1_temp; // reset to initial value
     dp_0[i] = -dx;
     quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
-    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
     q_ws_1 = q_ws_1_temp; // reset again
     J0_min_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
@@ -505,7 +506,7 @@ TEST(googleTests, testMarginalization)
   J0_numDiff = J0_min_numDiff * J0_lift;
   if ((J0 - J0_numDiff).norm() > jacobianTolerance)
   {
-    LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
+    LOG(INFO) << "User provided Jacobian 0 does not agree with num diff:"
       << '\n' << "user provided J0: \n" << J0
       << '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
   }
@@ -520,17 +521,17 @@ TEST(googleTests, testMarginalization)
     dp_1[i] = dx;
     Eigen::Vector3d v_s_1_temp = v_s_1; // save initial state
     v_s_1 = v_s_1 + dp_1;
-    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
     v_s_1 = v_s_1_temp; // reset
     v_s_1 = v_s_1 - dp_1;
-    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
     v_s_1 = v_s_1_temp;
     J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
   if ((J1 - J1_numDiff).norm() > jacobianTolerance)
   {
-    LOG(ERROR) << "User provided jacobian 1 does not agree with num diff: "
+    LOG(INFO) << "User provided jacobian 1 does not agree with num diff: "
       << "\nuser provided J1: \n" << J1 
       << "\n\nnum diff J1:\n" << J1_numDiff << "\n\n";
   }
@@ -545,17 +546,17 @@ TEST(googleTests, testMarginalization)
     dp_2[i] = dx;
     Eigen::Vector3d b_g_1_temp = b_g_1; // save initial state
     b_g_1 = b_g_1 + dp_2;
-    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
     b_g_1 = b_g_1_temp; // reset
     b_g_1 = b_g_1 - dp_2;
-    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
     b_g_1 = b_g_1_temp;
     J2_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
   if ((J2 - J2_numDiff).norm() > jacobianTolerance)
   {
-    LOG(ERROR) << "User provided jacobian 2 does not agree with num diff: "
+    LOG(INFO) << "User provided jacobian 2 does not agree with num diff: "
       << "\nuser provided J2: \n" << J2 
       << "\n\nnum diff J2:\n" << J2_numDiff << "\n\n";
   }
@@ -570,25 +571,25 @@ TEST(googleTests, testMarginalization)
     dp_3[i] = dx;
     Eigen::Vector3d b_a_1_temp = b_a_1; // save initial state
     b_a_1 = b_a_1 + dp_3;
-    marginalization_error.Evaluate(parameters,residuals_p.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
     b_a_1 = b_a_1_temp; // reset
     b_a_1 = b_a_1 - dp_3;
-    marginalization_error.Evaluate(parameters,residuals_m.data(),NULL);
+    marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
     b_a_1 = b_a_1_temp;
     J3_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
   if ((J3 - J3_numDiff).norm() > jacobianTolerance)
   {
-    LOG(ERROR) << "User provided jacobian 3 does not agree with num diff: "
+    LOG(INFO) << "User provided jacobian 3 does not agree with num diff: "
       << "\nuser provided J3: \n" << J3 
       << "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
   }
   
   // solve problem again and compare to earlier estimates
-  ceres::Solve(options, &problem, &summary);
+  ceres::Solve(options, problem.get(), &summary);
 
-  LOG(ERROR) << summary.FullReport();
+  LOG(INFO) << summary.FullReport();
 
   q_1_err = *q_ws_1_est * q_ws_2_prev.inverse();
   v_1_err = *v_s_1_est - v_s_1_prev;
@@ -652,23 +653,15 @@ TEST(googleTests, testMarginalization)
                                         << "marginalized: " << b_a_2_est->transpose() << '\n'
                                         << "full problem: " << b_a_2_prev.transpose();
   
-  /*
-  delete q_ws_0_est;
-  delete v_s_0_est;
-  delete b_a_0_est;
-  delete b_g_0_est;
-  
   delete q_ws_1_est;
   delete v_s_1_est;
   delete b_a_1_est;
   delete b_g_1_est;
-  */
+  
   delete q_ws_2_est;
   delete v_s_2_est;
   delete b_a_2_est;
   delete b_g_2_est;
-
-  LOG(ERROR) << "end of test";
 }
 
 int main(int argc, char **argv)
