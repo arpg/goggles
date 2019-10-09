@@ -175,10 +175,10 @@ TEST(googleTests, testMarginalization)
   Eigen::Vector3d* b_g_0_est = new Eigen::Vector3d(b_g_0);
   Eigen::Vector3d* b_a_0_est = new Eigen::Vector3d(b_a_0);
 
-  Eigen::Quaterniond* q_ws_1_est = new Eigen::Quaterniond(q_ws_1);
-  Eigen::Vector3d* v_s_1_est = new Eigen::Vector3d(v_s_1);
-  Eigen::Vector3d* b_g_1_est = new Eigen::Vector3d(b_g_1);
-  Eigen::Vector3d* b_a_1_est = new Eigen::Vector3d(b_a_1);
+  std::shared_ptr<double> q_ws_1_shared(q_ws_1_est->coeffs().data());
+  std::shared_ptr<double> v_s_1_shared(v_s_1_est->data());
+  std::shared_ptr<double> b_g_1_shared(b_g_1_est->data());
+  std::shared_ptr<double> b_a_1_shared(b_a_1_est->data());
 
   Eigen::Quaterniond* q_ws_2_est = new Eigen::Quaterniond(q_ws_2);
   Eigen::Vector3d* v_s_2_est = new Eigen::Vector3d(v_s_2);
@@ -325,33 +325,6 @@ TEST(googleTests, testMarginalization)
   ceres::Solve(options, &problem, &summary);
 
   //LOG(INFO) << summary.FullReport();
-
-  LOG(INFO) << " q_ws_0 gt: " << q_ws_0.coeffs().transpose();
-  LOG(INFO) << "q_ws_0 est: " << q_ws_0_est->coeffs().transpose();
-  LOG(INFO) << "  v_s_0 gt: " << v_s_0.transpose();
-  LOG(INFO) << " v_s_0 est: " << v_s_0_est->transpose();
-  LOG(INFO) << "  b_g_0 gt: " << b_g_0.transpose();
-  LOG(INFO) << " b_g_0 est: " << b_g_0_est->transpose();
-  LOG(INFO) << "  b_a_0 gt: " << b_a_0.transpose();
-  LOG(INFO) << " b_a_0 est: " << b_a_0_est->transpose() << "\n\n";
-
-  LOG(INFO) << " q_ws_1 gt: " << q_ws_1.coeffs().transpose();
-  LOG(INFO) << "q_ws_1 est: " << q_ws_1_est->coeffs().transpose();
-  LOG(INFO) << "  v_s_1 gt: " << v_s_1.transpose();
-  LOG(INFO) << " v_s_1 est: " << v_s_1_est->transpose();
-  LOG(INFO) << "  b_g_1 gt: " << b_g_1.transpose();
-  LOG(INFO) << " b_g_1 est: " << b_g_1_est->transpose();
-  LOG(INFO) << "  b_a_1 gt: " << b_a_1.transpose();
-  LOG(INFO) << " b_a_1 est: " << b_a_1_est->transpose() << "\n\n";
-
-  LOG(INFO) << " q_ws_2 gt: " << q_ws_2.coeffs().transpose();
-  LOG(INFO) << "q_ws_2 est: " << q_ws_2_est->coeffs().transpose();
-  LOG(INFO) << "  v_s_2 gt: " << v_s_2.transpose();
-  LOG(INFO) << " v_s_2 est: " << v_s_2_est->transpose();
-  LOG(INFO) << "  b_g_2 gt: " << b_g_2.transpose();
-  LOG(INFO) << " b_g_2 est: " << b_g_2_est->transpose();
-  LOG(INFO) << "  b_a_2 gt: " << b_a_2.transpose();
-  LOG(INFO) << " b_a_2 est: " << b_a_2_est->transpose() << "\n\n";
 
   Eigen::Quaterniond q_0_err = *q_ws_0_est * q_ws_0.inverse();
   Eigen::Vector3d v_0_err = *v_s_0_est - v_s_0;
@@ -613,40 +586,89 @@ TEST(googleTests, testMarginalization)
   }
   
   // solve problem again and compare to earlier estimates
-  LOG(ERROR) << "solving problem";
   ceres::Solve(options, &problem, &summary);
-  LOG(ERROR) << "problem solved";
 
   LOG(ERROR) << summary.FullReport();
 
-  LOG(ERROR) << "orientation with full problem: " << q_ws_2_prev.coeffs().transpose() 
-             << "\nwith first state marginalized: " << q_ws_2_est->coeffs().transpose()
-             << "\n                  groundtruth: " << q_ws_2.coeffs().transpose();
-  LOG(ERROR) << "   velocity with full problem: " << v_s_2_prev.transpose()
-             << "\nwith first state marginalized: " << v_s_2_est->transpose()
-             << "\n                  groundtruth: " << v_s_2.transpose();
-  LOG(ERROR) << "  gyro bias with full problem: " << b_g_2_prev.transpose()
-             << "\nwith first state marginalized: " << b_g_2_est->transpose()
-             << "\n                  groundtruth: " << b_g_2.transpose();
-  LOG(ERROR) << " accel bias with full problem: " << b_a_2_prev.transpose()
-             << "\nwith first state marginalized: " << b_a_2_est->transpose()
-             << "\n                  groundtruth: " << b_a_2.transpose();
+  q_1_err = *q_ws_1_est * q_ws_2_prev.inverse();
+  v_1_err = *v_s_1_est - v_s_1_prev;
+  b_g_1_err = *b_g_1_est - b_g_1_prev;
+  b_a_1_err = *b_a_1_est - b_a_1_prev;
+  q_2_err = *q_ws_2_est * q_ws_2_prev.inverse();
+  v_2_err = *v_s_2_est - v_s_2_prev;
+  b_g_2_err = *b_g_2_est - b_g_2_prev;
+  b_a_2_err = *b_a_2_est - b_a_2_prev;
+
   
+  ASSERT_TRUE(q_1_err.coeffs().head(3).norm() < err_lim) 
+                                        << "orientation error at t1 of " 
+                                        << q_1_err.coeffs().head(3).norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << q_ws_1_est->coeffs().transpose() << '\n'
+                                        << "full problem: " << q_ws_1_prev.coeffs().transpose();
+  ASSERT_TRUE(v_1_err.norm() < err_lim) << "velocity error at t1 of " 
+                                        << v_1_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << v_s_1_est->transpose() << '\n'
+                                        << "full problem: " << v_s_1_prev.transpose();
+  ASSERT_TRUE(b_g_1_err.norm() < err_lim) << "gyro bias error at t1 of " 
+                                        << b_g_1_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << b_g_1_est->transpose() << '\n'
+                                        << "full problem: " << b_g_1_prev.transpose();
+  ASSERT_TRUE(b_a_1_err.norm() < err_lim) << "accel bias error at t1 of " 
+                                        << b_a_1_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << b_a_1_est->transpose() << '\n'
+                                        << "full problem: " << b_a_1_prev.transpose();
+
+  ASSERT_TRUE(q_2_err.coeffs().head(3).norm() < err_lim) 
+                                        << "orientation error at t2 of " 
+                                        << q_2_err.coeffs().head(3).norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << q_ws_2_est->coeffs().transpose() << '\n'
+                                        << "full problem: " << q_ws_2_prev.coeffs().transpose();
+  ASSERT_TRUE(v_2_err.norm() < err_lim) << "velocity error at t2 of " 
+                                        << v_2_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << v_s_2_est->transpose() << '\n'
+                                        << "full problem: " << v_s_2_prev.transpose();
+  ASSERT_TRUE(b_g_2_err.norm() < err_lim) << "gyro bias error at t2 of " 
+                                        << b_g_2_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << b_g_2_est->transpose() << '\n'
+                                        << "full problem: " << b_g_2_prev.transpose();
+  ASSERT_TRUE(b_a_2_err.norm() < err_lim) << "accel bias error at t2 of " 
+                                        << b_a_2_err.norm()
+                                        << " is greater than the tolerance of " 
+                                        << err_lim << "\n"
+                                        << "marginalized: " << b_a_2_est->transpose() << '\n'
+                                        << "full problem: " << b_a_2_prev.transpose();
+  
+  /*
   delete q_ws_0_est;
   delete v_s_0_est;
   delete b_a_0_est;
   delete b_g_0_est;
-
+  
   delete q_ws_1_est;
   delete v_s_1_est;
   delete b_a_1_est;
   delete b_g_1_est;
-
+  */
   delete q_ws_2_est;
   delete v_s_2_est;
   delete b_a_2_est;
   delete b_g_2_est;
-  
+
+  LOG(ERROR) << "end of test";
 }
 
 int main(int argc, char **argv)

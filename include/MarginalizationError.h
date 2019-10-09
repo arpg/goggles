@@ -131,6 +131,15 @@ protected:
     { 
     }
 
+    ~ParameterBlockInfo()
+    {
+      LOG(ERROR) << "deleting linearization point";
+      linearization_point.reset();
+      LOG(ERROR) << "deleting param block";
+      parameter_block_ptr.reset();
+      LOG(ERROR) << "everything deleted";
+    }
+
     ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
                        size_t ordering_idx,
                        size_t dimension,

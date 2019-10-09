@@ -81,7 +81,7 @@ bool MarginalizationError::AddResidualBlock(
       // get current parameter block info
       size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
       size_t dimension = problem_->ParameterBlockSize(param_blks[i]);
-      std::shared_ptr<double> param_ptr = std::make_shared<double>(dimension);
+      std::shared_ptr<double> param_ptr;
       param_ptr.reset(param_blks[i], std::default_delete<double[]>());
       info = ParameterBlockInfo(param_ptr, 0, dimension, minimal_dimension);
 
@@ -433,8 +433,8 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i].parameter_block_ptr.get())))
+    if (true)//!(problem_->IsParameterBlockConstant(
+      //param_block_info_[i].parameter_block_ptr.get())))
     {
       Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 
@@ -471,8 +471,8 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i].parameter_block_ptr.get())))
+    if (true)//!(problem_->IsParameterBlockConstant(
+      //param_block_info_[i].parameter_block_ptr.get())))
     {
       Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 
@@ -766,8 +766,13 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
             Eigen::RowMajor>> Jmin_i(
               jacobians_minimal[i], e0_.rows(),
               param_block_info_[i].minimal_dimension);
-          Jmin_i = -J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+          Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
             param_block_info_[i].minimal_dimension);
+          if (param_block_info_[i].dimension 
+                == param_block_info_[i].minimal_dimension)
+          {
+            Jmin_i *= -1.0;
+          }
         }
       }
       if (jacobians[i] != NULL)
