@@ -298,8 +298,7 @@ private:
       // already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        residual_blks_.pop_back();
-      timestamps_.pop_back();problem_->RemoveResidualBlock(marginalization_id_);
+        problem_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
 
