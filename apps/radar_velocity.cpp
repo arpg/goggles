@@ -60,6 +60,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
+    //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
 
     ceres::Problem::Options prob_options;
@@ -137,6 +138,7 @@ private:
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<ceres::Problem> problem_;
+  //ceres::ScaledLoss *marginalization_scaling_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
   ceres::ResidualBlockId marginalization_id_;
   ceres::Solver::Options solver_options_;
@@ -348,7 +350,7 @@ private:
     }
     
     // calculate uniform weighting for doppler measurements
-    double weight = 1.0 / cloud->size();
+    double weight = 100.0 / cloud->size();
 
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
