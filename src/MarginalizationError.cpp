@@ -461,8 +461,8 @@ bool MarginalizationError::ComputeDeltaChi(
       {
         for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
         {
-          Delta_chi_i[j] = param_block_info_[i].linearization_point.get()[j]
-                            - param_block_info_[i].parameter_block_ptr.get()[j];
+          Delta_chi_i[j] = param_block_info_[i].parameter_block_ptr.get()[j] 
+            - param_block_info_[i].linearization_point.get()[j];
         }
       }
       Delta_chi.segment(param_block_info_[i].ordering_idx,
@@ -499,8 +499,8 @@ bool MarginalizationError::ComputeDeltaChi(
       {
         for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
         {
-          Delta_chi_i[j] = param_block_info_[i].linearization_point.get()[j]
-                            - parameters[i][j];
+          Delta_chi_i[j] = parameters[i][j] 
+            - param_block_info_[i].linearization_point.get()[j];
         }
       }
       Delta_chi.segment(param_block_info_[i].ordering_idx,
@@ -777,11 +777,13 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
               param_block_info_[i].minimal_dimension);
           Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
             param_block_info_[i].minimal_dimension);
+          /*
           if (param_block_info_[i].dimension 
                 == param_block_info_[i].minimal_dimension)
           {
             Jmin_i *= -1.0;
           }
+          */
         }
       }
       if (jacobians[i] != NULL)
@@ -812,7 +814,7 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
         }
         else
         {
-          J_i = -Jmin_i;
+          J_i = Jmin_i;
         }
       }
     }
