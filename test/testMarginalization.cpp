@@ -589,7 +589,7 @@ TEST(googleTests, testMarginalization)
   // solve problem again and compare to earlier estimates
   ceres::Solve(options, problem.get(), &summary);
 
-  LOG(ERROR) << summary.FullReport();
+  LOG(INFO) << summary.FullReport();
 
   q_1_err = *q_ws_1_est * q_ws_2_prev.inverse();
   v_1_err = *v_s_1_est - v_s_1_prev;
