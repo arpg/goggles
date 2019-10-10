@@ -77,7 +77,6 @@ bool MarginalizationError::AddResidualBlock(
     // if parameter block is not connected, add it
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
-
       // get current parameter block info
       size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
       size_t dimension = problem_->ParameterBlockSize(param_blks[i]);
@@ -100,7 +99,7 @@ bool MarginalizationError::AddResidualBlock(
         Resize(b0_, orig_size + additional_size);
 
         H_.bottomRightCorner(H_.rows(), additional_size).setZero();
-        H_.bottomRightCorner(additional_size, H_.cols()).setZero();
+        H_.bottomRightCorner(additional_size, H_.rows()).setZero();
         b0_.tail(additional_size).setZero();
       } 
 
@@ -268,7 +267,9 @@ bool MarginalizationError::MarginalizeOut(
   const std::vector<double*> & parameter_blocks)
 {
   if (parameter_blocks.size() == 0)
+  {
     return false;
+  }
 
   // make copy so we can manipulate
   std::vector<double*> parameter_blocks_copy = parameter_blocks;
@@ -430,6 +431,8 @@ bool MarginalizationError::MarginalizeOut(
   {
     problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
   }
+
+  return true;
 }
 
 bool MarginalizationError::ComputeDeltaChi(
@@ -603,7 +606,8 @@ void MarginalizationError::SplitSymmetricMatrix(
       if (size_b_j > 0 && size_a_i > 0)
       {
         const_cast<Eigen::MatrixBase<Derived_W>&>(W).block(start_a_i, start_b_j,
-                                                           size_a_i, size_b_j);
+                                                           size_a_i, size_b_j)
+          = A.block(lastIdx_row, thisIdx_col, size_a_i, size_b_j);
       }
 
       if (size_b_j > 0 && size_b_i > 0)

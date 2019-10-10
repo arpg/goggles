@@ -50,7 +50,7 @@ public:
     nh_.getParam("radar_topic", radar_topic);
     VLOG(2) << "radar topic: " << radar_topic;
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
+    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/velocity",1);
     sub_ = nh_.subscribe(radar_topic, 0, &RadarVelocityReader::callback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -171,7 +171,7 @@ private:
     * \note this function is currently not used, it was written to demonstrate
     * this process could be done with linear least squares
     */
-    void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
+  void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
                        Eigen::Vector3d &velocity, 
                        int max_iter, double func_tol,
                        geometry_msgs::TwistWithCovarianceStamped &vel_out)
@@ -279,7 +279,7 @@ private:
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
     // add latest parameter block and remove old one if necessary
-    if (velocities_.size() == 0)
+    if (true)//velocities_.size() == 0)
 		{
 			velocities_.push_front(new Eigen::Vector3d());
 			velocities_.front()->setZero();
@@ -298,6 +298,7 @@ private:
       // already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
+        LOG(INFO) << "removing marginalization residual";
         problem_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
@@ -306,34 +307,44 @@ private:
       // initialize it
       if (!marginalization_error_ptr_)
       {
+        LOG(INFO) << "resetting marginalization error";
         marginalization_error_ptr_.reset(
           new MarginalizationError(problem_));
       }
 
       // add last state and associated residuals to marginalization error
-      marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back());
+      LOG(INFO) << "adding states and residuals to marginalization";
+      if (!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
+        LOG(ERROR) << "failed to add residuals";
       std::vector<double*> state_to_marginalize;
       state_to_marginalize.push_back(velocities_.back()->data());
-      marginalization_error_ptr_->MarginalizeOut(state_to_marginalize);
+      if (!marginalization_error_ptr_->MarginalizeOut(state_to_marginalize))
+        LOG(ERROR) << "failed to marginalize state";
       marginalization_error_ptr_->UpdateErrorComputation();
 
-      delete velocities_.back();
+      LOG(INFO) << "deleting old bookkeeping";
+      
       velocities_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
 
       // discard marginalization error if it has no residuals
       if (marginalization_error_ptr_->num_residuals() == 0)
+      {
+        LOG(INFO) << "no residuals associated to marginalization";
         marginalization_error_ptr_.reset();
+      }
 
       // add marginalization term back to the problem
       if (marginalization_error_ptr_)
       {
+        LOG(INFO) << "adding marginalization error to problem";
         marginalization_id_ = problem_->AddResidualBlock(
           marginalization_error_ptr_.get(), 
           NULL,
           velocities_.back()->data());
       }
+      LOG(INFO) << "done with marginalization";
     }
     
     // calculate uniform weighting for doppler measurements
@@ -396,7 +407,7 @@ private:
     VLOG(2) << "covariance: \n" << covariance_matrix;
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-    populateMessage(vel_out,*velocities_.front(),covariance_matrix);
+    populateMessage(vel_out,*(velocities_.front()),covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance

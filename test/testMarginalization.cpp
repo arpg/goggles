@@ -506,7 +506,7 @@ TEST(googleTests, testMarginalization)
   J0_numDiff = J0_min_numDiff * J0_lift;
   if ((J0 - J0_numDiff).norm() > jacobianTolerance)
   {
-    LOG(INFO) << "User provided Jacobian 0 does not agree with num diff:"
+    LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
       << '\n' << "user provided J0: \n" << J0
       << '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
   }
@@ -531,7 +531,7 @@ TEST(googleTests, testMarginalization)
   
   if ((J1 - J1_numDiff).norm() > jacobianTolerance)
   {
-    LOG(INFO) << "User provided jacobian 1 does not agree with num diff: "
+    LOG(ERROR) << "User provided jacobian 1 does not agree with num diff: "
       << "\nuser provided J1: \n" << J1 
       << "\n\nnum diff J1:\n" << J1_numDiff << "\n\n";
   }
@@ -556,7 +556,7 @@ TEST(googleTests, testMarginalization)
   
   if ((J2 - J2_numDiff).norm() > jacobianTolerance)
   {
-    LOG(INFO) << "User provided jacobian 2 does not agree with num diff: "
+    LOG(ERROR) << "User provided jacobian 2 does not agree with num diff: "
       << "\nuser provided J2: \n" << J2 
       << "\n\nnum diff J2:\n" << J2_numDiff << "\n\n";
   }
@@ -581,7 +581,7 @@ TEST(googleTests, testMarginalization)
   
   if ((J3 - J3_numDiff).norm() > jacobianTolerance)
   {
-    LOG(INFO) << "User provided jacobian 3 does not agree with num diff: "
+    LOG(ERROR) << "User provided jacobian 3 does not agree with num diff: "
       << "\nuser provided J3: \n" << J3 
       << "\n\nnum diff J3:\n" << J3_numDiff << "\n\n";
   }
@@ -589,7 +589,7 @@ TEST(googleTests, testMarginalization)
   // solve problem again and compare to earlier estimates
   ceres::Solve(options, problem.get(), &summary);
 
-  LOG(INFO) << summary.FullReport();
+  LOG(ERROR) << summary.FullReport();
 
   q_1_err = *q_ws_1_est * q_ws_2_prev.inverse();
   v_1_err = *v_s_1_est - v_s_1_prev;
