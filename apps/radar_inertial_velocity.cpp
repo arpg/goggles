@@ -20,6 +20,7 @@
 #include <QuaternionParameterization.h>
 #include <ImuVelocityCostFunction.h>
 #include <BodyVelocityCostFunction.h>
+#include <MarginalizationError.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
 #include <chrono>
@@ -213,6 +214,8 @@ private:
   std::deque<Eigen::Matrix<double,9,1>*> speeds_and_biases_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
+  std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
+  ceres::ResidualBlockId marginalization_id_;
 	ImuBuffer imu_buffer_;
 	ImuParams params_;
   std::shared_ptr<ceres::Problem> problem_;
@@ -347,42 +350,14 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 		
-		if (attitudes_.size() > window_size_)
-    {
-      for (int i = 0; i < residual_blks_.back().size(); i++)
-        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
-
-      problem_->RemoveParameterBlock(attitudes_.back()->coeffs().data());
-			problem_->RemoveParameterBlock(speeds_and_biases_.back()->head(3).data());
-			problem_->RemoveParameterBlock(speeds_and_biases_.back()->segment(3,3).data());
-			problem_->RemoveParameterBlock(speeds_and_biases_.back()->tail(3).data());
-      delete attitudes_.back();
-      attitudes_.pop_back();
-			delete speeds_and_biases_.back();
-			speeds_and_biases_.pop_back();
-      residual_blks_.pop_back();
-      timestamps_.pop_back();
-
-			// set last parameter blocks as constant
-			problem_->SetParameterBlockConstant(attitudes_.back()->coeffs().data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->head(3).data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->segment(3,3).data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.back()->tail(3).data());
-    }
+		if (!ApplyMarginalization)
+      LOG(ERROR) << "marginalization step failed";
     
-		double min_intensity, max_intensity;
-    //getIntensityBounds(min_intensity,max_intensity,cloud);
-    double sum_intensity = getSumIntensities(cloud);
+    double weight = 100.0 / cloud->size();
+
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
-      // calculate weight as normalized intensity
-      //double weight = (cloud->at(i).intensity - min_intensity)
-      //                 / (max_intensity - min_intensity);
-      double weight = cloud->at(i).intensity / sum_intensity;
-
-			//if (cloud->at(i).doppler == 0) continue;
-
 			Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
@@ -476,38 +451,88 @@ private:
     }
   }
 
-  /** \brief get the maximum and minimum intensity in the input cloud
-    * \param[out] min_intensity the minimum intensity found in the cloud
-    * \param[out] max_intensity the maximum intensity found in the cloud
-    * \param[in] the input point cloud
+  /** \brief linearize old states and measurements and add them to the
+    * marginalization error term
     */
-  void getIntensityBounds(double &min_intensity,
-                          double &max_intensity,
-                          pcl::PointCloud<RadarPoint>::Ptr cloud)
-  { 
-    min_intensity = 1.0e4;
-    max_intensity = 0.0;
-    for (int i = 0; i < cloud->size(); i++)
+  bool ApplyMarginalization()
+  {
+    if (timestamps_.size() > window_size_)
     {
-      if (cloud->at(i).intensity > max_intensity)
-        max_intensity = cloud->at(i).intensity;
-      if (cloud->at(i).intensity < min_intensity)
-        min_intensity = cloud->at(i).intensity;
-    }
-  }
+      // remove marginalization error from problem
+      // if it's already initialized
+      if (marginalization_error_ptr_ && marginalization_id_)
+      {
+        LOG(INFO) << "removing marginalization residual";
+        problem_->RemoveResidualBlock(marginalization_id_);
+        marginalization_id_ = 0;
+      }
 
-	double getSumIntensities(pcl::PointCloud<RadarPoint>::Ptr cloud)
-	{
-		double sum_intensity = 0.0;
-		for (int i = 0; i < cloud->size(); i++)
-		{
-			sum_intensity += cloud->at(i).doppler;
-		}
-		if (sum_intensity == 0.0)
-			return 1.0;
-		else
-			return sum_intensity;
-	}
+      // initialize the marginalization error if necessary
+      if (!marginalization_error_ptr_)
+      {
+        LOG(INFO) << "resetting marginalization error";
+        marginalization_error_ptr_.reset(
+          new MarginalizationError(problem_));
+      }
+
+      // add oldest residuals
+      LOG(INFO) << "adding states and residuals to marginalization";
+      if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
+      {
+        LOG(ERROR) << "failed to add residuals";
+        return false;
+      }
+
+      // get oldest states to marginalize
+      std::vector<double*> states_to_marginalize;
+      states_to_marginalize.push_back(
+        attitudes_.back()->coeffs().data()); // attitude
+      states_to_marginalize.push_back(
+        speeds_and_biases_.back()->head(3).data()); // speed
+      states_to_marginalize.push_back(
+        speeds_and_biases_.back()->segment(3,3).data()); // gyro bias
+      states_to_marginalize.push_back(
+        speeds_and_biases_.back()->tail(3).data()); // accel bias
+
+      // actually marginalize states
+      if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
+      {
+        LOG(ERROR) << "failed to marginalize states";
+        return false;
+      }
+
+      marginalization_error_ptr_->UpdateErrorComputation();
+
+      LOG(INFO) << "deleting old bookkeeping";
+
+      attitudes_.pop_back();
+      speeds_and_biases_.pop_back();
+      residual_blks_.pop_back();
+      timestamps_.pop_back();
+
+      // discard marginalization error if it has no residuals
+      if (marginalization_error_ptr_->num_residuals() == 0)
+      {
+        LOG(INFO) << "no residuals associated to marginalization, resetting";
+        marginalization_error_ptr_.reset();
+      }
+
+      // add marginalization error term back to the problem
+      if (marginalization_error_ptr_)
+      {
+        LOG(INFO) << "adding marginalization error to problem";
+        std::vector<double*> parameter_block_ptrs;
+        marginalization_error_ptr_->GetParameterBlockPtrs(
+          parameter_block_ptrs);
+        marginalization_id_ = problem_->AddResidualBlock(
+          marginalization_error_ptr_.get(),
+          NULL,
+          parameter_block_ptrs);
+      }
+      LOG(INFO) << "done with marginalization";
+    }
+    return true;
+  }
 };
 
 int main(int argc, char** argv)
