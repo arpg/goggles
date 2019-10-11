@@ -196,7 +196,7 @@ public:
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
     num_iter_++;
-    LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
+    LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
     pub_.publish(vel_out);
   	
 	}
@@ -364,7 +364,7 @@ private:
     */
   void InitializeImu()
   {
-    LOG(ERROR) << "initializing imu";
+    LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
     double t0 = imu_buffer_.GetStartTime();
     std::vector<ImuMeasurement> measurements = 
@@ -431,8 +431,8 @@ private:
     problem_->SetParameterBlockConstant(accel_biases_.front()->data());
     
     initialized_ = true;
-    LOG(INFO) << "initialized!";
-    LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
+    LOG(ERROR) << "initialized!";
+    LOG(INFO) << "initial orientation: " << attitude_initial.coeffs().transpose();
   }
 
   /** \brief linearize old states and measurements and add them to the
@@ -446,7 +446,7 @@ private:
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        LOG(ERROR) << "removing marginalization residual";
+        LOG(INFO) << "removing marginalization residual";
         problem_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
@@ -454,13 +454,13 @@ private:
       // initialize the marginalization error if necessary
       if (!marginalization_error_ptr_)
       {
-        LOG(ERROR) << "resetting marginalization error";
+        LOG(INFO) << "resetting marginalization error";
         marginalization_error_ptr_.reset(
           new MarginalizationError(problem_));
       }
 
       // add oldest residuals
-      LOG(ERROR) << "adding residuals to marginalization";
+      LOG(INFO) << "adding residuals to marginalization";
       if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
       {
         LOG(ERROR) << "failed to add residuals";
@@ -479,16 +479,16 @@ private:
         accel_biases_.back()->data()); // accel bias
 
       // actually marginalize states
-      LOG(ERROR) << "marginalizing states";
+      LOG(INFO) << "marginalizing states";
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
       {
         LOG(ERROR) << "failed to marginalize states";
         return false;
       }
-      LOG(ERROR) << "updating error computation";
+      LOG(INFO) << "updating error computation";
       marginalization_error_ptr_->UpdateErrorComputation();
 
-      LOG(ERROR) << "deleting old bookkeeping";
+      LOG(INFO) << "deleting old bookkeeping";
 
       attitudes_.pop_back();
       speeds_.pop_back();
@@ -507,7 +507,7 @@ private:
       // add marginalization error term back to the problem
       if (marginalization_error_ptr_)
       {
-        LOG(ERROR) << "adding marginalization error to problem";
+        LOG(INFO) << "adding marginalization error to problem";
         std::vector<double*> parameter_block_ptrs;
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
@@ -516,7 +516,7 @@ private:
           NULL,
           parameter_block_ptrs);
       }
-      LOG(ERROR) << "done with marginalization";
+      LOG(INFO) << "done with marginalization";
     }
     return true;
   }

@@ -116,9 +116,9 @@ bool MarginalizationError::AddResidualBlock(
         std::pair<double*, size_t>(param_blks[i],
                                    param_block_info_.size() - 1.0));
 
-      LOG(ERROR) << "minimal dim: " << info->minimal_dimension;
-      LOG(ERROR) << "   full dim: " << info->dimension;
-      LOG(ERROR) << "ordering id: " << info->ordering_idx;
+      LOG(INFO) << "minimal dim: " << info->minimal_dimension;
+      LOG(INFO) << "   full dim: " << info->dimension;
+      LOG(INFO) << "ordering id: " << info->ordering_idx;
       if (info->linearization_point) LOG(INFO) << "linearization point set";
       if (info->parameter_block_ptr) LOG(INFO) << "param block pointer set";
 
@@ -302,7 +302,7 @@ bool MarginalizationError::MarginalizeOut(
   size_t marginalization_parameters = 0;
 
   // make sure there are no duplicates
-  LOG(ERROR) << "checking for duplicate parameter blocks";
+  LOG(INFO) << "checking for duplicate parameter blocks";
   std::sort(parameter_blocks_copy.begin(), parameter_blocks_copy.end());
   for (size_t i = 1; i < parameter_blocks_copy.size(); i++)
   {
@@ -313,7 +313,7 @@ bool MarginalizationError::MarginalizeOut(
     }
   }
 
-  LOG(ERROR) << "finding indices of param blocks";
+  LOG(INFO) << "finding indices of param blocks";
   // find start idx and dimension of param blocks in H matrix
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
@@ -322,7 +322,7 @@ bool MarginalizationError::MarginalizeOut(
 
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
-      LOG(ERROR) << "trying to marginalize unconnected unconnected parameter block";
+      LOG(INFO) << "trying to marginalize unconnected unconnected parameter block";
       return false;
     }
 
@@ -340,7 +340,7 @@ bool MarginalizationError::MarginalizeOut(
             [](std::pair<int,int> left, std::pair<int,int> right) 
             { return left.first < right.first; } 
             );
-  LOG(ERROR) << "unifying contiguous blocks";
+  LOG(INFO) << "unifying contiguous blocks";
   // unify contiguous blocks
   for (size_t i = 1; i < marginalization_start_idx_and_length_pairs.size(); i++)
   {
@@ -359,7 +359,7 @@ bool MarginalizationError::MarginalizeOut(
   }
 
   error_computation_valid_ = false;
-  LOG(ERROR) << "marginalizing states";
+  LOG(INFO) << "marginalizing states";
   // actually marginalize states
   if (marginalization_start_idx_and_length_pairs.size() > 0)
   {
@@ -408,10 +408,10 @@ bool MarginalizationError::MarginalizeOut(
     H_ = p_a.asDiagonal() * H_ * p_a.asDiagonal();
     b0_ = p_a.asDiagonal() * b0_;
   }
-  LOG(ERROR) << "updating num residuals";
+  LOG(INFO) << "updating num residuals";
   // update internal ceres size info
   base_t::set_num_residuals(base_t::num_residuals() - marginalization_parameters);
-  LOG(ERROR) << "updating bookkeeping";
+  LOG(INFO) << "updating bookkeeping";
 
   // delete bookkeeping
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
@@ -421,10 +421,9 @@ bool MarginalizationError::MarginalizeOut(
     int margSize = param_block_info_.at(idx)->minimal_dimension;
 
     // erase parameter block from info vector
-    LOG(ERROR) << "erasing idx " << idx << " from param block info";
-    LOG(ERROR) << "param block dimension: " << param_block_info_[idx]->dimension;
+    LOG(INFO) << "erasing idx " << idx << " from param block info";
     param_block_info_.erase(param_block_info_.begin() + idx);
-    LOG(ERROR) << "updating subsequent entries";
+    LOG(INFO) << "updating subsequent entries";
     // update subsequent entries in info vector and indices map
     for (size_t j = idx; j < param_block_info_.size(); j++)
     {
@@ -432,7 +431,7 @@ bool MarginalizationError::MarginalizeOut(
       parameter_block_id_2_block_info_idx_.at(
         param_block_info_.at(j)->parameter_block_ptr.get()) -= 1;
     }
-    LOG(ERROR) << "updating map";
+    LOG(INFO) << "updating map";
     // erase entry in indices map
     parameter_block_id_2_block_info_idx_.erase(parameter_blocks_copy[i]);
 
@@ -452,13 +451,13 @@ bool MarginalizationError::MarginalizeOut(
                  << " connected to error terms.";
     }
   }
-  LOG(ERROR) << "removing param block";
+  LOG(INFO) << "removing param block";
   // actually remove the parameter blocks
   for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
   {
     problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
   }
-  LOG(ERROR) << "done marginalizing states";
+  LOG(INFO) << "done marginalizing states";
 
   return true;
 }
