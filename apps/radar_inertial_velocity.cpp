@@ -86,7 +86,7 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 10;
+    window_size_ = 4;
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
@@ -211,7 +211,9 @@ private:
   ceres::ScaledLoss *imu_loss_;
 	ceres::LocalParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> attitudes_;
-  std::deque<Eigen::Matrix<double,9,1>*> speeds_and_biases_;
+  std::deque<Eigen::Vector3d*> speeds_;
+  std::deque<Eigen::Vector3d*> gyro_biases_;
+  std::deque<Eigen::Vector3d*> accel_biases_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
@@ -259,17 +261,17 @@ private:
 		// else add new params copied from previous values
 		else
 		{
-			speeds_and_biases_.push_front(
-						new Eigen::Matrix<double,9,1>(*speeds_and_biases_.front()));
-			attitudes_.push_front(
-						new Eigen::Quaterniond(*attitudes_.front()));
+			speeds_.push_front(new Eigen::Vector3d(*speeds_.front()));
+      gyro_biases_.push_front(new Eigen::Vector3d(*gyro_biases_.front()));
+      accel_biases_.push_front(new Eigen::Vector3d(*accel_biases_.front()));
+			attitudes_.push_front(new Eigen::Quaterniond(*attitudes_.front()));
 			problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
 			problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
-    	problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
-			problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
-			problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-			problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
+    	problem_->AddParameterBlock(speeds_.front()->data(),3);
+			problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
+			problem_->AddParameterBlock(accel_biases_.front()->data(),3);
+			//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+			//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
@@ -296,7 +298,7 @@ private:
       ceres::ResidualBlockId res_id = 
 				problem_->AddResidualBlock(doppler_cost_function, 
                                    doppler_loss_, 
-                                	 speeds_and_biases_.front()->head<3>().data());
+                                	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
     
@@ -316,13 +318,13 @@ private:
 				= problem_->AddResidualBlock(imu_cost_func, 
                                      imu_loss_, 
                                      attitudes_[1]->coeffs().data(),
-																		 speeds_and_biases_[1]->head(3).data(),
-																		 speeds_and_biases_[1]->segment(3,3).data(),
-																		 speeds_and_biases_[1]->tail(3).data(),
+																		 speeds_[1]->data(),
+																		 gyro_biases_[1]->data(),
+																		 accel_biases_[1]->data(),
                                      attitudes_[0]->coeffs().data(),
-																		 speeds_and_biases_[0]->head(3).data(),
-																		 speeds_and_biases_[0]->segment(3,3).data(),
-																		 speeds_and_biases_[0]->tail(3).data());
+																		 speeds_[0]->data(),
+																		 gyro_biases_[0]->data(),
+																		 accel_biases_[0]->data());
 			residual_blks_[1].push_back(res_id);
     }
 
@@ -330,9 +332,9 @@ private:
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
-    LOG(ERROR) << summary.FullReport();
-    LOG(ERROR) << "velocity from ceres: " 
-						<< speeds_and_biases_.front()->head(3).transpose();
+    LOG(INFO) << summary.FullReport();
+    LOG(INFO) << "velocity from ceres: " 
+						<< speeds_.front()->transpose();
 
     // get estimate covariance
     /*
@@ -382,11 +384,13 @@ private:
     params_.g_ = g_vec.norm();
     
     // set initial velocity and biases
-    Eigen::Matrix<double,9,1> speed_and_bias_initial;
-    speed_and_bias_initial.setZero();
-    speed_and_bias_initial.segment(3,3) = sum_g / measurements.size();
-    speeds_and_biases_.push_front(
-        new Eigen::Matrix<double,9,1>(speed_and_bias_initial));
+    Eigen::Vector3d speed_initial = Eigen::Vector3d::Zero();
+    Eigen::Vector3d b_g_initial = Eigen::Vector3d::Zero();
+    Eigen::Vector3d b_a_initial = Eigen::Vector3d::Zero();
+    b_g_initial = sum_g / measurements.size();
+    speeds_.push_front(new Eigen::Vector3d(speed_initial));
+    gyro_biases_.push_front(new Eigen::Vector3d(b_g_initial));
+    accel_biases_.push_front(new Eigen::Vector3d(b_a_initial));
     
     // set initial orientation (attitude only)
     // assuming IMU is set close to Z-down
@@ -418,13 +422,13 @@ private:
 
     problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
     problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-    problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
-    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
-    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
+    problem_->AddParameterBlock(speeds_.front()->data(),3);
+    problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
+    problem_->AddParameterBlock(accel_biases_.front()->data(),3);
+    //problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
+    //problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
+    problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
+    problem_->SetParameterBlockConstant(accel_biases_.front()->data());
     
     initialized_ = true;
     LOG(INFO) << "initialized!";
@@ -442,7 +446,7 @@ private:
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        LOG(INFO) << "removing marginalization residual";
+        LOG(ERROR) << "removing marginalization residual";
         problem_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
@@ -450,13 +454,13 @@ private:
       // initialize the marginalization error if necessary
       if (!marginalization_error_ptr_)
       {
-        LOG(INFO) << "resetting marginalization error";
+        LOG(ERROR) << "resetting marginalization error";
         marginalization_error_ptr_.reset(
           new MarginalizationError(problem_));
       }
 
       // add oldest residuals
-      LOG(INFO) << "adding states and residuals to marginalization";
+      LOG(ERROR) << "adding residuals to marginalization";
       if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
       {
         LOG(ERROR) << "failed to add residuals";
@@ -468,39 +472,42 @@ private:
       states_to_marginalize.push_back(
         attitudes_.back()->coeffs().data()); // attitude
       states_to_marginalize.push_back(
-        speeds_and_biases_.back()->head(3).data()); // speed
+        speeds_.back()->data()); // speed
       states_to_marginalize.push_back(
-        speeds_and_biases_.back()->segment(3,3).data()); // gyro bias
+        gyro_biases_.back()->data()); // gyro bias
       states_to_marginalize.push_back(
-        speeds_and_biases_.back()->tail(3).data()); // accel bias
+        accel_biases_.back()->data()); // accel bias
 
       // actually marginalize states
+      LOG(ERROR) << "marginalizing states";
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
       {
         LOG(ERROR) << "failed to marginalize states";
         return false;
       }
-
+      LOG(ERROR) << "updating error computation";
       marginalization_error_ptr_->UpdateErrorComputation();
 
-      LOG(INFO) << "deleting old bookkeeping";
+      LOG(ERROR) << "deleting old bookkeeping";
 
       attitudes_.pop_back();
-      speeds_and_biases_.pop_back();
+      speeds_.pop_back();
+      gyro_biases_.pop_back();
+      accel_biases_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
 
       // discard marginalization error if it has no residuals
       if (marginalization_error_ptr_->num_residuals() == 0)
       {
-        LOG(INFO) << "no residuals associated to marginalization, resetting";
+        LOG(ERROR) << "no residuals associated to marginalization, resetting";
         marginalization_error_ptr_.reset();
       }
 
       // add marginalization error term back to the problem
       if (marginalization_error_ptr_)
       {
-        LOG(INFO) << "adding marginalization error to problem";
+        LOG(ERROR) << "adding marginalization error to problem";
         std::vector<double*> parameter_block_ptrs;
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
@@ -509,7 +516,7 @@ private:
           NULL,
           parameter_block_ptrs);
       }
-      LOG(INFO) << "done with marginalization";
+      LOG(ERROR) << "done with marginalization";
     }
     return true;
   }
@@ -522,7 +529,7 @@ private:
   void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
                        Eigen::Matrix3d &covariance)
   {
-    Eigen::Vector3d velocity = speeds_and_biases_.front()->head<3>();
+    Eigen::Vector3d velocity = *(speeds_.front());
     vel.twist.twist.linear.x = velocity[0];
     vel.twist.twist.linear.y = velocity[1];
     vel.twist.twist.linear.z = velocity[2];
@@ -533,7 +540,7 @@ private:
         vel.twist.covariance[(i*6)+j] = covariance(i,j);
     }
   }
-  
+
 };
 
 int main(int argc, char** argv)
