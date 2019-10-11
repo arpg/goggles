@@ -90,7 +90,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),100.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
     
@@ -181,8 +181,7 @@ public:
 		}
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    //cloud = raw_cloud;
-		LOG(ERROR) << "cloud size: " << cloud->size();
+    
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
     
@@ -270,8 +269,6 @@ private:
     	problem_->AddParameterBlock(speeds_.front()->data(),3);
 			problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
 			problem_->AddParameterBlock(accel_biases_.front()->data(),3);
-			//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-			//problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
@@ -446,7 +443,6 @@ private:
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        LOG(INFO) << "removing marginalization residual";
         problem_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
@@ -454,13 +450,11 @@ private:
       // initialize the marginalization error if necessary
       if (!marginalization_error_ptr_)
       {
-        LOG(INFO) << "resetting marginalization error";
         marginalization_error_ptr_.reset(
           new MarginalizationError(problem_));
       }
 
       // add oldest residuals
-      LOG(INFO) << "adding residuals to marginalization";
       if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
       {
         LOG(ERROR) << "failed to add residuals";
@@ -479,16 +473,13 @@ private:
         accel_biases_.back()->data()); // accel bias
 
       // actually marginalize states
-      LOG(INFO) << "marginalizing states";
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
       {
         LOG(ERROR) << "failed to marginalize states";
         return false;
       }
-      LOG(INFO) << "updating error computation";
-      marginalization_error_ptr_->UpdateErrorComputation();
 
-      LOG(INFO) << "deleting old bookkeeping";
+      marginalization_error_ptr_->UpdateErrorComputation();
 
       attitudes_.pop_back();
       speeds_.pop_back();
@@ -507,7 +498,6 @@ private:
       // add marginalization error term back to the problem
       if (marginalization_error_ptr_)
       {
-        LOG(INFO) << "adding marginalization error to problem";
         std::vector<double*> parameter_block_ptrs;
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
@@ -516,7 +506,6 @@ private:
           NULL,
           parameter_block_ptrs);
       }
-      LOG(INFO) << "done with marginalization";
     }
     return true;
   }
