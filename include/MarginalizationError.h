@@ -132,7 +132,16 @@ protected:
         minimal_dimension(0)
     { 
     }
-
+    /*
+    ~ParameterBlockInfo()
+    {
+      LOG(ERROR) << "resetting lin point";
+      linearization_point.reset();
+      LOG(ERROR) << "resetting param block";
+      parameter_block_ptr.reset();
+      LOG(ERROR) << "info deleted";
+    }
+    */
     ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
                        size_t ordering_idx,
                        size_t dimension,
@@ -154,7 +163,7 @@ protected:
     }
   };
 
-  std::vector<ParameterBlockInfo> param_block_info_;
+  std::vector<std::shared_ptr<ParameterBlockInfo>> param_block_info_;
   std::map<double*, size_t> parameter_block_id_2_block_info_idx_;
 };
 
