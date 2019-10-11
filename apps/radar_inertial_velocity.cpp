@@ -242,80 +242,6 @@ private:
     }
   }
 
-	/** \brief uses initial IMU measurements to determine the magnitude of the
-		* gravity vector and the initial attitude
-		*/
-	void InitializeImu()
-	{
-		LOG(ERROR) << "initializing imu";
-		imu_buffer_.WaitForMeasurements();
-		double t0 = imu_buffer_.GetStartTime();
-		std::vector<ImuMeasurement> measurements = 
-					imu_buffer_.GetRange(t0, t0 + 0.2, false);
-
-		// find gravity vector and average stationary gyro reading
-		Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
-		Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();
-		for (size_t i = 0; i < measurements.size(); i++)
-		{
-			sum_g += measurements[i].g_;
-			sum_a += measurements[i].a_;
-		}
-		Eigen::Vector3d g_vec = -sum_a / measurements.size();
-		
-		// set gravity vector magnitude
-		params_.g_ = g_vec.norm();
-		
-		// set initial velocity and biases
-		Eigen::Matrix<double,9,1> speed_and_bias_initial;
-		speed_and_bias_initial.setZero();
-		speed_and_bias_initial.segment(3,3) = sum_g / measurements.size();
-		speeds_and_biases_.push_front(
-				new Eigen::Matrix<double,9,1>(speed_and_bias_initial));
-		
-		// set initial orientation (attitude only)
-		// assuming IMU is set close to Z-down
-		Eigen::Vector3d down_vec(0,0,1);
-		Eigen::Vector3d increment;
-		Eigen::Vector3d g_direction = g_vec.normalized();
-		Eigen::Vector3d cross = down_vec.cross(g_direction);
-		if (cross.norm() == 0.0)
-			increment = cross;
-		else
-			increment = cross.normalized();
-		double angle = std::acos(down_vec.transpose() * g_direction);
-		increment *= angle;
-		increment *= -1.0;
-		
-		Eigen::Quaterniond attitude_initial = Eigen::Quaterniond::Identity();
-		// initial oplus increment
-		Eigen::Vector4d dq;
-		double halfnorm = 0.5 * increment.norm();
-		QuaternionParameterization qp;
-		dq.head(3) = qp.sinc(halfnorm) * 0.5 * increment;
-		dq[3] = std::cos(halfnorm);
-
-		attitude_initial = (Eigen::Quaterniond(dq) * attitude_initial);
-		attitude_initial.normalize();
-		
-		attitudes_.push_front(
-				new Eigen::Quaterniond(attitude_initial));
-
-		problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
-		problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
-    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
-		problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
-		problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
-		problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
-		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
-		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
-		problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
-		
-		initialized_ = true;
-		LOG(INFO) << "initialized!";
-		LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
-	}
-
   /** \brief uses ceres solver to estimate the body velocity from the input 
     * point cloud
     * \param[out] the resultant body velocity
@@ -350,7 +276,7 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 		
-		if (!ApplyMarginalization)
+		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
     
     double weight = 100.0 / cloud->size();
@@ -431,24 +357,78 @@ private:
     populateMessage(vel_out,covariance_matrix);
   }
 
-  /** \brief populate ros message with velocity and covariance
-    * \param[out] vel the resultant ros message
-    * \param[in] velocity the estimated velocity
-    * \param[in] covariance the estimate covariance
+  /** \brief uses initial IMU measurements to determine the magnitude of the
+    * gravity vector and the initial attitude
     */
-  void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
-                       Eigen::Matrix3d &covariance)
+  void InitializeImu()
   {
-    Eigen::Vector3d velocity = speeds_and_biases_.front()->head<3>();
-    vel.twist.twist.linear.x = velocity[0];
-    vel.twist.twist.linear.y = velocity[1];
-    vel.twist.twist.linear.z = velocity[2];
+    LOG(ERROR) << "initializing imu";
+    imu_buffer_.WaitForMeasurements();
+    double t0 = imu_buffer_.GetStartTime();
+    std::vector<ImuMeasurement> measurements = 
+          imu_buffer_.GetRange(t0, t0 + 0.2, false);
 
-    for (int i = 0; i < 3; i++)
+    // find gravity vector and average stationary gyro reading
+    Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
+    Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();
+    for (size_t i = 0; i < measurements.size(); i++)
     {
-      for (int j = 0; j < 3; j++)
-        vel.twist.covariance[(i*6)+j] = covariance(i,j);
+      sum_g += measurements[i].g_;
+      sum_a += measurements[i].a_;
     }
+    Eigen::Vector3d g_vec = -sum_a / measurements.size();
+    
+    // set gravity vector magnitude
+    params_.g_ = g_vec.norm();
+    
+    // set initial velocity and biases
+    Eigen::Matrix<double,9,1> speed_and_bias_initial;
+    speed_and_bias_initial.setZero();
+    speed_and_bias_initial.segment(3,3) = sum_g / measurements.size();
+    speeds_and_biases_.push_front(
+        new Eigen::Matrix<double,9,1>(speed_and_bias_initial));
+    
+    // set initial orientation (attitude only)
+    // assuming IMU is set close to Z-down
+    Eigen::Vector3d down_vec(0,0,1);
+    Eigen::Vector3d increment;
+    Eigen::Vector3d g_direction = g_vec.normalized();
+    Eigen::Vector3d cross = down_vec.cross(g_direction);
+    if (cross.norm() == 0.0)
+      increment = cross;
+    else
+      increment = cross.normalized();
+    double angle = std::acos(down_vec.transpose() * g_direction);
+    increment *= angle;
+    increment *= -1.0;
+    
+    Eigen::Quaterniond attitude_initial = Eigen::Quaterniond::Identity();
+    // initial oplus increment
+    Eigen::Vector4d dq;
+    double halfnorm = 0.5 * increment.norm();
+    QuaternionParameterization qp;
+    dq.head(3) = qp.sinc(halfnorm) * 0.5 * increment;
+    dq[3] = std::cos(halfnorm);
+
+    attitude_initial = (Eigen::Quaterniond(dq) * attitude_initial);
+    attitude_initial.normalize();
+    
+    attitudes_.push_front(
+        new Eigen::Quaterniond(attitude_initial));
+
+    problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
+    problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->head(3).data(),3);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->segment(3,3).data(),3);
+    problem_->AddParameterBlock(speeds_and_biases_.front()->tail(3).data(),3);
+    problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
+    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
+    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->segment(3,3).data());
+    problem_->SetParameterBlockConstant(speeds_and_biases_.front()->tail(3).data());
+    
+    initialized_ = true;
+    LOG(INFO) << "initialized!";
+    LOG(ERROR) << "initial orientation: " << attitude_initial.coeffs().transpose();
   }
 
   /** \brief linearize old states and measurements and add them to the
@@ -533,6 +513,27 @@ private:
     }
     return true;
   }
+
+  /** \brief populate ros message with velocity and covariance
+    * \param[out] vel the resultant ros message
+    * \param[in] velocity the estimated velocity
+    * \param[in] covariance the estimate covariance
+    */
+  void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
+                       Eigen::Matrix3d &covariance)
+  {
+    Eigen::Vector3d velocity = speeds_and_biases_.front()->head<3>();
+    vel.twist.twist.linear.x = velocity[0];
+    vel.twist.twist.linear.y = velocity[1];
+    vel.twist.twist.linear.z = velocity[2];
+
+    for (int i = 0; i < 3; i++)
+    {
+      for (int j = 0; j < 3; j++)
+        vel.twist.covariance[(i*6)+j] = covariance(i,j);
+    }
+  }
+  
 };
 
 int main(int argc, char** argv)
