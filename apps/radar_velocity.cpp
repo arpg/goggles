@@ -341,10 +341,13 @@ private:
       if (marginalization_error_ptr_)
       {
         LOG(INFO) << "adding marginalization error to problem";
+        std::vector<double*> parameter_block_ptrs;
+        marginalization_error_ptr_->GetParameterBlockPtrs(
+          parameter_block_ptrs);
         marginalization_id_ = problem_->AddResidualBlock(
           marginalization_error_ptr_.get(), 
           NULL,
-          velocities_.back()->data());
+          parameter_block_ptrs);
       }
       LOG(INFO) << "done with marginalization";
     }
