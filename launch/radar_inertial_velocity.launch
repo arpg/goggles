@@ -9,7 +9,7 @@
   <arg name="imu_topic" default="/imu/data_raw"/>
   <arg name="imu_ref_frame" default="imu_frame"/>
   <arg name="radar_ref_frame" default="radar_frame"/>
-  <arg name="config_file" default="/home/arpg/radar_ws/src/goggles/config/microstrain.yaml"/>
+  <arg name="config_file" default="/home/akramer/code/radar_ws/src/goggles/config/microstrain.yaml"/>
 
   <arg name="rviz" default="false"/>
   <arg name="launch_radar" default="true"/>
