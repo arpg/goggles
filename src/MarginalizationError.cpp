@@ -267,10 +267,10 @@ void MarginalizationError::GetParameterBlockPtrs(
   std::vector<double*> &parameter_block_ptrs)
 {
   parameter_block_ptrs.clear();
-  for (size_t i = 0; i < parameter_block_info_.size(); i++)
+  for (size_t i = 0; i < param_block_info_.size(); i++)
   {
     parameter_block_ptrs.push_back(
-      parameter_block_info_[i].parameter_block_ptr.get());
+      param_block_info_[i].parameter_block_ptr.get());
   }
 }
 
