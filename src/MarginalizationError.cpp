@@ -263,6 +263,17 @@ bool MarginalizationError::AddResidualBlock(
   return true;
 }
 
+void MarginalizationError::GetParameterBlockPtrs(
+  std::vector<double*> &parameter_block_ptrs)
+{
+  parameter_block_ptrs.clear();
+  for (size_t i = 0; i < parameter_block_info_.size(); i++)
+  {
+    parameter_block_ptrs.push_back(
+      parameter_block_info_[i].parameter_block_ptr.get());
+  }
+}
+
 bool MarginalizationError::MarginalizeOut(
   const std::vector<double*> & parameter_blocks)
 {
@@ -432,81 +443,6 @@ bool MarginalizationError::MarginalizeOut(
     problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
   }
 
-  return true;
-}
-
-bool MarginalizationError::ComputeDeltaChi(
-  Eigen::VectorXd& Delta_chi) const
-{
-  Delta_chi.resize(H_.rows());
-  for (size_t i = 0; i < param_block_info_.size(); i++)
-  {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i].parameter_block_ptr.get())))
-    {
-      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
-
-      // get local parameterization
-      const ceres::LocalParameterization* local_param = 
-        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
-
-      if (local_param) // only quaternions will have a local parameterization
-      {
-        QuaternionParameterization qp;
-        qp.Minus(param_block_info_[i].linearization_point.get(),
-                 param_block_info_[i].parameter_block_ptr.get(),
-                 Delta_chi_i.data());
-      }
-      else
-      {
-        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
-        {
-          Delta_chi_i[j] = param_block_info_[i].parameter_block_ptr.get()[j] 
-            - param_block_info_[i].linearization_point.get()[j];
-        }
-      }
-      Delta_chi.segment(param_block_info_[i].ordering_idx,
-                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
-    }
-  }
-  return true;
-}
-
-bool MarginalizationError::ComputeDeltaChi(
-  double const* const * parameters,
-  Eigen::VectorXd& Delta_chi) const
-{
-  Delta_chi.resize(H_.rows());
-  for (size_t i = 0; i < param_block_info_.size(); i++)
-  {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i].parameter_block_ptr.get())))
-    {
-      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
-
-      // get local parameterization
-      const ceres::LocalParameterization* local_param =
-        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
-
-      if (local_param) // only quaternions will have a local parameterization
-      {
-        QuaternionParameterization qp;
-        qp.Minus(param_block_info_[i].linearization_point.get(),
-                 parameters[i],
-                 Delta_chi_i.data());
-      }
-      else
-      {
-        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
-        {
-          Delta_chi_i[j] = parameters[i][j] 
-            - param_block_info_[i].linearization_point.get()[j];
-        }
-      }
-      Delta_chi.segment(param_block_info_[i].ordering_idx,
-                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
-    }
-  }
   return true;
 }
 
@@ -742,6 +678,82 @@ bool MarginalizationError::PseudoInverseSymmSqrt(
   return true;
 }
 
+bool MarginalizationError::ComputeDeltaChi(
+  Eigen::VectorXd& Delta_chi) const
+{
+  Delta_chi.resize(H_.rows());
+  for (size_t i = 0; i < param_block_info_.size(); i++)
+  {
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
+    {
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
+
+      // get local parameterization
+      const ceres::LocalParameterization* local_param = 
+        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
+
+      if (local_param) // only quaternions will have a local parameterization
+      {
+        QuaternionParameterization qp;
+        qp.Minus(param_block_info_[i].linearization_point.get(),
+                 param_block_info_[i].parameter_block_ptr.get(),
+                 Delta_chi_i.data());
+      }
+      else
+      {
+        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
+        {
+          Delta_chi_i[j] = param_block_info_[i].parameter_block_ptr.get()[j] 
+            - param_block_info_[i].linearization_point.get()[j];
+        }
+      }
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
+    }
+  }
+  return true;
+}
+
+bool MarginalizationError::ComputeDeltaChi(
+  double const* const * parameters,
+  Eigen::VectorXd& Delta_chi) const
+{
+  Delta_chi.resize(H_.rows());
+  for (size_t i = 0; i < param_block_info_.size(); i++)
+  {
+    if (!(problem_->IsParameterBlockConstant(
+      param_block_info_[i].parameter_block_ptr.get())))
+    {
+
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
+
+      // get local parameterization
+      const ceres::LocalParameterization* local_param =
+        problem_->GetParameterization(param_block_info_[i].parameter_block_ptr.get());
+
+      if (local_param) // only quaternions will have a local parameterization
+      {
+        QuaternionParameterization qp;
+        qp.Minus(param_block_info_[i].linearization_point.get(),
+                 parameters[i],
+                 Delta_chi_i.data());
+      }
+      else
+      {
+        for (size_t j = 0; j < param_block_info_[i].minimal_dimension; j++)
+        {
+          Delta_chi_i[j] = parameters[i][j] 
+            - param_block_info_[i].linearization_point.get()[j];
+        }
+      }
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
+    }
+  }
+  return true;
+}
+
 bool MarginalizationError::Evaluate(
   double const* const* parameters,
   double* residuals,
@@ -760,8 +772,6 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
   Eigen::VectorXd Delta_Chi;
   ComputeDeltaChi(parameters, Delta_Chi);
 
-  // will only work with radar-inertial
-  // want to be able to work with radar-only as well
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
     if (jacobians != NULL)

@@ -28,6 +28,8 @@ public:
   bool AddResidualBlock(
     ceres::ResidualBlockId residual_block_id);
 
+  void GetParameterBlockPtrs(std::vector<double*> &parameter_block_ptrs);
+
   bool MarginalizeOut(const std::vector<double*> & parameter_blocks);
 
   bool Evaluate(double const* const* parameters,
@@ -130,16 +132,7 @@ protected:
         minimal_dimension(0)
     { 
     }
-    /*
-    ~ParameterBlockInfo()
-    {
-      LOG(ERROR) << "deleting linearization point";
-      linearization_point.reset();
-      LOG(ERROR) << "deleting param block";
-      parameter_block_ptr.reset();
-      LOG(ERROR) << "everything deleted";
-    }
-    */
+
     ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
                        size_t ordering_idx,
                        size_t dimension,
