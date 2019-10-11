@@ -1,0 +1,25 @@
+<launch>
+
+    <arg name="dev" default="1843"/>
+    <arg name="cfg" default="rangeRes_0-04_velRes_0-12_10Hz"/>
+    <arg name="topic" default="/mmWaveDataHdl/RScan"/>
+	<arg name="launch_radar" default="true"/>
+    <!-- launch ti mmwave sensor node -->
+
+    <group if="$(arg launch_radar)">
+			<include file="$(find ti_mmwave_rospkg)/launch/ti_mmwave_sensor.launch">
+        <arg name="device" value="$(arg dev)"/>
+        <arg name="config" value="$(arg cfg)"/>
+        <arg name="sdk" value="03_01_01_02"/>
+        <arg name="max_allowed_elevation_angle_deg" value="90"/>
+        <arg name="max_allowed_azimuth_angle_deg" value="90"/>
+    	</include>
+		</group>
+
+    <!-- launch velocity estimator node -->
+
+    <node pkg="goggles" type="radar_velocity" name="radar_velocity_estimator">
+        <param name="radar_topic" value="$(arg topic)"/>
+    </node>
+
+</launch>

@@ -6,14 +6,17 @@
 #include <pcl/point_types.h>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
-#include  <glog/logging.h>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 #include <Eigen/Core>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
-#include <CeresCostFunction.h>
+#include <BodyVelocityCostFunction.h>
+#include <VelocityChangeCostFunction.h>
+#include <MarginalizationError.h>
 #include <chrono>
 
 struct RadarPoint
@@ -47,7 +50,7 @@ public:
     nh_.getParam("radar_topic", radar_topic);
     VLOG(2) << "radar topic: " << radar_topic;
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/vel",1);
+    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/velocity",1);
     sub_ = nh_.subscribe(radar_topic, 0, &RadarVelocityReader::callback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -57,6 +60,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(0.15);
+    //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
 
     ceres::Problem::Options prob_options;
@@ -81,25 +85,46 @@ public:
 
     // Reject clutter
     Declutter(cloud);
+    
+		for (int i = 0; i < cloud->size(); i++)
+		{
+			cloud->at(i).y *= -1.0;
+			cloud->at(i).z *= -1.0;
+		}
 
-    Eigen::Vector3d coeffs = Eigen::Vector3d::Zero();
-
+    
     if (cloud->size() < 10)
-      LOG(WARNING) << "input cloud has less than 10 points, output will be unreliable";
+		{
+      LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
+		}
 
-    geometry_msgs::TwistWithCovarianceStamped vel_out;
-    vel_out.header.stamp = msg->header.stamp;
+		bool no_doppler = true;
+		for (int i = 0; i < cloud->size(); i++)
+		{
+			if (cloud->at(i).doppler > 0)
+				no_doppler = false;
+		}
+		if (no_doppler)
+		{
+			LOG(ERROR) << "no doppler reading in current cloud";
+		}
+		else
+		{
+			LOG(ERROR) << "getting velocity";
+    	geometry_msgs::TwistWithCovarianceStamped vel_out;
+    	vel_out.header.stamp = msg->header.stamp;
 
-    // Get velocity measurements
-    auto start = std::chrono::high_resolution_clock::now();
-    GetVelocityCeres(cloud, coeffs, timestamp, vel_out);
-    //GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    sum_time_ += elapsed.count();
-    num_iter_++;
-    std::cout << "execution time: " << sum_time_ / double(num_iter_) << std::endl;
-    pub_.publish(vel_out);
+    	// Get velocity measurements
+    	auto start = std::chrono::high_resolution_clock::now();
+    	GetVelocityCeres(cloud, timestamp, vel_out);
+    	//GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
+    	auto finish = std::chrono::high_resolution_clock::now();
+    	std::chrono::duration<double> elapsed = finish - start;
+    	sum_time_ += elapsed.count();
+    	num_iter_++;
+    	LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
+    	pub_.publish(vel_out);
+		}
   }
 
 private:
@@ -113,6 +138,9 @@ private:
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<ceres::Problem> problem_;
+  //ceres::ScaledLoss *marginalization_scaling_;
+  std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
+  ceres::ResidualBlockId marginalization_id_;
   ceres::Solver::Options solver_options_;
   int window_size_;
   double min_range_;
@@ -145,8 +173,8 @@ private:
     * \note this function is currently not used, it was written to demonstrate
     * this process could be done with linear least squares
     */
-    void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
-                       Eigen::Vector3d &velocity,
+  void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
+                       Eigen::Vector3d &velocity, 
                        int max_iter, double func_tol,
                        geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
@@ -246,40 +274,90 @@ private:
 
   /** \brief uses ceres solver to estimate the body velocity from the input
     * point cloud
-    * \param[out] the resultant body velocity
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud,
-                   Eigen::Vector3d &velocity,
+  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud, 
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
     // add latest parameter block and remove old one if necessary
-    velocities_.push_front(new Eigen::Vector3d());
-    std::vector<ceres::ResidualBlockId> residuals;
+    if (velocities_.size() == 0)
+		{
+			velocities_.push_front(new Eigen::Vector3d());
+			velocities_.front()->setZero();
+		}
+		else
+		{
+			velocities_.push_front(new Eigen::Vector3d(*velocities_.front()));
+		}
+		std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
     problem_->AddParameterBlock(velocities_.front()->data(),3);
-    if (velocities_.size() >= window_size_)
+    if (velocities_.size() > window_size_)
     {
-      for (int i = 0; i < residual_blks_.back().size(); i++)
-        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
+      // remove marginalization error from problem if it's
+      // already initialized
+      if (marginalization_error_ptr_ && marginalization_id_)
+      {
+        LOG(INFO) << "removing marginalization residual";
+        problem_->RemoveResidualBlock(marginalization_id_);
+        marginalization_id_ = 0;
+      }
 
-      problem_->RemoveParameterBlock(velocities_.back()->data());
-      delete velocities_.back();
+      // if the marginalization error has not been initialized
+      // initialize it
+      if (!marginalization_error_ptr_)
+      {
+        LOG(INFO) << "resetting marginalization error";
+        marginalization_error_ptr_.reset(
+          new MarginalizationError(problem_));
+      }
+
+      // add last state and associated residuals to marginalization error
+      LOG(INFO) << "adding states and residuals to marginalization";
+      if (!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
+        LOG(ERROR) << "failed to add residuals";
+      std::vector<double*> state_to_marginalize;
+      state_to_marginalize.push_back(velocities_.back()->data());
+      if (!marginalization_error_ptr_->MarginalizeOut(state_to_marginalize))
+        LOG(ERROR) << "failed to marginalize state";
+      marginalization_error_ptr_->UpdateErrorComputation();
+
+      LOG(INFO) << "deleting old bookkeeping";
+      
       velocities_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
-    }
 
-    double min_intensity, max_intensity;
-    getIntensityBounds(min_intensity,max_intensity,cloud);
+      // discard marginalization error if it has no residuals
+      if (marginalization_error_ptr_->num_residuals() == 0)
+      {
+        LOG(INFO) << "no residuals associated to marginalization";
+        marginalization_error_ptr_.reset();
+      }
+
+      // add marginalization term back to the problem
+      if (marginalization_error_ptr_)
+      {
+        LOG(INFO) << "adding marginalization error to problem";
+        std::vector<double*> parameter_block_ptrs;
+        marginalization_error_ptr_->GetParameterBlockPtrs(
+          parameter_block_ptrs);
+        marginalization_id_ = problem_->AddResidualBlock(
+          marginalization_error_ptr_.get(), 
+          NULL,
+          parameter_block_ptrs);
+      }
+      LOG(INFO) << "done with marginalization";
+    }
+    
+    // calculate uniform weighting for doppler measurements
+    double weight = 100.0 / cloud->size();
+
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
-      // calculate weight as normalized intensity
-      double weight = (cloud->at(i).intensity - min_intensity)
-                       / (max_intensity - min_intensity);
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
@@ -288,9 +366,11 @@ private:
                                       target,
                                       weight);
       // add residual block to ceres problem
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(doppler_cost_function,
-                                                                 doppler_loss_,
-                                                                 velocity.data());
+      ceres::ResidualBlockId res_id = 
+					problem_->AddResidualBlock(doppler_cost_function, 
+                                     doppler_loss_, 
+                                     velocities_.front()->data());
+
       residual_blks_.front().push_back(res_id);
     }
 
@@ -300,19 +380,20 @@ private:
       double delta_t = timestamps_[0] - timestamps_[1];
       ceres::CostFunction* vel_change_cost_func =
         new VelocityChangeCostFunction(delta_t);
-      ceres::ResidualBlockId res_id = problem_->AddResidualBlock(vel_change_cost_func,
-                                                                 accel_loss_,
-                                                                 velocities_[0]->data(),
-                                                                 velocities_[1]->data());
+
+      ceres::ResidualBlockId res_id = 
+						problem_->AddResidualBlock(vel_change_cost_func, 
+                                       accel_loss_, 
+                                       velocities_[1]->data(), 
+                                       velocities_[0]->data());
+
       residual_blks_[1].push_back(res_id);
     }
-
-// solve the ceres problem and get result
+    // solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
-
-    VLOG(3) << summary.FullReport();
-    VLOG(2) << "velocity from ceres: " << velocities_.front()->transpose();
+    LOG(INFO) << summary.FullReport();
+    LOG(INFO) << "velocity from ceres: " << velocities_.front()->transpose();
 
     // get estimate covariance
     /*
