@@ -79,11 +79,11 @@ static int GlobalImuVelocityCostFunciton::Propagation(
   // increments
   Eigen::Quaterniond Delta_q(1,0,0,0);
   Eigen::Matrix3d C_integral = Eigen::Matrix3d::Zero();
-  Eigen::Matrix3d C_double_integral = Eigen::Matrix3d::Zero();
+  //Eigen::Matrix3d C_double_integral = Eigen::Matrix3d::Zero();
   Eigen::Vector3d acc_integral = Eigen::Vector3d::Zero();
 
   // may not be required if not estimating position
-  Eigen::Vector3d acc_double_integral = Eigen::Vector3d::Zero(); 
+  //Eigen::Vector3d acc_double_integral = Eigen::Vector3d::Zero(); 
 
   // cross matrix accumulation
   Eigen::Matrix3d cross = Eigen::Matrix3d::Zero();
@@ -93,7 +93,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
   Eigen::Matrix3d dv_db_g = Eigen::Matrix3d::Zero();
 
   // may not be required if not estimating position
-  Eigen::Matrix3d vp_db_g = Eigen::Matrix3d::Zero();
+  //Eigen::Matrix3d dp_db_g = Eigen::Matrix3d::Zero();
 
   // Covariance of the increment without biases
   covariance_t P_delta = covariance_t::Zero();
@@ -172,25 +172,20 @@ static int GlobalImuVelocityCostFunciton::Propagation(
 
     // actual propagation:
     QuaternionParameterization qp;
-    Eigen::Quaterniond dq;
-    const Eigen::Vector3d omege_S_true = (0.5*(omega_S_0+omega_S_1) - gyro_bias);
-    const double theta_half = omega_S_true.norm() * 0.5 * dt;
-    const double sinc_theta_half = qp.sinc(theta_half);
-    const double cos_theta_half = cos(theta_half);
-    dq.vec() = sinc_theta_half * omega_S_true * 0.5 * dt;
-    dq.w() = cos_theta_half;
+    Eigen::Quaterniond dq = qp.DeltaQ(omega_S_true * dt);
     Eigen::Quaterniond Delta_q_1 = Delta_q * dq;
 
     // rotation matrix integrals
     const Eigen::Matrix3d C = Delta_q.toRotationMatrix();
     const Eigen::Matrix3d C_1 = Delta_q_1.toRotationMatrix();
+    const Eigen::Vector3d acc_S_true = (0.5*(acc_S_0+acc_S_1)-accel_bias);
     const Eigen::Matrix3d C_integral_1 = C_integral + 0.5 * (C + C_1) * dt;
     const Eigen::Vector3d acc_integral_1 = acc_integral + 0.5 * (C + C_1) * dt;
 
     // rotation matrix double integrals
     // may not be needed if not estimating position
-    C_double_integral += C_integral * dt + 0.25 * (C + C_1) * dt * dt;
-    acc_double_integral += acc_integral * dt + 0.25*(C+C_1)*acc_S_true*dt*dt;
+    //C_double_integral += C_integral * dt + 0.25 * (C + C_1) * dt * dt;
+    //acc_double_integral += acc_integral * dt + 0.25*(C+C_1)*acc_S_true*dt*dt;
 
     // Jacobian parts
     dalpha_db_g += dt * C_1;
@@ -200,7 +195,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
     Eigen::Matrix3d dv_db_g_1 = dv_db_g + 0.5*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
 
     // this component may not be required if we're not estimating position
-    dp_db_g += dt * dv_db_g + 0.25*dt*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
+    //dp_db_g += dt * dv_db_g + 0.25*dt*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
 
     // covariance propagation
     if (covariance)
@@ -287,7 +282,196 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
   const Eigen::Quaterniond &orientation,
   const Eigen::Vector3d &velocity,
   const Eigen::Vector3d &gyro_bias,
-  const Eigen::Vector3d &accel_bias);
+  const Eigen::Vector3d &accel_bias)
+{
+  std::lock_guard<std::mutex> lock(preintegration_mutex_);
+
+  double time = t0_;
+  double end = t1_;
+
+  if (imu_measurements_.front().t_ >= time 
+      || imu_measurements_.back().t_ <= end)
+  {
+    LOG(ERROR) << "given imu measurements do not cover given timespan";
+    return -1;
+  }
+
+  // initialize increments
+  Delta_q_ = Eigen::Quaterniond(1,0,0,0);
+  C_integral_ = Eigen::Matrix3d::Zero();
+  //C_double_integral_ = Eigen::Matrix3d::Zero();
+  acc_integral_ = Eigen::Vector3d::Zero();
+  //acc_double_integral_ = Eigen::Vector3d::Zero();
+
+  // cross matrix accumulation
+  cross_ = Eigen::Matrix3d::Zero();
+
+  // sub jacobians
+  dalpha_db_g_ = Eigen::Matrix3d::Zero();
+  dv_db_g_ = Eigen::Matrix3d::Zero();
+
+  // Covariance of the increment
+  P_delta_ = covariance_t::Zero();
+
+  double Delta_t = 0;
+  int i = 0;
+  or (std::vector<ImuMeasurement>::const_iterator it = imu_measurements_.begin();
+    it != imu_measurements_.end(); it++)
+  {
+    Eigen::Vector3d omega_S_0 = it->g_;
+    Eigen::Vector3d acc_S_0 = it->a_;
+    time = it->t_;
+    Eigen::Vector3d omega_S_1 = (it+1)->g_;
+    Eigen::Vector3d acc_S_1 = (it+1)->a_;
+
+    double next_time;
+    if ((it+1) == imu_measurements.end())
+      next_time = t1;
+    else
+      next_time = (it+1)->t_;
+
+    double dt = next_time - time;
+
+    // if both measurements are before t0 or both measurements are
+    // after t1, skip ahead
+    if (next_time < t0_ || time > t1_)
+      continue;
+    // if first measurement is out of time range but second is within,
+    // interpolate first measurement at t0
+    if (t0_ > time)
+    {
+      double interval = next_time - time;
+      time = t0_;
+      dt = next_time - time;
+      const double r = 1.0 - dt / interval;
+      omega_S_0 = ((1.0 - r) * omega_S_0 + r * omega_S_1).eval();
+      acc_S_0 = ((1.0 - r) * acc_S_0 + r * acc_S_1).eval();
+    }
+    // if second measurement is out of time range but first is within,
+    // interpolate second measurement at t1
+    if (end < next_time)
+    {
+      double interval = next_time - it->t_;
+      next_time = t1_;
+      dt = next_time - time;
+      const double r = dt / interval;
+      omega_S_1 = ((1.0 - r) * omega_S_0 + r * omega_S_1).eval();
+      acc_S_1 = ((1.0 - r) * acc_S_0 + r * acc_S_1).eval();
+    }
+
+    delta_t += dt;
+
+    double sigma_g_c = imu_parameters_.sigma_g_;
+    double sigma_a_c = imu_parameters_.sigma_a_;
+
+    // check for gyro and accelerometer saturation
+    bool gyro_saturation = false;
+    for (int i = 0; i < 3; i++)
+    {
+      if (fabs(omega_S_0[i]) > imu_parameters.g_max_
+        || fabs(omega_S_1[i]) > imu_parameters.g_max_)
+        gyro_saturation = true;
+    }
+    if (gyro_saturation)
+      LOG(WARNING) "gyro saturation";
+
+    bool accel_saturation = false;
+    for (int i = 0; i < 3; i++)
+    {
+      if (fabs(acc_S_0[i]) > imu_parameters.a_max_
+        || fabs(acc_S_1[i]) > imu_parameters.a_max_)
+        accel_saturation = true;
+    }
+    if (accel_saturation)
+      LOG(WARNING) "accelerometer saturation";
+
+    // orientation propagation
+    QuaternionParameterization qp;
+    const Eigen::Vector3d omega_S_true = (0.5*(omega_S_0+omega_S_1)-gyro_bias);
+    Eigen::Quaterniond dq = qp.DeltaQ(omega_S_true * dt);
+    Eigen::Quaterniond Delta_q_1 = Delta_q_ * dq;
+
+    // rotation matrix and acceleration integral
+    const Eigen::Matrix3d C = Delta_q_.toRotationMatrix();
+    const Eigen::Matrix3d C_1 = Delta_q_1.toRotationMatrix();
+    const Eigen::Vector3d acc_S_true = (0.5 * (acc_S_0 + acc_S_1) - accel_bias);
+    const Eigen::Matrix3d C_integral_1 = C_integral_ + 0.5*(C+C_1) * dt;
+    const Eigen::Vector3d acc_integral_1 = acc_integral_
+      + 0.5 * (C + C_1) * acc_S_true * dt;
+
+    // double integrals
+    //C_double_integral_ += C_integral_* dt + 0.25 * (C + C_1) * dt * dt;
+    //acc_double_integral_ += acc_integral_ * dt 
+    // + 0.25 * (C + C_1) * acc_S_true * dt * dt;
+
+    // jacobian parts
+    d_alpha_db_g_ += C_1 * RightJacobian(omega_S_true * dt) * dt;
+    const Eigen::Matrix3d cross_1 = dq.inverse().toRotationMatrix() * cross_
+      + RightJacobian(omega_S_true * dt) * dt;
+    const Eigen::Matrix3d acc_S_x = CrossMatrix(acc_S_true);
+    Eigen::Matrix3d dv_db_g_1 = dv_db_g_
+      + 0.5 * dt * (C * acc_S_x * cross_ + C1 * acc_S_x * cross_1);
+    //dp_db_g += dt * dv_db_g_
+    //  + 0.25 * dt * dt * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
+
+    // covariance propagation
+    jacobian_t F_delta = jacobian_t::Identity();
+    F_delta.block<3,3>(0,6) = -dt * C_1;
+    F_delta.block<3,3>(3,0) = CrossMatrix(0.5 * (C + C_1) * acc_S_true * dt);
+    F_delta.block<3,3>(3,6) = 0.5 * dt 
+      * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
+    F_delta.block<3,3>(3,9) = -0.5 * (C + C_1) * dt;
+    P_delta_ = F_delta * P_delta_ * F_delta.transpose();
+
+    // add noise 
+    // no transforms since we're assuming isotropic noise
+    const double sigma2_dalpha = dt * sigma_g_c * sigma_g_c;
+    P_delta_(0,0) += sigma2_dalpha;
+    P_delta_(1,1) += sigma2_dalpha;
+    P_delta_(2,2) += sigma2_dalpha;
+    const double sigma2_v = dt * sigma_a_c * sigma_a_c;
+    P_delta_(3,3) += sigma2_v;
+    P_delta_(4,4) += sigma2_v;
+    P_delta_(5,5) += sigma2_v;
+    const double sigma2_b_g = dt * imu_parameters_.sigma_b_g_ * imu_parameters_.sigma_b_g_;
+    P_delta_(6,6) += sigma2_b_g;
+    P_delta_(7,7) += sigma2_b_g;
+    P_delta_(8,8) += sigma2_b_g;
+    const double sigma2_b_a = dt * imu_parameters_.sigma_b_a_ * imu_parameters_.sigma_b_a_;
+    P_delta_(9,9) += sigma2_b_a;
+    P_delta_(10,10) += sigma2_b_a;
+    P_delta_(11,11) += sigma2_b_a;
+
+    // update persistent quantities
+    Delta_q_ = Delta_q_1;
+    C_integral_ = C_integral_1;
+    acc_integral_ = acc_integral_1;
+    cross_ = cross_1;
+    dv_db_g_ = dv_db_g_1;
+    time = next_time;
+
+    i++;
+
+    if (next_time == t1_)
+      break;
+  }
+
+  // store the linearization point
+  velocity_ref_ = velocity;
+
+  // enforce symmetry
+  P_delta_ = 0.5 * P_delta_ + 0.5 * P_delta_.transpose().eval();
+
+  // calculate inverse
+  information_ = P_delta_.inverse();
+  information_ = 0.5 * information_ + 0.5 * information_.transpose().eval();
+
+  // square root information
+  Eigen::LLT<information_t> llt_of_information(information_);
+  sqrt_information_ = llt_of_information.matrixL().transpose();
+
+  return i;
+}
 
 /**
   * @brief Evaluate the error term and compute jacobians
@@ -299,7 +483,10 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
 bool GlobalImuVelocityCostFunciton::Evaluate(
   double const* const* parameters,
   double* residuals,
-  double** jacobians) const;
+  double** jacobians) const
+{
+  return EvaluateWithMinimalJacobians(parameters, residuals, jacobians, NULL);
+}
 
 /**
   * @brief Evaluate the error term and compute jacobians in both full and minimal form

@@ -196,6 +196,7 @@ protected:
   mutable jacobian_t P_delta_ = jacobian_t::Zero();
 
   // reference biases that are updated in RedoPreintegration
+  mutable Eigen::Vector3d velocity_ref_ = Eigen::Vector3d::Zero();
   mutable Eigen::Vector3d gyro_bias_ref_ = Eigen::Vector3d::Zero();
   mutable Eigen::Vector3d accel_bias_ref_ = Eigen::Vector3d::Zero();
 
