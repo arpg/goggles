@@ -64,6 +64,7 @@ set( HEADERS
   ${INC_DIR}/VelocityChangeCostFunction.h
   ${INC_DIR}/VelocityMeasCostFunction.h
   ${INC_DIR}/ImuVelocityCostFunction.h
+  ${INC_DIR}/GlobalImuVelocityCostFunction.h
   ${INC_DIR}/ImuIntegrator.h
   ${INC_DIR}/MarginalizationError.h
 	${INC_DIR}/QuaternionParameterization.h
@@ -75,6 +76,7 @@ set( SOURCES
   ${SRC_DIR}/VelocityChangeCostFunction.cpp
   ${SRC_DIR}/VelocityMeasCostFunction.cpp
   ${SRC_DIR}/ImuVelocityCostFunction.cpp
+  ${SRC_DIR}/GlobalImuVelocityCostFunction.cpp
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
@@ -110,10 +112,12 @@ add_definitions(${PCL_DEFINITIONS})
 
 #add_subdirectory(test)
 
-catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testImuIntegration ${LINK_LIBS})
-catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testMarginalization ${LINK_LIBS})
+#catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testImuIntegration ${LINK_LIBS})
+#catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testMarginalization ${LINK_LIBS})
+catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity
