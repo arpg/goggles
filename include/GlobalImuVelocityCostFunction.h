@@ -19,7 +19,7 @@ public:
   typedef Eigen::Matrix<double,12,12> covariance_t;
   typedef covariance_t information_t;
   typedef covariance_t jacobian_t;
-  typedef ceres::SizedCostFunction<12,4,3,3,3,4,3,3,3> base_t;
+  //typedef ceres::SizedCostFunction<12,4,3,3,3,4,3,3,3> base_t;
 
   /** 
     * @brief Constructor
@@ -162,6 +162,11 @@ public:
   size_t ResidualDim() const;
 
 protected:
+
+  Eigen::Matrix3d CrossMatrix(Eigen::Vector3d &in_vec);
+
+  Eigen::Matrix3d RightJacobian(Eigen::Vector3d &in_vec);
+
   double t0_;
   double t1_;
   std::vector<ImuMeasurement> imu_measurements_;
