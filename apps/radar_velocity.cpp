@@ -50,7 +50,10 @@ public:
     nh_.getParam("radar_topic", radar_topic);
     VLOG(2) << "radar topic: " << radar_topic;
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/velocity",1);
+		// get node namespace
+    std::string ns = ros::this_node::getNamespace();
+
+    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
     sub_ = nh_.subscribe(radar_topic, 0, &RadarVelocityReader::callback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -85,14 +88,14 @@ public:
 
     // Reject clutter
     Declutter(cloud);
-    
+
 		for (int i = 0; i < cloud->size(); i++)
 		{
 			cloud->at(i).y *= -1.0;
 			cloud->at(i).z *= -1.0;
 		}
 
-    
+
     if (cloud->size() < 10)
 		{
       LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
@@ -174,7 +177,7 @@ private:
     * this process could be done with linear least squares
     */
   void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
-                       Eigen::Vector3d &velocity, 
+                       Eigen::Vector3d &velocity,
                        int max_iter, double func_tol,
                        geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
@@ -276,7 +279,7 @@ private:
     * point cloud
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud, 
+  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud,
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
@@ -325,7 +328,7 @@ private:
       marginalization_error_ptr_->UpdateErrorComputation();
 
       LOG(INFO) << "deleting old bookkeeping";
-      
+
       velocities_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
@@ -345,13 +348,13 @@ private:
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
         marginalization_id_ = problem_->AddResidualBlock(
-          marginalization_error_ptr_.get(), 
+          marginalization_error_ptr_.get(),
           NULL,
           parameter_block_ptrs);
       }
       LOG(INFO) << "done with marginalization";
     }
-    
+
     // calculate uniform weighting for doppler measurements
     double weight = 100.0 / cloud->size();
 
@@ -366,9 +369,9 @@ private:
                                       target,
                                       weight);
       // add residual block to ceres problem
-      ceres::ResidualBlockId res_id = 
-					problem_->AddResidualBlock(doppler_cost_function, 
-                                     doppler_loss_, 
+      ceres::ResidualBlockId res_id =
+					problem_->AddResidualBlock(doppler_cost_function,
+                                     doppler_loss_,
                                      velocities_.front()->data());
 
       residual_blks_.front().push_back(res_id);
@@ -381,10 +384,10 @@ private:
       ceres::CostFunction* vel_change_cost_func =
         new VelocityChangeCostFunction(delta_t);
 
-      ceres::ResidualBlockId res_id = 
-						problem_->AddResidualBlock(vel_change_cost_func, 
-                                       accel_loss_, 
-                                       velocities_[1]->data(), 
+      ceres::ResidualBlockId res_id =
+						problem_->AddResidualBlock(vel_change_cost_func,
+                                       accel_loss_,
+                                       velocities_[1]->data(),
                                        velocities_[0]->data());
 
       residual_blks_[1].push_back(res_id);
@@ -419,7 +422,7 @@ private:
 		// Eigen::DiagonalMatrix<double, 3> covariance_matrix;
 		covariance_matrix.diagonal() << 0.01, 0.015, 0.05;
 
-    populateMessage(vel_out,velocity,covariance_matrix);
+    populateMessage(vel_out,*(velocities_.front()),covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance
@@ -431,7 +434,17 @@ private:
                         Eigen::Vector3d &velocity,
                         Eigen::Matrix3d &covariance)
   {
-		vel.header.frame_id = "base_radar_link";
+		// get node namespace
+    std::string ns = ros::this_node::getNamespace();
+
+		if(ns.compare("/") == 0) {
+    	// single radar frame_id to comply with TI naming convention
+      vel.header.frame_id = "base_radar_link";
+    }
+    else {
+      // multi-radar frame_id
+    	vel.header.frame_id = ns.erase(0,1) + "_link";
+    }
 
     vel.twist.twist.linear.x = velocity[0];
     vel.twist.twist.linear.y = velocity[1];

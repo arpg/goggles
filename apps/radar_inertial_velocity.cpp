@@ -49,7 +49,7 @@ class RadarInertialVelocityReader
 {
 public:
 
-  RadarInertialVelocityReader(ros::NodeHandle nh) 
+  RadarInertialVelocityReader(ros::NodeHandle nh)
   {
     nh_ = nh;
 		std::string radar_topic;
@@ -62,23 +62,25 @@ public:
 		nh_.getParam("imu_frame", imu_frame);
 		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
-		
+
 		// get imu params and extrinsics
 		LoadParams(config);
     imu_buffer_.SetTimeout(params_.frequency_);
 		tf::TransformListener tf_listener;
-		tf_listener.waitForTransform(imu_frame, 
-																 radar_frame, 
-																 ros::Time(0.0), 
+		tf_listener.waitForTransform(imu_frame,
+																 radar_frame,
+																 ros::Time(0.0),
 																 ros::Duration(1.0));
-		tf_listener.lookupTransform(imu_frame, 
-																radar_frame, 
-																ros::Time(0.0), 
+		tf_listener.lookupTransform(imu_frame,
+																radar_frame,
+																ros::Time(0.0),
 																radar_to_imu_);
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>("/mmWaveDataHdl/velocity",1);
-    
-		
+		// get node namespace
+    std::string ns = ros::this_node::getNamespace();
+
+    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
+
 		radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
 		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
     min_range_ = 0.5;
@@ -93,7 +95,7 @@ public:
     imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),100.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
-    
+
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
@@ -109,7 +111,7 @@ public:
 	void LoadParams(std::string config_filename)
 	{
 		YAML::Node config;
-		try 
+		try
 		{
 			config = YAML::LoadFile(config_filename);
 		}
@@ -117,7 +119,7 @@ public:
 		{
 			LOG(FATAL) << "Bad config file at: " << config_filename << '\n' << e.msg;
 		}
-	
+
 		// get imu params
 		params_.frequency_ = config["frequency"].as<double>();
     params_.a_max_ = config["a_max"].as<double>();
@@ -132,13 +134,13 @@ public:
 	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
 	{
 		ImuMeasurement new_meas;
-		
+
 		new_meas.t_ = msg->header.stamp.toSec();
-		
+
 		new_meas.g_ << msg->angular_velocity.x,
 									 msg->angular_velocity.y,
 									 msg->angular_velocity.z;
-		
+
 		new_meas.a_ << msg->linear_acceleration.x,
 									 msg->linear_acceleration.y,
 									 msg->linear_acceleration.z;
@@ -147,14 +149,14 @@ public:
       LOG(ERROR) << "Gyro saturation";
     if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
       LOG(ERROR) << "Accelerometer saturation";
-		
+
 		imu_buffer_.AddMeasurement(new_meas);
 	}
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
 	  double timestamp = msg->header.stamp.toSec();
-		
+
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::fromROSMsg(*msg, *raw_cloud);
@@ -165,7 +167,7 @@ public:
 			raw_cloud->at(i).y *= -1.0;
 			raw_cloud->at(i).z *= -1.0;
 		}
-    
+
 		// Reject clutter
     Declutter(raw_cloud);
 		bool no_doppler = true;
@@ -181,10 +183,10 @@ public:
 		}
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-    
+
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
-    
+
     geometry_msgs::TwistWithCovarianceStamped vel_out;
     vel_out.header.stamp = msg->header.stamp;
 
@@ -197,7 +199,7 @@ public:
     num_iter_++;
     LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
     pub_.publish(vel_out);
-  	
+
 	}
 
 private:
@@ -243,12 +245,12 @@ private:
     }
   }
 
-  /** \brief uses ceres solver to estimate the body velocity from the input 
+  /** \brief uses ceres solver to estimate the body velocity from the input
     * point cloud
     * \param[out] the resultant body velocity
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr cloud, 
+  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr cloud,
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
@@ -274,10 +276,10 @@ private:
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
-		
+
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-    
+
     double weight = 100.0 / cloud->size();
 
 		// add residuals on doppler readings
@@ -286,34 +288,34 @@ private:
 			Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
-      ceres::CostFunction* doppler_cost_function = 
+      ceres::CostFunction* doppler_cost_function =
         new BodyVelocityCostFunction(cloud->at(i).doppler,
                                       target,
                                       weight);
-      
+
 			// add residual block to ceres problem
-      ceres::ResidualBlockId res_id = 
-				problem_->AddResidualBlock(doppler_cost_function, 
-                                   doppler_loss_, 
+      ceres::ResidualBlockId res_id =
+				problem_->AddResidualBlock(doppler_cost_function,
+                                   doppler_loss_,
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
-    
+
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      std::vector<ImuMeasurement> imu_measurements = 
+      std::vector<ImuMeasurement> imu_measurements =
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
-      
-			ceres::CostFunction* imu_cost_func = 
-        	new ImuVelocityCostFunction(timestamps_[1], 
-																			timestamps_[0], 
+
+			ceres::CostFunction* imu_cost_func =
+        	new ImuVelocityCostFunction(timestamps_[1],
+																			timestamps_[0],
 																			imu_measurements,
 																			params_);
-      
-			ceres::ResidualBlockId res_id 
-				= problem_->AddResidualBlock(imu_cost_func, 
-                                     imu_loss_, 
+
+			ceres::ResidualBlockId res_id
+				= problem_->AddResidualBlock(imu_cost_func,
+                                     imu_loss_,
                                      attitudes_[1]->coeffs().data(),
 																		 speeds_[1]->data(),
 																		 gyro_biases_[1]->data(),
@@ -330,7 +332,7 @@ private:
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     LOG(INFO) << summary.FullReport();
-    LOG(INFO) << "velocity from ceres: " 
+    LOG(INFO) << "velocity from ceres: "
 						<< speeds_.front()->transpose();
 
     // get estimate covariance
@@ -346,8 +348,8 @@ private:
 
     covariance.Compute(cov_blks, problem_.get());
     Eigen::Matrix3d covariance_matrix;
-    covariance.GetCovarianceBlock(speeds_and_biases_.front()->head<3>().data(), 
-                                  speeds_and_biases_.front()->head<3>().data(), 
+    covariance.GetCovarianceBlock(speeds_and_biases_.front()->head<3>().data(),
+                                  speeds_and_biases_.front()->head<3>().data(),
                                   covariance_matrix.data());
 
     VLOG(2) << "covariance: \n" << covariance_matrix;
@@ -364,7 +366,7 @@ private:
     LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
     double t0 = imu_buffer_.GetStartTime();
-    std::vector<ImuMeasurement> measurements = 
+    std::vector<ImuMeasurement> measurements =
           imu_buffer_.GetRange(t0, t0 + 0.2, false);
 
     // find gravity vector and average stationary gyro reading
@@ -376,10 +378,10 @@ private:
       sum_a += measurements[i].a_;
     }
     Eigen::Vector3d g_vec = -sum_a / measurements.size();
-    
+
     // set gravity vector magnitude
     params_.g_ = g_vec.norm();
-    
+
     // set initial velocity and biases
     Eigen::Vector3d speed_initial = Eigen::Vector3d::Zero();
     Eigen::Vector3d b_g_initial = Eigen::Vector3d::Zero();
@@ -388,7 +390,7 @@ private:
     speeds_.push_front(new Eigen::Vector3d(speed_initial));
     gyro_biases_.push_front(new Eigen::Vector3d(b_g_initial));
     accel_biases_.push_front(new Eigen::Vector3d(b_a_initial));
-    
+
     // set initial orientation (attitude only)
     // assuming IMU is set close to Z-down
     Eigen::Vector3d down_vec(0,0,1);
@@ -402,7 +404,7 @@ private:
     double angle = std::acos(down_vec.transpose() * g_direction);
     increment *= angle;
     increment *= -1.0;
-    
+
     Eigen::Quaterniond attitude_initial = Eigen::Quaterniond::Identity();
     // initial oplus increment
     Eigen::Vector4d dq;
@@ -413,7 +415,7 @@ private:
 
     attitude_initial = (Eigen::Quaterniond(dq) * attitude_initial);
     attitude_initial.normalize();
-    
+
     attitudes_.push_front(
         new Eigen::Quaterniond(attitude_initial));
 
@@ -426,7 +428,7 @@ private:
     //problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
     problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
     problem_->SetParameterBlockConstant(accel_biases_.front()->data());
-    
+
     initialized_ = true;
     LOG(ERROR) << "initialized!";
     LOG(INFO) << "initial orientation: " << attitude_initial.coeffs().transpose();
@@ -518,6 +520,19 @@ private:
   void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
                        Eigen::Matrix3d &covariance)
   {
+
+		// get node namespace
+    std::string ns = ros::this_node::getNamespace();
+
+		if(ns.compare("/") == 0) {
+    	// single radar frame_id to comply with TI naming convention
+      vel.header.frame_id = "base_radar_link";
+    }
+    else {
+      // multi-radar frame_id
+    	vel.header.frame_id = ns.erase(0,1) + "_link";
+    }
+
     Eigen::Vector3d velocity = *(speeds_.front());
     vel.twist.twist.linear.x = velocity[0];
     vel.twist.twist.linear.y = velocity[1];
@@ -535,11 +550,11 @@ private:
 int main(int argc, char** argv)
 {
   google::InitGoogleLogging(argv[0]);
-	ros::init(argc, argv, "radar_vel");	
+	ros::init(argc, argv, "radar_vel");
   ros::NodeHandle nh("~");
 	ImuParams params;
   RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh);
-  
+
   //ros::spin();
 	ros::AsyncSpinner spinner(4);
 	spinner.start();
