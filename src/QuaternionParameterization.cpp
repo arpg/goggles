@@ -8,7 +8,7 @@ Eigen::Quaterniond QuaternionParameterization::DeltaQ(const Eigen::Vector3d& dAl
 {
   Eigen::Vector4d dq;
   double halfnorm = 0.5 * dAlpha.norm();
-  dq.template head<3>() = sinc(halfnorm) * 0.5 * dAlpha;
+  dq.head(3) = sinc(halfnorm) * 0.5 * dAlpha;
   dq[3] = cos(halfnorm);
   Eigen::Quaterniond result(dq);
   result.normalize();
@@ -199,7 +199,7 @@ bool QuaternionParameterization::Verify(
 
 double QuaternionParameterization::sinc(double x) const
 {
-  if (fabs(x) < 1e-6) 
+  if (fabs(x) > 1e-6) 
   {
     return sin(x) / x;
   }
