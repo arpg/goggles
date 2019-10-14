@@ -517,7 +517,7 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
   Eigen::Vector3d gyro_bias_0;
   Eigen::Vector3d gyro_bias_1;
   Eigen::Vector3d accel_bias_0;
-  Eigen::Vector3d accil_bias_1; 
+  Eigen::Vector3d accel_bias_1; 
   for (size_t i = 0; i < 3; i++)
   {
     v_W_0[i] = parameters[1][i];
@@ -538,6 +538,9 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
     std::lock_guard<std::mutex> lock(preintegration_mutex_);
     delta_b_g = gyro_bias_0 - gyro_bias_ref_;
   }
+  Eigen::Matrix<double,6,1> delta_b;
+  delta_b.head(3) = delta_b_g;
+  delta_b.tail(3) = accel_bias_0 - accel_bias_ref_;
   redo_ = redo_ || (delta_b_g.norm() * Delta_t > 1.0e-4);
   if (redo_)
   {
@@ -553,7 +556,190 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
     const Eigen::Vector3d g_W = imu_parameters_.g_ * Eigen::Vector3d(0,0,1);
 
     // assign jacobian w.r.t. x0
+    jacobian_t F0 = jacobian_t::Identity();
+    const Eigen::Vector3d delta_v_est_W = 
+      v_W_0 - v_W_1 - g_W * Delta_t;
+    QuaternionParameterization qp;
+    const Eigen::Quaterniond Dq = qp.DeltaQ(-dalpha_db_g_ * delta_b_g)*Delta_q_;
+    F0.block<3,3>(0,0) = (qp.oplus(Dq*q_WS_1.inverse())
+      * qp.qplus(q_WS_0)).topLeftCorner(3,3);
+    F0.block<3,3>(0,6) = (qp.qplus(q_ws_1.inverse() * q_WS_0)
+      * qp.qplus(Dq)).topLeftCorner(3,3)*(-dalpha_db_g_);
+
+    F0.block<3,3>(3,0) = C_SW_0 * CrossMatrix(delta_v_est_W);
+    F0.block<3,3>(3,3) = C_SW_0;
+    F0.block<3,3>(3,6) = dv_db_g_;
+    F0.block<3,3>(3,9) = -C_integral_;
+
+    // assign jacobian w.r.t. x1
+    jacobian_t F1 = jacobian_t::Identity();
+    F1.block<3,3>(0,0) = -(qp.oplus(Dq) 
+      * qp.qplus(q_WS_0) 
+      * qp.oplus(q_WS_1.inverse())).topLeftCorner(3,3);
+    F1.block<3,3>(3,3) = -C_SW_0;
+
+    // assign the error vector
+    Eigen::Matrix<double,12,1> error;
+    error.head(3) = 2.0*(Dq*(q_WS_1.inverse()*q_WS_0)).vec();
+    error.segment<3>(3) = C_SW_0 * delta_v_est_W + acc_integral_ 
+      + F0.block<3,6>(3,6) * delta_b;
+    error.segment<3>(6) = gyro_bias_0 - gyro_bias_1;
+    error.tail(3) = accel_bias_0 - accel_bias_1;
+
+    // weight the error vector
+    Eigen::Map<Eigen::Matrix<double,12,1>> weighted_error(residuals);
+    weighted_error = sqrt_information_ * error;
+
+    // assign the jacobians if requested
+    if (jacobians != NULL)
+    {
+      // jacobian w.r.t. orientation at t0
+      if (jacobians[0] != NULL)
+      {
+        Eigen::Matrix<double,12,3> J0_minimal = sqrt_information_ 
+          * F0.topLeftCorner(12,3);
+
+        // get lift jacobian 
+        Eigen::Matrix<double,3,4> J_lift;
+        qp.ComputeLiftJacobian(parameters[0], J_lift.data());
+
+        // get overparameterized jacobian
+        Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J0(jacobians[0]);
+        J0 = J0_minimal * J_lift;
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[0] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J0_minimal_mapped(
+              jacobians_minimal[0]);
+            J0_minimal_mapped = J0_minimal;
+          }
+        }
+      }
+      // jacobian w.r.t. velocity at t0
+      if (jacobians[1] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1(jacobians[1]);
+        J1 = sqrt_information_ * F0.block<12,3>(0,3);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[1] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J1_minimal_mapped(
+              jacobians_minimal[1]);
+            J1_minimal_mapped = J1;
+          }
+        }
+      }
+      // jacobian w.r.t. gyro bias at t0
+      if (jacobians[2] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2(jacobians[2]);
+        J2 = sqrt_information_ * F0.block<12,3>(0,6);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[2] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J2_minimal_mapped(
+              jacobians_minimal[2]);
+            J2_minimal_mapped = J2;
+          }
+        }
+      }
+      // jacobian w.r.t. accel bias at t0
+      if (jacobians[3] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3(jacobians[3]);
+        J3 = sqrt_information_ * F0.block<12,3>(0,9);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[3] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J3_minimal_mapped(
+              jacobians_minimal[3]);
+            J3_minimal_mapped = J3;
+          }
+        }
+      }
+      // jacobian w.r.t. orientation at t1
+      if (jacobians[4] != NULL)
+      {
+        Eigen::Matrix<double,12,3> J4_minimal = sqrt_information_ 
+          * F1.topLeftCorner(12,3);
+
+        // get lift jacobian 
+        Eigen::Matrix<double,3,4> J_lift;
+        qp.ComputeLiftJacobian(parameters[4], J_lift.data());
+
+        // get overparameterized jacobian
+        Eigen::Map<Eigen::Matrix<double,12,4,Eigen::RowMajor>> J4(jacobians[4]);
+        J4 = J4_minimal * J_lift;
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[4] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J4_minimal_mapped(
+              jacobians_minimal[4]);
+            J4_minimal_mapped = J4_minimal;
+          }
+        }
+      }
+      // jacobian w.r.t. velocity at t1
+      if (jacobians[5] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5(jacobians[5]);
+        J5 = sqrt_information_ * F1.block<12,3>(0,3);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[5] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J5_minimal_mapped(
+              jacobians_minimal[5]);
+            J5_minimal_mapped = J5;
+          }
+        }
+      }
+      // jacobian w.r.t. gyro bias at t1
+      if (jacobians[6] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6(jacobians[6]);
+        J6 = sqrt_information_ * F1.block<12,3>(0,6);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[6] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J6_minimal_mapped(
+              jacobians_minimal[6]);
+            J6_minimal_mapped = J6;
+          }
+        }
+      }
+      // jacobian w.r.t. accel bias at t1
+      if (jacobians[7] != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7(jacobians[7]);
+        J7 = sqrt_information_ * F1.block<12,3>(0,9);
+
+        if (jacobians_minimal != NULL)
+        {
+          if (jacobians_minimal[7] != NULL)
+          {
+            Eigen::Map<Eigen::Matrix<double,12,3,Eigen::RowMajor>> J7_minimal_mapped(
+              jacobians_minimal[7]);
+            J7_minimal_mapped = J7;
+          }
+        }
+      }
+    }
   }
+  return true;
 }
 
 size_t GlobalImuVelocityCostFunciton::ResidualDim() const
