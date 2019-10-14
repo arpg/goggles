@@ -332,7 +332,21 @@ Eigen::Matrix3d GlobalImuVelocityCostFunciton::CrossMatrix(
 }
 
 Eigen::Matrix3d GlobalImuVelocityCostFunciton::RightJacobian(
-  Eigen::Vector3d &in_vec)
+  Eigen::Vector3d &phi_vec)
 {
-
+  const double Phi = phi_vec.norm();
+  Eigen::Matrix3d right_jacobian = Eigen::Matrix3d::Identity();
+  const Eigen::Matrix3d Phi_x = CrossMatrix(phi_vec);
+  const Eigen::Matrix3d Phi_x2 = Phi_x * Phi_x;
+  if (Phi < 1.0e-4)
+  {
+    right_jacobian += -0.5*Phi_x + 1.0/6.0*Phi_x2;
+  }
+  else
+  {
+    const double Phi2 = Phi*Phi;
+    const double Phi3 = Phi*Phi2;
+    right_jacobian += -(1.0-cos(Phi))/(Phi2*Phi_x) + (Phi-sin(Phi))/(Phi3*Phi_x2);
+  }
+  return right_jacobian;
 }
