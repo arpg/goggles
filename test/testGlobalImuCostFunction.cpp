@@ -287,8 +287,7 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift 
-      << '\n' << "J lift: \n" << J0_lift << "\n\n";
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;
@@ -387,8 +386,8 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
 	if ((J4 - (J4_numDiff * J4_lift)).norm() > jacobianTolerance)
 	{
 		LOG(ERROR) << "User provided jacobian 4 does not agree with num diff:\n"
-			<< "\nuser provided J4:\n" << J4_min
-			<< "\n\nnum diff J4:\n" << J4_numDiff << "\n\n";
+			<< "\nuser provided J4:\n" << J4
+			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J5_numDiff;
