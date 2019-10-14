@@ -9,7 +9,7 @@
 #include "DataTypes.h"
 #include <ceres/ceres.h>
 
-class GlobalImuVelocityCostFunciton : public ceres::CostFunction, 
+class GlobalImuVelocityCostFunction : public ceres::CostFunction, 
                                       public ErrorInterface
 {
 public:
@@ -28,11 +28,11 @@ public:
     * @param[in] imu_measurements Vector of imu measurements from before t0 to after t1
     * @param[in] imu_parameters Imu noise, bias, and rate parameters
     */
-  GlobalImuVelocityCostFunciton(const double t0, const double t1,
+  GlobalImuVelocityCostFunction(const double t0, const double t1,
                                 const std::vector<ImuMeasurement> &imu_measurements,
                                 const ImuParams &imu_parameters);
 
-  ~GlobalImuVelocityCostFunciton();
+  ~GlobalImuVelocityCostFunction();
 
   /**
     * @brief Propagates orientation, velocity, and biases with given imu measurements
@@ -68,7 +68,7 @@ public:
   int RedoPreintegration(const Eigen::Quaterniond &orientation,
                          const Eigen::Vector3d &velocity,
                          const Eigen::Vector3d &gyro_bias,
-                         const Eigen::Vector3d &accel_bias);
+                         const Eigen::Vector3d &accel_bias) const;
 
   /**
     * @brief Set the imu parameters
@@ -162,10 +162,6 @@ public:
   size_t ResidualDim() const;
 
 protected:
-
-  Eigen::Matrix3d CrossMatrix(Eigen::Vector3d &in_vec);
-
-  Eigen::Matrix3d RightJacobian(Eigen::Vector3d &in_vec);
 
   double t0_;
   double t1_;

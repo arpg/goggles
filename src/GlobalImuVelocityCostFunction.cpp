@@ -1,5 +1,33 @@
 #include <GlobalImuVelocityCostFunction.h>
 
+inline Eigen::Matrix3d CrossMatrix(const Eigen::Vector3d &in_vec)
+{
+  Eigen::Matrix3d cross_mx;
+  cross_mx <<         0, -in_vec(2),  in_vec(1),
+              in_vec(2),          0, -in_vec(0),
+             -in_vec(1),  in_vec(0),          0;
+  return cross_mx;
+}
+
+inline Eigen::Matrix3d RightJacobian(const Eigen::Vector3d &phi_vec)
+{
+  const double Phi = phi_vec.norm();
+  Eigen::Matrix3d right_jacobian = Eigen::Matrix3d::Identity();
+  const Eigen::Matrix3d Phi_x = CrossMatrix(phi_vec);
+  const Eigen::Matrix3d Phi_x2 = Phi_x * Phi_x;
+  if (Phi < 1.0e-4)
+  {
+    right_jacobian += -0.5*Phi_x + 1.0/6.0*Phi_x2;
+  }
+  else
+  {
+    const double Phi2 = Phi*Phi;
+    const double Phi3 = Phi*Phi2;
+    right_jacobian += (-(1.0-cos(Phi))/Phi2)*Phi_x + ((Phi-sin(Phi))/Phi3)*Phi_x2;
+  }
+  return right_jacobian;
+}
+
 /** 
   * @brief Constructor
   * @param[in] t0 Start time
@@ -7,7 +35,7 @@
   * @param[in] imu_measurements Vector of imu measurements from before t0 to after t1
   * @param[in] imu_parameters Imu noise, bias, and rate parameters
   */
-GlobalImuVelocityCostFunciton::GlobalImuVelocityCostFunciton(
+GlobalImuVelocityCostFunction::GlobalImuVelocityCostFunction(
   const double t0, const double t1,
   const std::vector<ImuMeasurement> &imu_measurements,
   const ImuParams &imu_parameters)
@@ -27,13 +55,13 @@ GlobalImuVelocityCostFunciton::GlobalImuVelocityCostFunciton(
   SetT0(t0);
   SetT1(t1);
 
-  if (t0 >= imu_measurements.front().t_)
+  if (t0 < imu_measurements.front().t_)
     LOG(FATAL) << "First IMU measurement occurs after start time";
-  if (t1 <= imu_measurements.back().t_)
+  if (t1 > imu_measurements.back().t_)
     LOG(FATAL) << "Last IMU measurement occurs before end time";
 }
 
-~GlobalImuVelocityCostFunciton::GlobalImuVelocityCostFunciton();
+GlobalImuVelocityCostFunction::~GlobalImuVelocityCostFunction(){}
 
 /**
   * @brief Propagates orientation, velocity, and biases with given imu measurements
@@ -50,7 +78,7 @@ GlobalImuVelocityCostFunciton::GlobalImuVelocityCostFunciton(
   * @param[out] jacobian Jacobian w.r.t. the starting state
   * @return The number of integration steps
   */
-static int GlobalImuVelocityCostFunciton::Propagation(
+int GlobalImuVelocityCostFunction::Propagation(
   const std::vector<ImuMeasurement> &imu_measurements,
   const ImuParams &imu_parameters,
   Eigen::Quaterniond &orientation,
@@ -58,8 +86,8 @@ static int GlobalImuVelocityCostFunciton::Propagation(
   Eigen::Vector3d &gyro_bias,
   Eigen::Vector3d &accel_bias,
   double t0, double t1,
-  covariance_t* covariance = NULL,
-  jacobian_t* jacobian = NULL)
+  covariance_t* covariance,
+  jacobian_t* jacobian)
 {
   double time = t0;
   double end = t1;
@@ -119,7 +147,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
 
     // if both measurements are before t0 or both measurements are
     // after t1, skip ahead
-    if (next_time < t0 || time > t1)
+    if (next_time <= t0 || time >= t1)
       continue;
     // if first measurement is out of time range but second is within,
     // interpolate first measurement at t0
@@ -147,7 +175,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
     delta_t += dt;
 
     double sigma_g_c = imu_parameters.sigma_g_;
-    dobule sigma_a_c = imu_parameters.sigma_a_;
+    double sigma_a_c = imu_parameters.sigma_a_;
 
     // check for gyro and accelerometer saturation
     bool gyro_saturation = false;
@@ -158,7 +186,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
         gyro_saturation = true;
     }
     if (gyro_saturation)
-      LOG(WARNING) "gyro saturation";
+      LOG(WARNING) << "gyro saturation";
 
     bool accel_saturation = false;
     for (int i = 0; i < 3; i++)
@@ -168,10 +196,11 @@ static int GlobalImuVelocityCostFunciton::Propagation(
         accel_saturation = true;
     }
     if (accel_saturation)
-      LOG(WARNING) "accelerometer saturation";
+      LOG(WARNING) << "accelerometer saturation";
 
     // actual propagation:
     QuaternionParameterization qp;
+    Eigen::Vector3d omega_S_true = (0.5*(omega_S_0+omega_S_1)-gyro_bias);
     Eigen::Quaterniond dq = qp.DeltaQ(omega_S_true * dt);
     Eigen::Quaterniond Delta_q_1 = Delta_q * dq;
 
@@ -180,7 +209,7 @@ static int GlobalImuVelocityCostFunciton::Propagation(
     const Eigen::Matrix3d C_1 = Delta_q_1.toRotationMatrix();
     const Eigen::Vector3d acc_S_true = (0.5*(acc_S_0+acc_S_1)-accel_bias);
     const Eigen::Matrix3d C_integral_1 = C_integral + 0.5 * (C + C_1) * dt;
-    const Eigen::Vector3d acc_integral_1 = acc_integral + 0.5 * (C + C_1) * dt;
+    const Eigen::Vector3d acc_integral_1 = acc_integral + 0.5 * (C + C_1)*acc_S_true*dt;
 
     // rotation matrix double integrals
     // may not be needed if not estimating position
@@ -244,9 +273,9 @@ static int GlobalImuVelocityCostFunciton::Propagation(
   }
 
   // propagation output
-  const Eigen::Vector3d g_W = imu_params.g * Eigen::Vector3d(0,0,1);
+  const Eigen::Vector3d g_W = imu_parameters.g_ * Eigen::Vector3d(0,0,1);
   orientation = q_WS_0 * Delta_q;
-  velocity += C_WS_0 * acc_integral - g_W * Delta_t;
+  velocity += C_WS_0 * acc_integral - g_W * delta_t;
 
   // assign jacobian if requested
   if (jacobian)
@@ -278,11 +307,11 @@ static int GlobalImuVelocityCostFunciton::Propagation(
   * @param[in] gyro_bias The starting gyro bias
   * @param[in] accel_bias The starting accelerometer bias
   */
-int GlobalImuVelocityCostFunciton::RedoPreintegration(
+int GlobalImuVelocityCostFunction::RedoPreintegration(
   const Eigen::Quaterniond &orientation,
   const Eigen::Vector3d &velocity,
   const Eigen::Vector3d &gyro_bias,
-  const Eigen::Vector3d &accel_bias)
+  const Eigen::Vector3d &accel_bias) const
 {
   std::lock_guard<std::mutex> lock(preintegration_mutex_);
 
@@ -313,9 +342,9 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
   // Covariance of the increment
   P_delta_ = covariance_t::Zero();
 
-  double Delta_t = 0;
+  double delta_t = 0;
   int i = 0;
-  or (std::vector<ImuMeasurement>::const_iterator it = imu_measurements_.begin();
+  for (std::vector<ImuMeasurement>::const_iterator it = imu_measurements_.begin();
     it != imu_measurements_.end(); it++)
   {
     Eigen::Vector3d omega_S_0 = it->g_;
@@ -325,8 +354,8 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
     Eigen::Vector3d acc_S_1 = (it+1)->a_;
 
     double next_time;
-    if ((it+1) == imu_measurements.end())
-      next_time = t1;
+    if ((it+1) == imu_measurements_.end())
+      next_time = t1_;
     else
       next_time = (it+1)->t_;
 
@@ -334,7 +363,7 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
 
     // if both measurements are before t0 or both measurements are
     // after t1, skip ahead
-    if (next_time < t0_ || time > t1_)
+    if (next_time <= t0_ || time >= t1_)
       continue;
     // if first measurement is out of time range but second is within,
     // interpolate first measurement at t0
@@ -368,22 +397,24 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
     bool gyro_saturation = false;
     for (int i = 0; i < 3; i++)
     {
-      if (fabs(omega_S_0[i]) > imu_parameters.g_max_
-        || fabs(omega_S_1[i]) > imu_parameters.g_max_)
+      if (fabs(omega_S_0[i]) > imu_parameters_.g_max_
+        || fabs(omega_S_1[i]) > imu_parameters_.g_max_)
         gyro_saturation = true;
     }
     if (gyro_saturation)
-      LOG(WARNING) "gyro saturation";
+      LOG(WARNING) << "gyro saturation";
 
     bool accel_saturation = false;
     for (int i = 0; i < 3; i++)
     {
-      if (fabs(acc_S_0[i]) > imu_parameters.a_max_
-        || fabs(acc_S_1[i]) > imu_parameters.a_max_)
+      if (fabs(acc_S_0[i]) > imu_parameters_.a_max_
+        || fabs(acc_S_1[i]) > imu_parameters_.a_max_)
         accel_saturation = true;
     }
     if (accel_saturation)
-      LOG(WARNING) "accelerometer saturation";
+      LOG(WARNING) << "accelerometer saturation";
+
+    //LOG(ERROR) << "Delta_q_:\n" << Delta_q_.coeffs().transpose();
 
     // orientation propagation
     QuaternionParameterization qp;
@@ -405,12 +436,12 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
     // + 0.25 * (C + C_1) * acc_S_true * dt * dt;
 
     // jacobian parts
-    d_alpha_db_g_ += C_1 * RightJacobian(omega_S_true * dt) * dt;
+    dalpha_db_g_ += C_1 * RightJacobian(omega_S_true * dt) * dt;
     const Eigen::Matrix3d cross_1 = dq.inverse().toRotationMatrix() * cross_
       + RightJacobian(omega_S_true * dt) * dt;
     const Eigen::Matrix3d acc_S_x = CrossMatrix(acc_S_true);
     Eigen::Matrix3d dv_db_g_1 = dv_db_g_
-      + 0.5 * dt * (C * acc_S_x * cross_ + C1 * acc_S_x * cross_1);
+      + 0.5 * dt * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
     //dp_db_g += dt * dv_db_g_
     //  + 0.25 * dt * dt * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
 
@@ -480,7 +511,7 @@ int GlobalImuVelocityCostFunciton::RedoPreintegration(
   * @param jacobians Pointer to the jacobians
   * @return Success of the evaluation
   */
-bool GlobalImuVelocityCostFunciton::Evaluate(
+bool GlobalImuVelocityCostFunction::Evaluate(
   double const* const* parameters,
   double* residuals,
   double** jacobians) const
@@ -496,7 +527,7 @@ bool GlobalImuVelocityCostFunciton::Evaluate(
   * @param jacobians_minimal Pointer to the minimal jacobians
   * @return Success of the evaluation
   */
-bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
+bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
   double const* const* parameters, 
   double* residuals, 
   double** jacobians,
@@ -507,11 +538,12 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
                                   parameters[0][0], 
                                   parameters[0][1],
                                   parameters[0][2]);
+  
   const Eigen::Quaterniond q_WS_1(parameters[4][3],
                                   parameters[4][0],
                                   parameters[4][1],
-                                  parameters[4][2],
-                                  parameters[4][3]);
+                                  parameters[4][2]);
+
   Eigen::Vector3d v_W_0;
   Eigen::Vector3d v_W_1;
   Eigen::Vector3d gyro_bias_0;
@@ -529,7 +561,7 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
   }
 
   const Eigen::Matrix3d C_WS_0 = q_WS_0.toRotationMatrix();
-  const Eigen::Matrix3d C_SW_0 = q_WS_0.inverse().toRotationMatrix;
+  const Eigen::Matrix3d C_SW_0 = q_WS_0.inverse().toRotationMatrix();
 
   // redo preintegration if required
   const double Delta_t = t1_ - t0_;
@@ -563,7 +595,7 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
     const Eigen::Quaterniond Dq = qp.DeltaQ(-dalpha_db_g_ * delta_b_g)*Delta_q_;
     F0.block<3,3>(0,0) = (qp.oplus(Dq*q_WS_1.inverse())
       * qp.qplus(q_WS_0)).topLeftCorner(3,3);
-    F0.block<3,3>(0,6) = (qp.qplus(q_ws_1.inverse() * q_WS_0)
+    F0.block<3,3>(0,6) = (qp.qplus(q_WS_1.inverse() * q_WS_0)
       * qp.qplus(Dq)).topLeftCorner(3,3)*(-dalpha_db_g_);
 
     F0.block<3,3>(3,0) = C_SW_0 * CrossMatrix(delta_v_est_W);
@@ -742,38 +774,8 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
   return true;
 }
 
-size_t GlobalImuVelocityCostFunciton::ResidualDim() const
+size_t GlobalImuVelocityCostFunction::ResidualDim() const
 {
   return num_residuals();
 }
 
-Eigen::Matrix3d GlobalImuVelocityCostFunciton::CrossMatrix(
-  Eigen::Vector3d &in_vec)
-{
-  Eigen::Matrix3d cross_mx;
-  cross_mx <<         0, -in_vec(2),  in_vec(1),
-              in_vec(2),          0, -in_vec(0),
-             -in_vec(1),  in_vec(0),          0;
-
-  return cross_mx;
-}
-
-Eigen::Matrix3d GlobalImuVelocityCostFunciton::RightJacobian(
-  Eigen::Vector3d &phi_vec)
-{
-  const double Phi = phi_vec.norm();
-  Eigen::Matrix3d right_jacobian = Eigen::Matrix3d::Identity();
-  const Eigen::Matrix3d Phi_x = CrossMatrix(phi_vec);
-  const Eigen::Matrix3d Phi_x2 = Phi_x * Phi_x;
-  if (Phi < 1.0e-4)
-  {
-    right_jacobian += -0.5*Phi_x + 1.0/6.0*Phi_x2;
-  }
-  else
-  {
-    const double Phi2 = Phi*Phi;
-    const double Phi3 = Phi*Phi2;
-    right_jacobian += -(1.0-cos(Phi))/(Phi2*Phi_x) + (Phi-sin(Phi))/(Phi3*Phi_x2);
-  }
-  return right_jacobian;
-}
