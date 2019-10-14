@@ -632,7 +632,7 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
           * F0.topLeftCorner(12,3);
 
         // get lift jacobian 
-        Eigen::Matrix<double,3,4> J_lift;
+        Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
         qp.ComputeLiftJacobian(parameters[0], J_lift.data());
 
         // get overparameterized jacobian
@@ -704,7 +704,7 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
           * F1.topLeftCorner(12,3);
 
         // get lift jacobian 
-        Eigen::Matrix<double,3,4> J_lift;
+        Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
         qp.ComputeLiftJacobian(parameters[4], J_lift.data());
 
         // get overparameterized jacobian
