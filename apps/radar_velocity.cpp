@@ -419,7 +419,7 @@ private:
 		// Eigen::DiagonalMatrix<double, 3> covariance_matrix;
 		covariance_matrix.diagonal() << 0.01, 0.015, 0.05;
 
-    populateMessage(vel_out,velocity,covariance_matrix);
+    populateMessage(vel_out,*(velocities_.front()),covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance
