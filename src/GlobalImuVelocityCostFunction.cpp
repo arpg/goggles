@@ -500,7 +500,61 @@ bool GlobalImuVelocityCostFunciton::EvaluateWithMinimalJacobians(
   double const* const* parameters, 
   double* residuals, 
   double** jacobians,
-  double** jacobians_minimal) const;
+  double** jacobians_minimal) const
+{
+  // get parameters
+  const Eigen::Quaterniond q_WS_0(parameters[0][3], 
+                                  parameters[0][0], 
+                                  parameters[0][1],
+                                  parameters[0][2]);
+  const Eigen::Quaterniond q_WS_1(parameters[4][3],
+                                  parameters[4][0],
+                                  parameters[4][1],
+                                  parameters[4][2],
+                                  parameters[4][3]);
+  Eigen::Vector3d v_W_0;
+  Eigen::Vector3d v_W_1;
+  Eigen::Vector3d gyro_bias_0;
+  Eigen::Vector3d gyro_bias_1;
+  Eigen::Vector3d accel_bias_0;
+  Eigen::Vector3d accil_bias_1; 
+  for (size_t i = 0; i < 3; i++)
+  {
+    v_W_0[i] = parameters[1][i];
+    v_W_1[i] = parameters[5][i];
+    gyro_bias_0[i] = parameters[2][i];
+    gyro_bias_1[i] = parameters[6][i];
+    accel_bias_0[i] = parameters[3][i];
+    accel_bias_1[i] = parameters[7][i];
+  }
+
+  const Eigen::Matrix3d C_WS_0 = q_WS_0.toRotationMatrix();
+  const Eigen::Matrix3d C_SW_0 = q_WS_0.inverse().toRotationMatrix;
+
+  // redo preintegration if required
+  const double Delta_t = t1_ - t0_;
+  Eigen::Vector3d delta_b_g;
+  {
+    std::lock_guard<std::mutex> lock(preintegration_mutex_);
+    delta_b_g = gyro_bias_0 - gyro_bias_ref_;
+  }
+  redo_ = redo_ || (delta_b_g.norm() * Delta_t > 1.0e-4);
+  if (redo_)
+  {
+    RedoPreintegration(q_WS_0, v_W_0, gyro_bias_0, accel_bias_0);
+    redo_counter_++;
+    delta_b_g.setZero();
+    redo_ = false;
+  }
+
+  // do propagation
+  {
+    std::lock_guard<std::mutex> lock(preintegration_mutex_);
+    const Eigen::Vector3d g_W = imu_parameters_.g_ * Eigen::Vector3d(0,0,1);
+
+    // assign jacobian w.r.t. x0
+  }
+}
 
 size_t GlobalImuVelocityCostFunciton::ResidualDim() const
 {
