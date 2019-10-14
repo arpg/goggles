@@ -232,9 +232,30 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
 	Eigen::Matrix<double,12,3,Eigen::RowMajor> J7; // w.r.t. accel bias at t1
 	jacobians[7] = J7.data();
 
+  double* jacobians_minimal[8];
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J0_min; // w.r.t. orientation at t0
+  jacobians_minimal[0] = J0_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J1_min; // w.r.t. velocity at t0
+  jacobians_minimal[1] = J1_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J2_min; // w.r.t. gyro bias at t0
+  jacobians_minimal[2] = J2_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J3_min; // w.r.t. accel bias at t0
+  jacobians_minimal[3] = J3_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J4_min; // w.r.t. orientation at t1
+  jacobians_minimal[4] = J4_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J5_min; // w.r.t. velocity at t1
+  jacobians_minimal[5] = J5_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J6_min; // w.r.t. gyro bias at t1
+  jacobians_minimal[6] = J6_min.data();
+  Eigen::Matrix<double,12,3,Eigen::RowMajor> J7_min; // w.r.t. accel bias at t1
+  jacobians_minimal[7] = J7_min.data();
+
 	Eigen::Matrix<double,12,1> residuals;
 
-	imu_cost_func->Evaluate(parameters, residuals.data(), jacobians);
+	imu_cost_func->EvaluateWithMinimalJacobians(parameters, 
+                                              residuals.data(), 
+                                              jacobians,
+                                              jacobians_minimal);
 
 	double dx = 1e-6;
 	
@@ -266,7 +287,8 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
 	{
 		LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
 			<< '\n' << "user provided J0: \n" << J0
-			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift  << "\n\n";
+			<< '\n' << "\nnum diff J0: \n" << J0_numDiff * J0_lift 
+      << '\n' << "J lift: \n" << J0_lift << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J1_numDiff;
@@ -365,8 +387,8 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
 	if ((J4 - (J4_numDiff * J4_lift)).norm() > jacobianTolerance)
 	{
 		LOG(ERROR) << "User provided jacobian 4 does not agree with num diff:\n"
-			<< "\nuser provided J4:\n" << J4
-			<< "\n\nnum diff J4:\n" << J4_numDiff * J4_lift << "\n\n";
+			<< "\nuser provided J4:\n" << J4_min
+			<< "\n\nnum diff J4:\n" << J4_numDiff << "\n\n";
 	}
 	
 	Eigen::Matrix<double,12,3> J5_numDiff;
