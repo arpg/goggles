@@ -142,7 +142,7 @@ TEST(goggleTests, GlobalImuVelocityCostFunction)
     ImuMeasurement new_meas;
     new_meas.t_ = time;
     new_meas.g_ = omega_S + imuParameters.sigma_g_/sqrt(dt)*Eigen::Vector3d::Random();
-    new_meas.a_ = q_ws.toRotationMatrix().inverse() * (a_W - Eigen::Vector3d(0,0,imuParameters.g_)) + imuParameters.sigma_a_/sqrt(dt)*Eigen::Vector3d::Random();
+    new_meas.a_ = q_ws.toRotationMatrix().inverse() * (a_W + Eigen::Vector3d(0,0,imuParameters.g_)) + imuParameters.sigma_a_/sqrt(dt)*Eigen::Vector3d::Random();
 
     imuMeasurements.push_back(new_meas);
   }
