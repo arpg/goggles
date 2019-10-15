@@ -61,6 +61,7 @@ set( APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/apps)
 set( HEADERS
   ${INC_DIR}/ErrorInterface.h
   ${INC_DIR}/BodyVelocityCostFunction.h
+  ${INC_DIR}/GlobalDopplerCostFunction.h
   ${INC_DIR}/VelocityChangeCostFunction.h
   ${INC_DIR}/VelocityMeasCostFunction.h
   ${INC_DIR}/ImuVelocityCostFunction.h
@@ -73,6 +74,7 @@ set( HEADERS
 
 set( SOURCES 
   ${SRC_DIR}/BodyVelocityCostFunction.cpp
+  ${SRC_DIR}/GlobalDopplerCostFunction.cpp
   ${SRC_DIR}/VelocityChangeCostFunction.cpp
   ${SRC_DIR}/VelocityMeasCostFunction.cpp
   ${SRC_DIR}/ImuVelocityCostFunction.cpp
