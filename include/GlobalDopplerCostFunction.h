@@ -12,6 +12,8 @@
 class GlobalDopplerCostFunction : public ceres::CostFunction, public ErrorInterface
 {
   public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
     GlobalDopplerCostFunction(double doppler,
                               Eigen::Vector3d & target,
                               double weight);

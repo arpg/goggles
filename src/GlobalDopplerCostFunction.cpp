@@ -8,6 +8,7 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
       weight_(weight) 
 {
   set_num_residuals(1);
+  mutable_parameter_block_sizes()->push_back(4);
   mutable_parameter_block_sizes()->push_back(3);
   target_ray_.normalize();
 }
@@ -25,30 +26,77 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       double** jacobians,
       double** jacobians_minimal) const
 {
-  Eigen::Map<const Eigen::Vector3d> v_body(&parameters[0][0]);
+  // get parameters
+  const Eigen::Quaterniond q_WS(parameters[0][3],
+                                parameters[0][0],
+                                parameters[0][1],
+                                parameters[0][2]);
+
+  const Eigen::Vector3d v_W(parameters[1][0],
+                            parameters[1][1],
+                            parameters[1][2]);
+
+  // get rotation matrices
+  const Eigen::Matrix3d C_WS = q_WS.toRotationMatrix();
+  const Eigen::Matrix3d C_SW = C_WS.transpose();
+
+  // rotate velocity vector to sensor frame
+  const Eigen::Vector3d v_S = C_SW * v_W;
 
   // get target velocity as -1.0 * body velocity
-  Eigen::Vector3d v_target = -1.0 * v_body;
+  Eigen::Vector3d v_target = -1.0 * v_S;
 
   // get projection of body velocity onto ray from target to sensor
-  double v_r = v_target.dot(target_ray_);
+  double v_projected = v_target.dot(target_ray_);
 
   // get residual as difference between v_r and doppler reading
-  residuals[0] = (doppler_ - v_r) * weight_;
+  residuals[0] = (doppler_ - v_projected) * weight_;
 
   // calculate jacobian if required
   if (jacobians != NULL)
   {
-    // aren't linear functions just the best?
-    jacobians[0][0] = target_ray_[0] * weight_;
-    jacobians[0][1] = target_ray_[1] * weight_;
-    jacobians[0][2] = target_ray_[2] * weight_;
-
-    if (jacobians_minimal != NULL)
+    // jacobian w.r.t. orientation
+    if (jacobians[0] != NULL)
     {
-      jacobians_minimal[0][0] = jacobians[0][0];
-      jacobians_minimal[0][1] = jacobians[0][1];
-      jacobians_minimal[0][2] = jacobians[0][2];
+      Eigen::Matrix<double,1,3> J0_minimal;
+      // actual calculations go here
+
+      QuaternionParameterization qp;
+      Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
+      qp.ComputeLiftJacobian(parameters[0],J_lift.data());
+
+      Eigen::Map<Eigen::Matrix<double,1,4,Eigen::RowMajor>> 
+        J0_mapped(jacobians[0]);
+      J0_mapped = J0_minimal * J_lift;
+
+      // assign minimal jacobian if requested
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[0] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+            J0_min_mapped(jacobians_minimal[0]);
+          J0_min_mapped = J0_minimal;
+        }
+      }
+    }
+    // jacobian w.r.t. world frame velocity
+    if (jacobians[1] != NULL)
+    {
+      if (jacobians_minimal != NULL)
+      {
+        Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+          J1_mapped(jacobians[1]);
+        J1_mapped = (C_WS * target_ray_).transpose();
+
+        // assign minimal jacobian if requested
+        if (jacobians_minimal[1] != NULL)
+        {
+          Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+            J1_min_mapped(jacobians_minimal[1]);
+          J1_min_mapped = J1_mapped;
+        }
+      }
     }
   }
   return true;
