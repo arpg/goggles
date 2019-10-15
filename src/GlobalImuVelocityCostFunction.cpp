@@ -22,8 +22,8 @@ inline Eigen::Matrix3d RightJacobian(const Eigen::Vector3d &phi_vec)
   else
   {
     const double Phi2 = Phi*Phi;
-    const double Phi3 = Phi*Phi2;
-    right_jacobian += (-(1.0-cos(Phi))/Phi2)*Phi_x + ((Phi-sin(Phi))/Phi3)*Phi_x2;
+    const double Phi3 = Phi2*Phi;
+    right_jacobian += -(1.0-cos(Phi))/(Phi2)*Phi_x + (Phi-sin(Phi))/Phi3*Phi_x2;
   }
   return right_jacobian;
 }
@@ -318,8 +318,8 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
   double time = t0_;
   double end = t1_;
 
-  if (imu_measurements_.front().t_ >= time 
-      || imu_measurements_.back().t_ <= end)
+  if (imu_measurements_.front().t_ > time 
+      || imu_measurements_.back().t_ < end)
   {
     LOG(ERROR) << "given imu measurements do not cover given timespan";
     return -1;
@@ -328,9 +328,7 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
   // initialize increments
   Delta_q_ = Eigen::Quaterniond(1,0,0,0);
   C_integral_ = Eigen::Matrix3d::Zero();
-  //C_double_integral_ = Eigen::Matrix3d::Zero();
   acc_integral_ = Eigen::Vector3d::Zero();
-  //acc_double_integral_ = Eigen::Vector3d::Zero();
 
   // cross matrix accumulation
   cross_ = Eigen::Matrix3d::Zero();
@@ -372,9 +370,9 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
       double interval = next_time - time;
       time = t0_;
       dt = next_time - time;
-      const double r = 1.0 - dt / interval;
-      omega_S_0 = ((1.0 - r) * omega_S_0 + r * omega_S_1).eval();
-      acc_S_0 = ((1.0 - r) * acc_S_0 + r * acc_S_1).eval();
+      const double r = dt / interval;
+      omega_S_0 = (r * omega_S_0 + (1.0 - r) * omega_S_1).eval();
+      acc_S_0 = (r * acc_S_0 + (1.0 - r) * acc_S_1).eval();
     }
     // if second measurement is out of time range but first is within,
     // interpolate second measurement at t1
@@ -414,13 +412,12 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
     if (accel_saturation)
       LOG(WARNING) << "accelerometer saturation";
 
-    //LOG(ERROR) << "Delta_q_:\n" << Delta_q_.coeffs().transpose();
-
     // orientation propagation
     QuaternionParameterization qp;
     const Eigen::Vector3d omega_S_true = (0.5*(omega_S_0+omega_S_1)-gyro_bias);
     Eigen::Quaterniond dq = qp.DeltaQ(omega_S_true * dt);
     Eigen::Quaterniond Delta_q_1 = Delta_q_ * dq;
+
 
     // rotation matrix and acceleration integral
     const Eigen::Matrix3d C = Delta_q_.toRotationMatrix();
@@ -430,11 +427,6 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
     const Eigen::Vector3d acc_integral_1 = acc_integral_
       + 0.5 * (C + C_1) * acc_S_true * dt;
 
-    // double integrals
-    //C_double_integral_ += C_integral_* dt + 0.25 * (C + C_1) * dt * dt;
-    //acc_double_integral_ += acc_integral_ * dt 
-    // + 0.25 * (C + C_1) * acc_S_true * dt * dt;
-
     // jacobian parts
     dalpha_db_g_ += C_1 * RightJacobian(omega_S_true * dt) * dt;
     const Eigen::Matrix3d cross_1 = dq.inverse().toRotationMatrix() * cross_
@@ -442,13 +434,11 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
     const Eigen::Matrix3d acc_S_x = CrossMatrix(acc_S_true);
     Eigen::Matrix3d dv_db_g_1 = dv_db_g_
       + 0.5 * dt * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
-    //dp_db_g += dt * dv_db_g_
-    //  + 0.25 * dt * dt * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
 
     // covariance propagation
     jacobian_t F_delta = jacobian_t::Identity();
     F_delta.block<3,3>(0,6) = -dt * C_1;
-    F_delta.block<3,3>(3,0) = CrossMatrix(0.5 * (C + C_1) * acc_S_true * dt);
+    F_delta.block<3,3>(3,0) = -CrossMatrix(0.5 * (C + C_1) * acc_S_true * dt);
     F_delta.block<3,3>(3,6) = 0.5 * dt 
       * (C * acc_S_x * cross_ + C_1 * acc_S_x * cross_1);
     F_delta.block<3,3>(3,9) = -0.5 * (C + C_1) * dt;
@@ -489,6 +479,8 @@ int GlobalImuVelocityCostFunction::RedoPreintegration(
 
   // store the linearization point
   velocity_ref_ = velocity;
+  gyro_bias_ref_ = gyro_bias;
+  accel_bias_ref_ = accel_bias;
 
   // enforce symmetry
   P_delta_ = 0.5 * P_delta_ + 0.5 * P_delta_.transpose().eval();
@@ -561,24 +553,22 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
   }
 
   const Eigen::Matrix3d C_WS_0 = q_WS_0.toRotationMatrix();
-  const Eigen::Matrix3d C_SW_0 = q_WS_0.inverse().toRotationMatrix();
+  const Eigen::Matrix3d C_SW_0 = C_WS_0.transpose();
 
   // redo preintegration if required
   const double Delta_t = t1_ - t0_;
-  Eigen::Vector3d delta_b_g;
+  Eigen::Matrix<double,6,1> delta_b;
   {
     std::lock_guard<std::mutex> lock(preintegration_mutex_);
-    delta_b_g = gyro_bias_0 - gyro_bias_ref_;
+    delta_b.head(3) = gyro_bias_0 - gyro_bias_ref_;
+    delta_b.tail(3) = accel_bias_0 - accel_bias_ref_;
   }
-  Eigen::Matrix<double,6,1> delta_b;
-  delta_b.head(3) = delta_b_g;
-  delta_b.tail(3) = accel_bias_0 - accel_bias_ref_;
-  redo_ = redo_ || (delta_b_g.norm() * Delta_t > 1.0e-4);
+  redo_ = redo_ || (delta_b.head(3).norm() * Delta_t > 1.0e-4);
   if (redo_)
   {
     RedoPreintegration(q_WS_0, v_W_0, gyro_bias_0, accel_bias_0);
     redo_counter_++;
-    delta_b_g.setZero();
+    delta_b.setZero();
     redo_ = false;
   }
 
@@ -589,10 +579,9 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
 
     // assign jacobian w.r.t. x0
     jacobian_t F0 = jacobian_t::Identity();
-    const Eigen::Vector3d delta_v_est_W = 
-      v_W_0 - v_W_1 - g_W * Delta_t;
+    const Eigen::Vector3d delta_v_est_W = v_W_0 - v_W_1 - g_W * Delta_t;
     QuaternionParameterization qp;
-    const Eigen::Quaterniond Dq = qp.DeltaQ(-dalpha_db_g_ * delta_b_g)*Delta_q_;
+    const Eigen::Quaterniond Dq = qp.DeltaQ(-dalpha_db_g_ * delta_b.head(3))*Delta_q_;
     F0.block<3,3>(0,0) = (qp.oplus(Dq*q_WS_1.inverse())
       * qp.qplus(q_WS_0)).topLeftCorner(3,3);
     F0.block<3,3>(0,6) = (qp.qplus(q_WS_1.inverse() * q_WS_0)
@@ -604,7 +593,7 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
     F0.block<3,3>(3,9) = -C_integral_;
 
     // assign jacobian w.r.t. x1
-    jacobian_t F1 = jacobian_t::Identity();
+    jacobian_t F1 = -jacobian_t::Identity();
     F1.block<3,3>(0,0) = -(qp.oplus(Dq) 
       * qp.qplus(q_WS_0) 
       * qp.oplus(q_WS_1.inverse())).topLeftCorner(3,3);
