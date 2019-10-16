@@ -92,7 +92,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(10.0),10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -283,7 +283,7 @@ private:
       LOG(ERROR) << "marginalization step failed";
 
     double weight = 1.0 / cloud->size();
-
+    
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
@@ -303,7 +303,7 @@ private:
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
-
+    
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
@@ -335,11 +335,15 @@ private:
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     LOG(INFO) << summary.FullReport();
-    LOG(ERROR) << "   velocity: " << speeds_.front()->transpose();
-    LOG(ERROR) << "orientation: " << orientations_.front()->coeffs().transpose();
-    LOG(ERROR) << "  gyro bias: " << gyro_biases_.front()->transpose();
-    LOG(ERROR) << " accel bias: " << accel_biases_.front()->transpose() << "\n\n";
-
+    /*
+    std::ofstream orientation_log;
+    orientation_log.open("/home/akramer/logs/radar/ICRA_2020/orientations.csv",std::ofstream::app);
+    orientation_log << std::fixed << std::setprecision(5) << timestamps_.front()
+                    << ',' << orientations_.front()->x() << ',' << orientations_.front()->y()
+                    << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
+                    << '\n';
+    orientation_log.close();
+    */
     // get estimate covariance
     /*
     ceres::Covariance::Options cov_options;
@@ -385,7 +389,7 @@ private:
     Eigen::Vector3d g_vec = -sum_a / measurements.size();
 
     // set gravity vector magnitude
-    params_.g_ = g_vec.norm();
+    params_.g_ = -g_vec.norm();
 
     // set initial velocity and biases
     Eigen::Vector3d speed_initial = Eigen::Vector3d::Zero();
