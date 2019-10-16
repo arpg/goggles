@@ -59,7 +59,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[0] != NULL)
     {
       Eigen::Matrix<double,1,3> J0_minimal;
-      // actual calculations go here
+      J0_minimal = -v_W.cross(C_WS * target_ray_).transpose() * weight_;
 
       QuaternionParameterization qp;
       Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
@@ -68,6 +68,8 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       Eigen::Map<Eigen::Matrix<double,1,4,Eigen::RowMajor>> 
         J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
+
+      //LOG(ERROR) << "J0: " << J0_mapped;
 
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
@@ -83,13 +85,15 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     // jacobian w.r.t. world frame velocity
     if (jacobians[1] != NULL)
     {
+      Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+        J1_mapped(jacobians[1]);
+      J1_mapped = (C_WS * target_ray_).transpose() * weight_;
+
+      //LOG(ERROR) << "J1: " << J1_mapped;
+
+      // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
-        Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
-          J1_mapped(jacobians[1]);
-        J1_mapped = (C_WS * target_ray_).transpose();
-
-        // assign minimal jacobian if requested
         if (jacobians_minimal[1] != NULL)
         {
           Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
@@ -99,6 +103,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       }
     }
   }
+  //LOG(ERROR) << "residual: " << residuals[0];
   return true;
 }
 
