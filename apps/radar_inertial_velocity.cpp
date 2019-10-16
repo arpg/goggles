@@ -88,11 +88,11 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 4;
+    window_size_ = 3;
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),100.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -282,7 +282,7 @@ private:
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
 
-    double weight = 100.0 / cloud->size();
+    double weight = 1.0 / cloud->size();
 
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
@@ -334,9 +334,11 @@ private:
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
-    LOG(ERROR) << summary.FullReport();
-    LOG(INFO) << "velocity from ceres: "
-						<< speeds_.front()->transpose();
+    LOG(INFO) << summary.FullReport();
+    LOG(ERROR) << "   velocity: " << speeds_.front()->transpose();
+    LOG(ERROR) << "orientation: " << orientations_.front()->coeffs().transpose();
+    LOG(ERROR) << "  gyro bias: " << gyro_biases_.front()->transpose();
+    LOG(ERROR) << " accel bias: " << accel_biases_.front()->transpose() << "\n\n";
 
     // get estimate covariance
     /*
@@ -432,7 +434,8 @@ private:
 
     initialized_ = true;
     LOG(ERROR) << "initialized!";
-    LOG(INFO) << "initial orientation: " << orientation_initial.coeffs().transpose();
+    LOG(ERROR) << "initial orientation: " << orientation_initial.coeffs().transpose();
+    LOG(ERROR) << "initial biases: " << b_g_initial.transpose();
   }
 
   /** \brief linearize old states and measurements and add them to the
