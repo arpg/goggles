@@ -23,7 +23,7 @@ TEST(googleTests, testGlobalDoppler)
   double x = 10.0;
   std::random_device rd{};
   std::mt19937 gen{rd()};
-  std::normal_distribution<double> d(0, 0.05);
+  std::normal_distribution<double> d(0, 0.1);
   std::vector<std::pair<double,Eigen::Vector3d>> targets;
   for (int y = -5; y < 5; y += 1)
   {
@@ -43,7 +43,7 @@ TEST(googleTests, testGlobalDoppler)
 
 
   Eigen::Quaterniond q_ws_est(q_ws);
-  Eigen::Vector3d v_w_est(v_w);
+  Eigen::Vector3d v_w_est(0,0,0);
 
   // create ceres problem
   std::shared_ptr<ceres::Problem> problem 
@@ -161,7 +161,7 @@ TEST(googleTests, testGlobalDoppler)
   ceres::Solver::Summary summary;
   ceres::Solve(options, problem.get(), &summary);
 
-  LOG(ERROR) << summary.FullReport();
+  LOG(INFO) << summary.FullReport();
 
   Eigen::Quaterniond q_ws_err = q_ws_est * q_ws.inverse();
   Eigen::Vector3d v_w_err = v_w_est - v_w;
