@@ -281,7 +281,7 @@ private:
 
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-
+    
     double weight = 1.0 / cloud->size();
     
 		// add residuals on doppler readings
@@ -329,7 +329,7 @@ private:
 																		 accel_biases_[0]->data());
 			residual_blks_[1].push_back(res_id);
     }
-
+  
 		// solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
