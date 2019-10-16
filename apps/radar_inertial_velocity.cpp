@@ -18,8 +18,8 @@
 #include <math.h>
 #include <ceres/ceres.h>
 #include <QuaternionParameterization.h>
-#include <ImuVelocityCostFunction.h>
-#include <BodyVelocityCostFunction.h>
+#include <GlobalImuVelocityCostFunction.h>
+#include <GlobalDopplerCostFunction.h>
 #include <MarginalizationError.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
@@ -211,7 +211,7 @@ private:
   ceres::CauchyLoss *doppler_loss_;
   ceres::ScaledLoss *imu_loss_;
 	ceres::LocalParameterization* quat_param_;
-	std::deque<Eigen::Quaterniond*> attitudes_;
+	std::deque<Eigen::Quaterniond*> orientations_;
   std::deque<Eigen::Vector3d*> speeds_;
   std::deque<Eigen::Vector3d*> gyro_biases_;
   std::deque<Eigen::Vector3d*> accel_biases_;
@@ -265,12 +265,14 @@ private:
 			speeds_.push_front(new Eigen::Vector3d(*speeds_.front()));
       gyro_biases_.push_front(new Eigen::Vector3d(*gyro_biases_.front()));
       accel_biases_.push_front(new Eigen::Vector3d(*accel_biases_.front()));
-			attitudes_.push_front(new Eigen::Quaterniond(*attitudes_.front()));
-			problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
-			problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
+			orientations_.push_front(new Eigen::Quaterniond(*orientations_.front()));
+			problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
+			problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
     	problem_->AddParameterBlock(speeds_.front()->data(),3);
 			problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
 			problem_->AddParameterBlock(accel_biases_.front()->data(),3);
+      //problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
+      //problem_->SetParameterBlockConstant(accel_biases_.front()->data());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
@@ -289,7 +291,7 @@ private:
                              cloud->at(i).y,
                              cloud->at(i).z);
       ceres::CostFunction* doppler_cost_function =
-        new BodyVelocityCostFunction(cloud->at(i).doppler,
+        new GlobalDopplerCostFunction(cloud->at(i).doppler,
                                       target,
                                       weight);
 
@@ -297,6 +299,7 @@ private:
       ceres::ResidualBlockId res_id =
 				problem_->AddResidualBlock(doppler_cost_function,
                                    doppler_loss_,
+                                   orientations_.front()->coeffs().data(),
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
@@ -308,19 +311,19 @@ private:
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 
 			ceres::CostFunction* imu_cost_func =
-        	new ImuVelocityCostFunction(timestamps_[1],
-																			timestamps_[0],
-																			imu_measurements,
-																			params_);
+        	new GlobalImuVelocityCostFunction(timestamps_[1],
+																			      timestamps_[0],
+																			      imu_measurements,
+																			      params_);
 
 			ceres::ResidualBlockId res_id
 				= problem_->AddResidualBlock(imu_cost_func,
                                      imu_loss_,
-                                     attitudes_[1]->coeffs().data(),
+                                     orientations_[1]->coeffs().data(),
 																		 speeds_[1]->data(),
 																		 gyro_biases_[1]->data(),
 																		 accel_biases_[1]->data(),
-                                     attitudes_[0]->coeffs().data(),
+                                     orientations_[0]->coeffs().data(),
 																		 speeds_[0]->data(),
 																		 gyro_biases_[0]->data(),
 																		 accel_biases_[0]->data());
@@ -331,7 +334,7 @@ private:
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
-    LOG(INFO) << summary.FullReport();
+    LOG(ERROR) << summary.FullReport();
     LOG(INFO) << "velocity from ceres: "
 						<< speeds_.front()->transpose();
 
@@ -391,7 +394,7 @@ private:
     gyro_biases_.push_front(new Eigen::Vector3d(b_g_initial));
     accel_biases_.push_front(new Eigen::Vector3d(b_a_initial));
 
-    // set initial orientation (attitude only)
+    // set initial orientation
     // assuming IMU is set close to Z-down
     Eigen::Vector3d down_vec(0,0,1);
     Eigen::Vector3d increment;
@@ -405,7 +408,7 @@ private:
     increment *= angle;
     increment *= -1.0;
 
-    Eigen::Quaterniond attitude_initial = Eigen::Quaterniond::Identity();
+    Eigen::Quaterniond orientation_initial = Eigen::Quaterniond::Identity();
     // initial oplus increment
     Eigen::Vector4d dq;
     double halfnorm = 0.5 * increment.norm();
@@ -413,25 +416,23 @@ private:
     dq.head(3) = qp.sinc(halfnorm) * 0.5 * increment;
     dq[3] = std::cos(halfnorm);
 
-    attitude_initial = (Eigen::Quaterniond(dq) * attitude_initial);
-    attitude_initial.normalize();
+    orientation_initial = (Eigen::Quaterniond(dq) * orientation_initial);
+    orientation_initial.normalize();
 
-    attitudes_.push_front(
-        new Eigen::Quaterniond(attitude_initial));
+    orientations_.push_front(
+        new Eigen::Quaterniond(orientation_initial));
 
-    problem_->AddParameterBlock(attitudes_.front()->coeffs().data(),4);
-    problem_->SetParameterization(attitudes_.front()->coeffs().data(), quat_param_);
+    problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
+    problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
     problem_->AddParameterBlock(speeds_.front()->data(),3);
     problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
     problem_->AddParameterBlock(accel_biases_.front()->data(),3);
-    //problem_->SetParameterBlockConstant(attitudes_.front()->coeffs().data());
-    //problem_->SetParameterBlockConstant(speeds_and_biases_.front()->head(3).data());
     problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
     problem_->SetParameterBlockConstant(accel_biases_.front()->data());
 
     initialized_ = true;
     LOG(ERROR) << "initialized!";
-    LOG(INFO) << "initial orientation: " << attitude_initial.coeffs().transpose();
+    LOG(INFO) << "initial orientation: " << orientation_initial.coeffs().transpose();
   }
 
   /** \brief linearize old states and measurements and add them to the
@@ -466,7 +467,7 @@ private:
       // get oldest states to marginalize
       std::vector<double*> states_to_marginalize;
       states_to_marginalize.push_back(
-        attitudes_.back()->coeffs().data()); // attitude
+        orientations_.back()->coeffs().data()); // attitude
       states_to_marginalize.push_back(
         speeds_.back()->data()); // speed
       states_to_marginalize.push_back(
@@ -483,7 +484,7 @@ private:
 
       marginalization_error_ptr_->UpdateErrorComputation();
 
-      attitudes_.pop_back();
+      orientations_.pop_back();
       speeds_.pop_back();
       gyro_biases_.pop_back();
       accel_biases_.pop_back();
