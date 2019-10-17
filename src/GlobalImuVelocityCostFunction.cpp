@@ -631,6 +631,7 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
     // weight the error vector
     Eigen::Map<Eigen::Matrix<double,12,1>> weighted_error(residuals);
     weighted_error = sqrt_information_ * error;
+    //weighted_error.head(3) = weighted_error.head(3)
 
     // assign the jacobians if requested
     if (jacobians != NULL)
