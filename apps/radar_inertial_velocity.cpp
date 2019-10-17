@@ -365,6 +365,49 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
+
+    //PrunePointCloud();
+  }
+
+  void PrunePointCloud()
+  {
+    std::vector<std::pair<double,size_t>> index_to_weights;
+    LOG(ERROR) << "getting weights";
+    for (size_t i = 0; i < residual_blks_.front().size(); i++)
+    {
+      LOG(ERROR) << "getting cost function";
+      ceres::ResidualBlockId res_id = residual_blks_.front()[i];
+      const ceres::CostFunction *cost_func = problem_->GetCostFunctionForResidualBlock(res_id);
+      double *residual;
+      double *parameters[2];
+      parameters[0] = orientations_.front()->coeffs().data();
+      parameters[1] = speeds_.front()->data();
+      LOG(ERROR) << "evaluating cost function";
+      cost_func->Evaluate(parameters,residual,NULL);
+      double weight = (*residual) * (*residual);
+      LOG(ERROR) << "making pair";
+      std::pair<double,size_t> new_pair = std::make_pair(weight,i);
+      LOG(ERROR) << "pushing";
+      index_to_weights.push_back(new_pair);
+    }
+    LOG(ERROR) << "sorting weights";
+    std::sort(index_to_weights.begin(), index_to_weights.end());
+
+    // only keep best 25% of measurements
+    double pct_to_remove = .75;
+    size_t num_to_remove = pct_to_remove * index_to_weights.size();
+    for (size_t i = 0; i < num_to_remove; i++)
+    {
+      size_t remove_idx = index_to_weights[i].second;
+      ceres::ResidualBlockId remove_id = residual_blks_.front()[remove_idx];
+      problem_->RemoveResidualBlock(remove_id);
+      residual_blks_.front().erase(residual_blks_.front().begin() + remove_idx);
+      for (size_t j = i; j < num_to_remove; j++)
+      {
+        if (index_to_weights[j].second > remove_idx)
+          index_to_weights[j].second--;
+      }
+    }
   }
 
   /** \brief uses initial IMU measurements to determine the magnitude of the
