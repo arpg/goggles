@@ -283,7 +283,7 @@ private:
       LOG(ERROR) << "marginalization step failed";
     
     double weight = 1.0 / cloud->size();
-    
+    /*
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
@@ -303,7 +303,7 @@ private:
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
-    
+    */
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
@@ -335,7 +335,7 @@ private:
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     LOG(INFO) << summary.FullReport();
-    /*
+    
     std::ofstream orientation_log;
     orientation_log.open("/home/akramer/logs/radar/ICRA_2020/orientations.csv",std::ofstream::app);
     orientation_log << std::fixed << std::setprecision(5) << timestamps_.front()
@@ -343,7 +343,7 @@ private:
                     << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
                     << '\n';
     orientation_log.close();
-    */
+    
     // get estimate covariance
     /*
     ceres::Covariance::Options cov_options;
@@ -386,10 +386,10 @@ private:
       sum_g += measurements[i].g_;
       sum_a += measurements[i].a_;
     }
-    Eigen::Vector3d g_vec = -sum_a / measurements.size();
+    Eigen::Vector3d g_vec = sum_a / double(measurements.size());
 
     // set gravity vector magnitude
-    params_.g_ = -g_vec.norm();
+    params_.g_ = g_vec.norm();
 
     // set initial velocity and biases
     Eigen::Vector3d speed_initial = Eigen::Vector3d::Zero();
@@ -402,7 +402,7 @@ private:
 
     // set initial orientation
     // assuming IMU is set close to Z-down
-    Eigen::Vector3d down_vec(0,0,1);
+    Eigen::Vector3d down_vec(0.0,0.0,1.0);
     Eigen::Vector3d increment;
     Eigen::Vector3d g_direction = g_vec.normalized();
     Eigen::Vector3d cross = down_vec.cross(g_direction);
@@ -416,13 +416,10 @@ private:
 
     Eigen::Quaterniond orientation_initial = Eigen::Quaterniond::Identity();
     // initial oplus increment
-    Eigen::Vector4d dq;
-    double halfnorm = 0.5 * increment.norm();
     QuaternionParameterization qp;
-    dq.head(3) = qp.sinc(halfnorm) * 0.5 * increment;
-    dq[3] = std::cos(halfnorm);
+    Eigen::Quaterniond dq = qp.DeltaQ(increment);
 
-    orientation_initial = (Eigen::Quaterniond(dq) * orientation_initial);
+    orientation_initial = (dq * orientation_initial);
     orientation_initial.normalize();
 
     orientations_.push_front(
