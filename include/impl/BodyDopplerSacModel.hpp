@@ -45,9 +45,13 @@ bool pcl::BodyDopplerSacModel<PointT>::isSampleGood(
   Eigen::FullPivLU<Eigen::Matrix3d> lu_decomp(M);
 
   if (lu_decomp.rank() > 2)
+  {
     return true;
+  }
   else
+  {
     return false;
+  }
 }
 
 template <typename PointT> 
@@ -83,8 +87,9 @@ bool pcl::BodyDopplerSacModel<PointT>::computeModelCoefficients (
 
     b(i) = input_->points[samples[i]].doppler;
   }
-
-  model_coefficients = (M.completeOrthogonalDecomposition().solve(b)).cast<float>();
+  model_coefficients = -1.0 * (M.completeOrthogonalDecomposition().solve(b)).cast<float>();
+  //LOG(ERROR) << "computed coefficients: " << model_coefficients.transpose();
+  return true;
 }
 
 template <typename PointT>
@@ -107,7 +112,7 @@ void pcl::BodyDopplerSacModel<PointT>::getDistancesToModel(
   // iterate over points and calculate residuals
   for (int i = 0; i < indices_->size(); i++)
   {
-    distances[i] = std::fabs(model_coefficients.dot(points[i].cast<float>()) - dopplers[i]);
+    distances[i] = std::fabs((-1.0 * model_coefficients.dot(points[i].cast<float>())) - dopplers[i]);
   }
 }
 
@@ -133,7 +138,7 @@ void pcl::BodyDopplerSacModel<PointT>::selectWithinDistance(
 
   for (int i = 0; i < indices_->size(); i++)
   {
-    double distance = std::fabs(model_coefficients.dot(points[i].cast<float>()) - dopplers[i]);
+    double distance = std::fabs((-1.0 * model_coefficients.dot(points[i].cast<float>())) - dopplers[i]);
 
     if (distance < threshold)
     {
@@ -196,9 +201,14 @@ bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
 
   for (const int &index : indices)
   {
-    double distance = model_coefficients.dot(points[index].cast<float>()) - dopplers[index];
-    if (std::fabs(distance) > threshold) return false;
+    double distance = (-1.0 * model_coefficients.dot(points[index].cast<float>())) - dopplers[index];
+    if (std::fabs(distance) > threshold)
+    {
+      LOG(ERROR) << "samples do not verify model";
+      return false;
+    }
   }
+  LOG(ERROR) << "samples verify model";
   return true;
 }
 

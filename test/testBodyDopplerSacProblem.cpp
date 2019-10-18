@@ -41,7 +41,7 @@ TEST(goggleTests, testBodyDopplerSacProblem)
   double x = 10.0;
   std::random_device rd{};
   std::mt19937 gen{rd()};
-  std::normal_distribution<double> d(0, 0.05);
+  std::normal_distribution<double> d(0, 0.01);
   RadarPointCloudPtr targets(new RadarPointCloud);
   //pcl::PointCloud<pcl::PointXYZ>::Ptr targets(new pcl::PointCloud<pcl::PointXYZ>);
   std::vector<int> inliers_gt;
@@ -80,9 +80,18 @@ TEST(goggleTests, testBodyDopplerSacProblem)
     point.x = eigen_point[0];
     point.y = eigen_point[1];
     point.z = eigen_point[2];
-    
+    Eigen::Vector3d ray = eigen_point.normalized();
+    Eigen::Vector3d v_target = -1.0 * v_s_gt;
+
     // get random doppler from -5.0 to 5.0
     point.doppler = double(rand() % 100) / 10.0 - 5.0;
+
+    // ensure random doppler reading is actually an outlier
+    double expected_doppler = v_target.dot(ray);
+    while (fabs(point.doppler - expected_doppler) < 0.8)
+    {
+      point.doppler = double(rand() % 100) / 10.0 - 5.0;
+    }
     point.range = sqrt(point.x*point.x 
       + point.y*point.y 
       + point.z*point.z);
@@ -96,11 +105,26 @@ TEST(goggleTests, testBodyDopplerSacProblem)
     new pcl::BodyDopplerSacModel<RadarPoint>(targets));
   std::vector<int> inliers;
   pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model);
-  mlesac.setDistanceThreshold(0.1);
+  mlesac.setDistanceThreshold(0.05);
   mlesac.computeModel();
   mlesac.getInliers(inliers);
+  Eigen::VectorXf coeffs = mlesac.model_coefficients_;
 
-  // evaluate results somehow
+  // evaluate results 
+  LOG(ERROR) << "num inliers: " << inliers.size();
+  int wrong_inlier_count = 0;
+  for (int i = 0; i < inliers.size(); i++)
+  {
+    if (inliers[i] > num_inliers)
+      wrong_inlier_count++;
+  }
+  ASSERT_TRUE(wrong_inlier_count == 0) << wrong_inlier_count 
+                                       << " outliers wrongly classified as inliers";
+
+  double model_err = (coeffs.cast<double>() - v_s_gt).norm();
+  ASSERT_TRUE(model_err < 0.25) << "model coefficients do not match groundtruth \n"
+                               << "mlesac model: " << coeffs.transpose() << '\n'
+                               << " groundtruth: " << v_s_gt.transpose();
 }
 
 int main(int argc, char **argv)
