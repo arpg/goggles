@@ -1,0 +1,217 @@
+#ifndef PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CIRCLE_H_
+#define PCL_SAMPLE_CONSENSUS_IMPL_SAC_MODEL_CIRCLE_H_
+
+#include <pcl/sample_consensus/eigen.h>
+#include <BodyDopplerSacModel.h>
+#include <pcl/common/concatenate.h>
+
+inline void getSamplePoints(std::vector<Eigen::Vector3d> &points, 
+                            std::vector<double> &dopplers)
+{
+  for (int i = 0; i < samples.size(); i++)
+  {
+    Eigen::Vector3d p(input_->points[*(indices_)[i]].x,
+                      input_->points[*(indices_)[i]].y,
+                      input_->points[*(indices_)[i]].z);
+    points.push_back(p.normalized());
+    dopplers.push_back(input_->points[*(indices_)[i]].doppler);
+  }
+}
+
+bool pcl::BodyDopplerSacModel::isSampleGood(const std::vector<int> &samples) const
+{
+  // get the xyz points and normalize
+  std::vector<Eigen::Vector3d> points;
+  for (int i = 0; i < samples.size(); i++)
+  {
+    Eigen::Vector3d p(input_->points[samples[i]].x,
+                      input_->points[samples[i]].y,
+                      input_->points[samples[i]].z);
+    points.push_back(p.normalized());
+  }
+
+  Eigen::Matrix3d M;
+  for (int i = 0; i < points.size(); i++)
+  {
+    for (int j = 0; j < 3; j++)
+      M(i,j) = points[i][j]q;
+  }
+  
+  Eigen::FullPivLU<Matrix3d> lu_decomp(M);
+
+  if (lu_decomp.rank() > 2)
+    return true;
+  else
+    return false;
+}
+
+bool pcl::BodyDopplerSacModel::computeModelCoefficients(
+  const std::vector<int> &samples,
+  Eigen::VectorXf &model_coefficients) const
+{
+  if (samples.size() != sample_size_)
+  {
+    PCL_ERROR ("[pcl::BodyDopplerSacModel::computeModelCoefficients] Invalid set of samples given (%lu)!\n", samples.size());
+    return false;
+  }
+
+  model_coefficients.resize(sample_size_);
+
+  // get the xyz points and normalize
+  std::vector<Eigen::Vector3d> points;
+  for (int i = 0; i < samples.size(); i++)
+  {
+    Eigen::Vector3d p(input_->points[samples[i]].x,
+                      input_->points[samples[i]].y,
+                      input_->points[samples[i]].z);
+    points.push_back(p.normalized());
+  }
+
+  // set up and solve uniquely determined 3 target problem
+  Eigen::Matrix3d M;
+  Eigen::Vector3d b;
+  for (int i = 0; i < points.size(); i++)
+  {
+    for (int j = 0; j < 3; j++)
+      M(i,j) = points[i][j]q;
+
+    b(i) = samples[i].doppler;
+  }
+
+  model_coefficients = M.CompleteOrthogonalDecomposition().solve(b);
+}
+
+void pcl::BodyDopplerSacModel::getDistancesToModel(
+  const Eigen::VectorXf &model_coefficients,
+  std::vector<double> &distances) const
+{
+  if (!isModelValid(model_coefficients))
+  {
+    distances.clear();
+    return;
+  }
+  distances.resize(indices_->size());
+
+  // get points and normalize
+  std::vector<Eigen::Vector3d> points;
+  std::vector<double> dopplers;
+  getSamplePoints(points, dopplers);
+
+  // iterate over points and calculate residuals
+  for (int i = 0; i < indices_->size(); i++)
+  {
+    distances[i] = std::fabs(model_coefficients.dot(points[i]) - dopplers[i]);
+  }
+}
+
+void pcl::BodyDopplerSacModel::selectWithinDistance(
+  const Eigen::VectorXf &model_coefficients,
+  const double threshold, 
+  std::vector<int> &inliers)
+{
+  if (!isModelValid(model_coefficients))
+  {
+    inliers.clear();
+    return;
+  }
+  int nr_p = 0;
+  inliers.resize(indices_->size());
+  error_sqr_dists_.resize(indices_->size());
+
+  // get points and normalize
+  std::vector<Eigen::Vector3d> points;
+  std::vector<double> dopplers;
+  getSamplePoints(points, dopplers);
+
+  for (int i = 0; i < indices_->size(); i++)
+  {
+    double distance = std::fabs(model_coefficients.dot(points[i]) - dopplers[i]);
+
+    if (distance < threshold)
+    {
+      inliers[nr_p] = (*indices)[i];
+      error_sqr_dists_[nr_p] = distance;
+      nr_p++;
+    }
+  }
+
+  inliers.resize(nr_p);
+  error_sqr_dists_(nr_p);
+
+}
+
+int pcl::BodyDopplerSacModel::countWithinDistance(
+  const Eigen::VectorXf &model_coefficients, const double threshold) const
+{
+  if (!isModelValid(model_coefficients))
+    return 0;
+
+  int nr_p = 0;
+  std::vector<double> distances;
+  getDistancesToModel(model_coefficients, distances);
+
+  for (int i = 0; i < distances; i++)
+    if (distances[i] < threshold) nr_p++;
+
+  return nr_p++;
+}
+/*
+void pcl::BodyDopplerSacModel::optimizeModelCoefficients(
+  const std::vector<int> &inliers, 
+  const Eigen::VectorXf &model_coefficients,
+  Eigen::VectorXf &optimized_coefficients)
+{
+  optimized_coefficients = model_coefficients;
+
+  // Needs a set of valid model coefficients
+  if (model_coefficients.size () != 3)
+  {
+    PCL_ERROR ("[pcl::BodyDopplerSacModel::optimizeModelCoefficients] Invalid number of model coefficients given (%lu)!\n", model_coefficients.size ());
+    return;
+  }
+
+  // Need at least 3 samples
+  if (inliers.size () <= 3)
+  {
+    PCL_ERROR ("[pcl::BodyDopplerSacModel::optimizeModelCoefficients] Not enough inliers found to support a model (%lu)! Returning the same coefficients.\n", inliers.size ());
+    return;
+  }
+
+  OptimizationFunctor functor
+}
+*/
+
+bool pcl::BodyDopplerSacModel::doSamplesVerifyModel(
+  const std::set<int> &indices, 
+  const Eigen::VectorXf &model_coefficients,
+  const double threshold) const
+{
+  if (model_coefficients.size() != model_size_)
+  {
+    PCL_ERROR ("[pcl::BodyDopplerSacModel::doSamplesVerifyModel] Invalid number of model coefficients given (%lu)!\n", model_coefficients.size ());
+    return false;
+  }
+
+  // get points and normalize
+  std::vector<Eigen::Vector3d> points;
+  std::vector<double> dopplers;
+  getSamplePoints(points, dopplers);
+
+  for (const int &index : indices)
+  {
+    double distance = model_coefficients.dot(points[index]) - dopplers[index];
+    if (std::fabs(distance) > threshold) return false;
+  }
+  return true;
+}
+
+bool pcl::BodyDopplerSacModel::isModelValid(
+  const Eigen::VectorXf &model_coefficients) const
+{
+  if (!SampleConsensusModel<RadarPoint>::isModelValid(model_coefficients))
+    return false;
+
+  return true;
+}
+
+#endif
