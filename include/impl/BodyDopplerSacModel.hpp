@@ -88,7 +88,6 @@ bool pcl::BodyDopplerSacModel<PointT>::computeModelCoefficients (
     b(i) = input_->points[samples[i]].doppler;
   }
   model_coefficients = -1.0 * (M.completeOrthogonalDecomposition().solve(b)).cast<float>();
-  //LOG(ERROR) << "computed coefficients: " << model_coefficients.transpose();
   return true;
 }
 
@@ -112,7 +111,8 @@ void pcl::BodyDopplerSacModel<PointT>::getDistancesToModel(
   // iterate over points and calculate residuals
   for (int i = 0; i < indices_->size(); i++)
   {
-    distances[i] = std::fabs((-1.0 * model_coefficients.dot(points[i].cast<float>())) - dopplers[i]);
+    distances[i] = std::fabs((-1.0 * model_coefficients.dot(
+      points[i].cast<float>())) - dopplers[i]);
   }
 }
 
@@ -138,7 +138,8 @@ void pcl::BodyDopplerSacModel<PointT>::selectWithinDistance(
 
   for (int i = 0; i < indices_->size(); i++)
   {
-    double distance = std::fabs((-1.0 * model_coefficients.dot(points[i].cast<float>())) - dopplers[i]);
+    double distance = std::fabs((-1.0 * model_coefficients.dot(
+      points[i].cast<float>())) - dopplers[i]);
 
     if (distance < threshold)
     {
@@ -201,7 +202,8 @@ bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
 
   for (const int &index : indices)
   {
-    double distance = (-1.0 * model_coefficients.dot(points[index].cast<float>())) - dopplers[index];
+    double distance = (-1.0 * model_coefficients.dot(
+      points[index].cast<float>())) - dopplers[index];
     if (std::fabs(distance) > threshold)
     {
       LOG(ERROR) << "samples do not verify model";
@@ -231,7 +233,5 @@ void pcl::BodyDopplerSacModel<PointT>::projectPoints(
 {
 
 }
-
-//#define PCL_INSTANTIATE_BodyDopplerSacModel(T) template class PCL_EXPORTS pcl::BodyDopplerSacModel<T>;
 
 #endif
