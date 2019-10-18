@@ -83,7 +83,6 @@ set( SOURCES
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
-  ${SRC_DIR}/BodyDopplerSacModel.cpp
   )
 
 set( RAD_VEL_SRCS
@@ -116,14 +115,14 @@ add_definitions(${PCL_DEFINITIONS})
 
 #add_subdirectory(test)
 
-catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testImuIntegration ${LINK_LIBS})
-catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testMarginalization ${LINK_LIBS})
-catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
-catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testGlobalDoppler ${LINK_LIBS})
+#catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testImuIntegration ${LINK_LIBS})
+#catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testMarginalization ${LINK_LIBS})
+#catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
+#catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testGlobalDoppler ${LINK_LIBS})
 catkin_add_gtest(testBodyDopplerSacProblem test/testBodyDopplerSacProblem.cpp ${SOURCES} ${HEADERS})
 target_link_libraries(testBodyDopplerSacProblem ${LINK_LIBS})
 
