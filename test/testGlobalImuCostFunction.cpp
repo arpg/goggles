@@ -5,7 +5,6 @@
 #include <VelocityMeasCostFunction.h>
 #include <QuaternionParameterization.h>
 #include <Eigen/Core>
-#include <boost/numeric/odeint.hpp>
 #include <fstream>
 #include <random>
 
