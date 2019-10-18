@@ -160,9 +160,7 @@ namespace pcl
     bool isSampleGood (const std::vector<int> &samples) const;
 
     void getSamplePoints(std::vector<Eigen::Vector3d> &points, 
-                         std::vector<double> &dopplers,
-                         const std::vector<int>* indices,
-                         const PointCloudConstPtr &input);
+                         std::vector<double> &dopplers);
 
   private:
 
@@ -197,5 +195,7 @@ namespace pcl
 
   };
 }
+
+#include <impl/BodyDopplerSacModel.hpp>
 
 #endif

@@ -1,19 +1,23 @@
+
+#include <pcl/sample_consensus/eigen.h>
+#include <pcl/common/concatenate.h>
 #include <BodyDopplerSacModel.h>
+
+#ifndef IMPL_BODYDOPPLERSACMODEL_H_
+#define IMPL_BODYDOPPLERSACMODEL_H_
 
 template <typename PointT>
 void pcl::BodyDopplerSacModel<PointT>::getSamplePoints(
   std::vector<Eigen::Vector3d> &points, 
-  std::vector<double> &dopplers,
-  const std::vector<int>* indices,
-  const PointCloudConstPtr &input)
+  std::vector<double> &dopplers)
 {
-  for (int i = 0; i < indices->size(); i++)
+  for (int i = 0; i < indices_->size(); i++)
   {
-    Eigen::Vector3d p(input->points[(*indices)[i]].x,
-                      input->points[(*indices)[i]].y,
-                      input->points[(*indices)[i]].z);
+    Eigen::Vector3d p(input_->points[(*indices_)[i]].x,
+                      input_->points[(*indices_)[i]].y,
+                      input_->points[(*indices_)[i]].z);
     points.push_back(p.normalized());
-    dopplers.push_back(input->points[(*indices)[i]].doppler);
+    dopplers.push_back(input_->points[(*indices_)[i]].doppler);
   }
 }
 
@@ -80,7 +84,7 @@ bool pcl::BodyDopplerSacModel<PointT>::computeModelCoefficients (
     b(i) = input_->points[samples[i]].doppler;
   }
 
-  model_coefficients = M.completeOrthogonalDecomposition().solve(b);
+  model_coefficients = (M.completeOrthogonalDecomposition().solve(b)).cast<float>();
 }
 
 template <typename PointT>
@@ -98,7 +102,7 @@ void pcl::BodyDopplerSacModel<PointT>::getDistancesToModel(
   // get points and normalize
   std::vector<Eigen::Vector3d> points;
   std::vector<double> dopplers;
-  getSamplePoints(points, dopplers, indices_, input_);
+  getSamplePoints(points, dopplers);
 
   // iterate over points and calculate residuals
   for (int i = 0; i < indices_->size(); i++)
@@ -125,7 +129,7 @@ void pcl::BodyDopplerSacModel<PointT>::selectWithinDistance(
   // get points and normalize
   std::vector<Eigen::Vector3d> points;
   std::vector<double> dopplers;
-  getSamplePoints(points, dopplers, indices_, input_);
+  getSamplePoints(points, dopplers);
 
   for (int i = 0; i < indices_->size(); i++)
   {
@@ -140,7 +144,7 @@ void pcl::BodyDopplerSacModel<PointT>::selectWithinDistance(
   }
 
   inliers.resize(nr_p);
-  error_sqr_dists_(nr_p);
+  error_sqr_dists_.resize(nr_p);
 
 }
 
@@ -169,6 +173,7 @@ void pcl::BodyDopplerSacModel<PointT>::optimizeModelCoefficients(
   Eigen::VectorXf &optimized_coefficients)
 {
   optimized_coefficients = model_coefficients;
+  tmp_inliers_ = &inliers;
 }
 
 
@@ -187,7 +192,7 @@ bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
   // get points and normalize
   std::vector<Eigen::Vector3d> points;
   std::vector<double> dopplers;
-  getSamplePoints(points, dopplers, indices_, input_);
+  getSamplePoints(points, dopplers);
 
   for (const int &index : indices)
   {
@@ -219,4 +224,4 @@ void pcl::BodyDopplerSacModel<PointT>::projectPoints(
 
 //#define PCL_INSTANTIATE_BodyDopplerSacModel(T) template class PCL_EXPORTS pcl::BodyDopplerSacModel<T>;
 
-
+#endif
