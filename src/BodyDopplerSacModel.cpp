@@ -1,7 +1,4 @@
-#include <pcl/sample_consensus/eigen.h>
 #include <BodyDopplerSacModel.h>
-#include <pcl/common/concatenate.h>
-#include <Eigen/Dense>
 
 template <typename PointT>
 void pcl::BodyDopplerSacModel<PointT>::getSamplePoints(
@@ -164,31 +161,16 @@ int pcl::BodyDopplerSacModel<PointT>::countWithinDistance (
 
   return nr_p++;
 }
-/*
-void pcl::BodyDopplerSacModel::optimizeModelCoefficients(
+
+template <typename PointT>
+void pcl::BodyDopplerSacModel<PointT>::optimizeModelCoefficients(
   const std::vector<int> &inliers, 
   const Eigen::VectorXf &model_coefficients,
   Eigen::VectorXf &optimized_coefficients)
 {
   optimized_coefficients = model_coefficients;
-
-  // Needs a set of valid model coefficients
-  if (model_coefficients.size () != 3)
-  {
-    PCL_ERROR ("[pcl::BodyDopplerSacModel::optimizeModelCoefficients] Invalid number of model coefficients given (%lu)!\n", model_coefficients.size ());
-    return;
-  }
-
-  // Need at least 3 samples
-  if (inliers.size () <= 3)
-  {
-    PCL_ERROR ("[pcl::BodyDopplerSacModel::optimizeModelCoefficients] Not enough inliers found to support a model (%lu)! Returning the same coefficients.\n", inliers.size ());
-    return;
-  }
-
-  OptimizationFunctor functor
 }
-*/
+
 
 template <typename PointT> 
 bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
@@ -225,6 +207,16 @@ bool pcl::BodyDopplerSacModel<PointT>::isModelValid(
   return true;
 }
 
-#define PCL_INSTANTIATE_BodyDopplerSacModel(T) template class PCL_EXPORTS pcl::BodyDopplerSacModel<T>;
+template <typename PointT>
+void pcl::BodyDopplerSacModel<PointT>::projectPoints(
+  const std::vector<int> &inliers,
+  const Eigen::VectorXf &model_coefficients,
+  PointCloud &projected_points,
+  bool copy_data_fields)
+{
+
+}
+
+//#define PCL_INSTANTIATE_BodyDopplerSacModel(T) template class PCL_EXPORTS pcl::BodyDopplerSacModel<T>;
 
 

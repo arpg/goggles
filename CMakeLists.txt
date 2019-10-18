@@ -71,7 +71,6 @@ set( HEADERS
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
   ${INC_DIR}/BodyDopplerSacModel.h
-  ${SRC_DIR}/BodyDopplerSacModel.cpp
 )
 
 set( SOURCES 
