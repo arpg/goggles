@@ -70,6 +70,8 @@ set( HEADERS
   ${INC_DIR}/MarginalizationError.h
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
+  ${INC_DIR}/BodyDopplerSacModel.h
+  ${SRC_DIR}/BodyDopplerSacModel.cpp
 )
 
 set( SOURCES 
@@ -82,6 +84,7 @@ set( SOURCES
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
+  ${SRC_DIR}/BodyDopplerSacModel.cpp
   )
 
 set( RAD_VEL_SRCS
@@ -122,6 +125,8 @@ catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${
 target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
 catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
 target_link_libraries(testGlobalDoppler ${LINK_LIBS})
+catkin_add_gtest(testBodyDopplerSacProblem test/testBodyDopplerSacProblem.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testBodyDopplerSacProblem ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity

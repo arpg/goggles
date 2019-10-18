@@ -1,12 +1,15 @@
+#define PCL_NO_PRECOMPILE
+
+#include <gtest/gtest.h>
 #include "glog/logging.h"
 #include <Eigen/Core>
 #include <fstream>
 #include <random>
 #include <pcl/point_types.h>
-#include <pcl/sample_consensus/mlesac.h>
+#include <pcl/sample_consensus/impl/mlesac.hpp>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
-#include <BodyDopplerSacProblem.h>
+#include <BodyDopplerSacModel.h>
 
 struct RadarPoint
 {
@@ -26,6 +29,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT (RadarPoint,
                   (float, doppler, doppler))
 
 typedef pcl::PointCloud<RadarPoint> RadarPointCloud;
+typedef pcl::PointCloud<RadarPoint>::Ptr RadarPointCloudPtr;
 
 TEST(goggleTests, testBodyDopplerSacProblem)
 {
@@ -34,7 +38,9 @@ TEST(goggleTests, testBodyDopplerSacProblem)
   std::random_device rd{};
   std::mt19937 gen{rd()};
   std::normal_distribution<double> d(0, 0.05);
-  RadarPointCloud targets;
+  RadarPointCloudPtr targets(new RadarPointCloud);
+  std::vector<int> inliers_gt;
+
   Eigen::Vector3d v_s_gt(1,0,0);
   int num_inliers = 50;
   for (int i = 0; i < num_inliers; i++)
@@ -54,7 +60,8 @@ TEST(goggleTests, testBodyDopplerSacProblem)
       + point.z*point.z);
     point.intensity = 1.0;
 
-    targets.push_back(point);
+    targets->push_back(point);
+    inliers_gt.push_back(i);
   }
 
   // add outlier points
@@ -74,8 +81,19 @@ TEST(goggleTests, testBodyDopplerSacProblem)
       + point.z*point.z);
     point.intensity = 1.0;
 
-    targets.push_back(point);
+    targets->push_back(point);
   }
+
+  // create a sample consensus object and compute the model
+  pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
+    new pcl::BodyDopplerSacModel<RadarPoint>(targets));
+  std::vector<int> inliers;
+  pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model);
+  mlesac.setDistanceThreshold(0.1);
+  mlesac.computeModel();
+  mlesac.getInliers(inliers);
+
+  // evaluate results somehow
 }
 
 int main(int argc, char **argv)
