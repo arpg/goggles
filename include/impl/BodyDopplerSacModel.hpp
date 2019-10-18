@@ -206,11 +206,9 @@ bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
       points[index].cast<float>())) - dopplers[index];
     if (std::fabs(distance) > threshold)
     {
-      LOG(ERROR) << "samples do not verify model";
       return false;
     }
   }
-  LOG(ERROR) << "samples verify model";
   return true;
 }
 
