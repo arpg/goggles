@@ -17,6 +17,13 @@
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
 #include <MarginalizationError.h>
+//#include <pcl/console/parse.h>
+//#include <pcl/filters/extract_indices.h>
+//#include <pcl/io/pcd_io.h>
+#include <pcl/sample_consensus/impl/mlesac.hpp>
+#include <boost/foreach.hpp>
+#include <pcl_conversions/pcl_conversions.h>
+#include <BodyDopplerSacModel.h>
 #include <chrono>
 
 struct RadarPoint
@@ -113,7 +120,6 @@ public:
 		}
 		else
 		{
-			LOG(ERROR) << "getting velocity";
     	geometry_msgs::TwistWithCovarianceStamped vel_out;
     	vel_out.header.stamp = msg->header.stamp;
 
@@ -279,10 +285,22 @@ private:
     * point cloud
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud,
+  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+    // remove outliers with mlesac
+    pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
+      new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
+    std::vector<int> inliers;
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.10);
+    mlesac.computeModel();
+    mlesac.getInliers(inliers);
+
+    // copy inlier points to new data structure;
+    pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
+    pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
+
     // add latest parameter block and remove old one if necessary
     if (velocities_.size() == 0)
 		{
