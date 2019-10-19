@@ -17,9 +17,6 @@
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
 #include <MarginalizationError.h>
-//#include <pcl/console/parse.h>
-//#include <pcl/filters/extract_indices.h>
-//#include <pcl/io/pcd_io.h>
 #include <pcl/sample_consensus/impl/mlesac.hpp>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
@@ -69,7 +66,7 @@ public:
     window_size_ = 4;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(0.15);
+    doppler_loss_ = new ceres::CauchyLoss(1.0);
     //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
 
@@ -289,6 +286,7 @@ private:
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+    
     // remove outliers with mlesac
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
@@ -300,7 +298,7 @@ private:
     // copy inlier points to new data structure;
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
-
+    
     // add latest parameter block and remove old one if necessary
     if (velocities_.size() == 0)
 		{
