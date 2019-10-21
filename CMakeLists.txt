@@ -80,7 +80,7 @@ set( SOURCES
   ${SRC_DIR}/VelocityMeasCostFunction.cpp
   ${SRC_DIR}/ImuVelocityCostFunction.cpp
   ${SRC_DIR}/GlobalImuVelocityCostFunction.cpp
-  ${SRC_DIR}/AHRSOrientationCostFuncton.cpp
+  ${SRC_DIR}/AHRSOrientationCostFunction.cpp
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
