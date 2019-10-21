@@ -1,9 +1,12 @@
 #include<AHRSOrientationCostFunction.h>
 
 AHRSOrientationCostFunction::AHRSOrientationCostFunction(Eigen::Quaterniond &delta_q)
+  : delta_q_(delta_q)
 {
 
 }
+
+AHRSOrientationCostFunction::~AHRSOrientationCostFunction() {}
 
 size_t AHRSOrientationCostFunction::ResidualDim() const
 {
@@ -23,5 +26,5 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
   double** jacobians,
   double** jacobians_minimal) const
 {
-  
+
 }
