@@ -15,7 +15,9 @@ class AHRSOrientationCostFunction : public ceres::CostFunction, public ErrorInte
 public: 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  AHRSOrientationCostFunction(Eigen::Quaterniond &delta_q);
+  AHRSOrientationCostFunction();
+
+  AHRSOrientationCostFunction(Eigen::Quaterniond &delta_q, Eigen::Matrix3d &ahrs_to_imu);
 
   ~AHRSOrientationCostFunction();
 
@@ -31,7 +33,7 @@ public:
                                     double** jacobians_minimal) const;
 protected:
   Eigen::Quaterniond delta_q_;
-}
+};
 
 
 #endif

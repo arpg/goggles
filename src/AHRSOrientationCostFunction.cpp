@@ -1,5 +1,10 @@
 #include<AHRSOrientationCostFunction.h>
 
+AHRSOrientationCostFunction::AHRSOrientationCostFunction()
+{
+  delta_q_ = Eigen::Quaterniond::Identity();
+}
+
 AHRSOrientationCostFunction::AHRSOrientationCostFunction(
   Eigen::Quaterniond &delta_q,
   Eigen::Matrix3d &ahrs_to_imu)
@@ -47,7 +52,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
   Eigen::Matrix3d C_WS_1 = q_ws_1.toRotationMatrix();
   Eigen::Matrix3d C_SW_1 = C_WS_1.transpose(); 
   */
-  Eigen::Map<Eigen::Matrix<double,3,1,Eigen::RowMajor>> error(residuals);
+  Eigen::Map<Eigen::Vector3d> error(residuals);
   error = 2.0 * (delta_q_ * (q_WS_1.inverse() * q_WS_0)).vec();
 
   QuaternionParameterization qp;
@@ -65,7 +70,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
       qp.ComputeLiftJacobian(parameters[0], J_lift.data());
 
       // move from minimal to overparameterized space
-      Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J0_mapped;
+      Eigen::Map<Eigen::Matrix<double,3,4,Eigen::RowMajor>> J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
 
       // get minimal jacobian if requested
@@ -73,7 +78,8 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
       {
         if (jacobians_minimal[0] != NULL)
         {
-          Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J0_minimal_mapped;
+          Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J0_minimal_mapped(
+            jacobians_minimal[0]);
           J0_minimal_mapped = J0_minimal;
         }
       }
@@ -91,15 +97,16 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
     qp.ComputeLiftJacobian(parameters[1], J_lift.data());
 
     // move from minimal to overparameterized space
-    Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J1_mapped;
-    J1_mapped = J0_minimal * J_lift;
+    Eigen::Map<Eigen::Matrix<double,3,4,Eigen::RowMajor>> J1_mapped(jacobians[1]);
+    J1_mapped = J1_minimal * J_lift;
 
     // get minimal jacobian if requested
     if (jacobians_minimal != NULL)
     {
       if (jacobians_minimal[1] != NULL)
       {
-        Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J1_minimal_mapped;
+        Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>> J1_minimal_mapped(
+          jacobians_minimal[1]);
         J1_minimal_mapped = J1_minimal;
       }
     }
