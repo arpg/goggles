@@ -4,6 +4,7 @@
     <arg name="cfg" default="rangeRes_0-04_velRes_0-12_10Hz"/>
     <arg name="topic" default="/mmWaveDataHdl/RScan"/>
 	<arg name="launch_radar" default="true"/>
+    <arg name="publish_inliers" default="false"/>
     <!-- launch ti mmwave sensor node -->
 
     <group if="$(arg launch_radar)">
@@ -20,6 +21,7 @@
 
     <node pkg="goggles" type="radar_velocity" name="radar_velocity_estimator">
         <param name="radar_topic" value="$(arg topic)"/>
+        <param name="publish_inliers" value="$(arg publish_inliers)"/>
     </node>
 
 </launch>
