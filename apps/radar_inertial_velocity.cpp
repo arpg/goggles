@@ -281,7 +281,7 @@ private:
 
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-    
+    /*
     double weight = 1.0 / cloud->size();
     
 		// add residuals on doppler readings
@@ -303,7 +303,7 @@ private:
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
     }
-    
+    */
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
