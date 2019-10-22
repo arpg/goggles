@@ -40,7 +40,7 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   Eigen::Matrix3d AHRS_to_imu = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d initial_orientation = Eigen::Matrix3d::Identity();
   AHRSOrientationCostFunction *cost_func = new AHRSOrientationCostFunction(
-    q_WS_meas, AHRS_to_imu, initial_orientation);
+    q_WS_meas, AHRS_to_imu, initial_orientation, 1.0);
 
   problem->AddResidualBlock(cost_func,
                             NULL, 

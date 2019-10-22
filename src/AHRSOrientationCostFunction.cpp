@@ -8,13 +8,15 @@ AHRSOrientationCostFunction::AHRSOrientationCostFunction()
 AHRSOrientationCostFunction::AHRSOrientationCostFunction(
   Eigen::Quaterniond &q_WS_meas_ahrs,
   Eigen::Matrix3d &ahrs_to_imu,
-  Eigen::Matrix3d &initial_orientation)
+  Eigen::Matrix3d &initial_orientation,
+  double weight)
 {
-  Eigen::Matrix3d q_WS_meas_ahrs_mat = q_WS_meas_ahrs.toRotationMatrix();
-  Eigen::Matrix3d q_WS_meas_mat = ahrs_to_imu * 
-                                  q_WS_meas_ahrs_mat * 
+  Eigen::Matrix3d C_WS_meas_ahrs_mat = q_WS_meas_ahrs.toRotationMatrix();
+
+  Eigen::Matrix3d C_WS_meas_mat = ahrs_to_imu * 
+                                  C_WS_meas_ahrs_mat * 
                                   initial_orientation;
-  q_WS_meas_ = Eigen::Quaterniond(q_WS_meas_mat);
+  q_WS_meas_ = Eigen::Quaterniond(C_WS_meas_mat);
 
   set_num_residuals(3);
   mutable_parameter_block_sizes()->push_back(4); // orientation at t0 (i,j,k,w)

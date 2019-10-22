@@ -19,7 +19,8 @@ public:
 
   AHRSOrientationCostFunction(Eigen::Quaterniond &q_WS_meas, 
                               Eigen::Matrix3d &ahrs_to_imu,
-                              Eigen::Matrix3d &initial_orientation);
+                              Eigen::Matrix3d &initial_orientation,
+                              double weight);
 
   ~AHRSOrientationCostFunction();
 
