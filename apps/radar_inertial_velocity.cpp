@@ -93,7 +93,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::CauchyLoss(1.0);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(10.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -313,40 +313,45 @@ private:
                                    orientations_.front()->coeffs().data(),
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
-
-      // find imu measurements bracketing t0 and t1
-      std::vector<ImuMeasurement> imu_measurements = 
-        imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
-      std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
-      ImuMeasurement before, after;
-      while ((it + 1) != imu_measurements.end())
-      {
-        if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
-        {
-          before = *it;
-          after = *(it + 1);
-        }
-        it++;
-      }
-      
-      // use slerp to find ahrs orientation at t0 and t1
-      double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
-      Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
-
-      // add new orientation cost function
-      ceres::CostFunction* orientation_cost_func = 
-        new AHRSOrientationCostFunction(q_WS_t0, 
-                                        params_.ahrs_to_imu_, 
-                                        initial_orientation_);
-
-      ceres::ResidualBlockId orientation_res_id =
-        problem_->AddResidualBlock(orientation_cost_func,
-                                   imu_loss_,
-                                   orientations_.front()->coeffs().data());
-
-      residual_blks_.front().push_back(orientation_res_id);
       
     }
+
+    // find imu measurements bracketing t0
+    std::vector<ImuMeasurement> imu_measurements = 
+      imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
+    if (imu_measurements.size() < 2)
+      LOG(FATAL) << "not enough measurements returned";
+    std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
+    ImuMeasurement before, after;
+    while ((it + 1) != imu_measurements.end())
+    {
+      if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
+      {
+        before = *it;
+        after = *(it + 1);
+      }
+      it++;
+    }
+    if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
+      LOG(FATAL) << "imu measurements do not bracket current time";
+      
+    // use slerp to find ahrs orientation at t0 and t1
+    double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
+    Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
+
+    // add new orientation cost function
+    ceres::CostFunction* orientation_cost_func = 
+      new AHRSOrientationCostFunction(q_WS_t0, 
+                                      params_.ahrs_to_imu_, 
+                                      initial_orientation_,
+                                      100.0);
+
+    ceres::ResidualBlockId orientation_res_id =
+      problem_->AddResidualBlock(orientation_cost_func,
+                                 NULL,
+                                 orientations_.front()->coeffs().data());
+
+    residual_blks_.front().push_back(orientation_res_id);
     
     // add imu and orientation cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
@@ -472,7 +477,9 @@ private:
 
     orientations_.push_front(
         new Eigen::Quaterniond(initial_orientation));
-    initial_orientation_ = initial_orientation.toRotationMatrix();
+    initial_orientation_ = (params_.ahrs_to_imu_ * 
+      measurements.front().q_.toRotationMatrix()).inverse() * 
+      initial_orientation.toRotationMatrix();
 
     problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
     problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
