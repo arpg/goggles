@@ -90,14 +90,14 @@ TEST(googleTests, testAHRSOrientationCostFunction)
     Eigen::Vector3d residuals_m;
     dp_0.setZero();
     dp_0[i] = dx;
-    Eigen::Quaterniond q_ws_temp = q_WS_gt;
+    Eigen::Quaterniond q_ws_temp = q_WS_est;
     qp->Plus(parameters[0],dp_0.data(),parameters[0]);
     cost_func->Evaluate(parameters,residuals_p.data(),NULL);
-    q_WS_gt = q_ws_temp; // reset to initial value
+    q_WS_est = q_ws_temp; // reset to initial value
     dp_0[i] = -dx;
     qp->Plus(parameters[0],dp_0.data(),parameters[0]);
     cost_func->Evaluate(parameters,residuals_m.data(),NULL);
-    q_WS_gt = q_ws_temp; // reset again
+    q_WS_est = q_ws_temp; // reset again
     J0_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
   Eigen::Matrix<double,3,4,Eigen::RowMajor> J0_lift;
