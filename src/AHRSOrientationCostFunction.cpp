@@ -59,7 +59,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[0] != NULL)
     {
       // get minimal jacobian
-      Eigen::Matrix3d J0_minimal = -0.5 * (qp.oplus(q_WS.inverse())
+      Eigen::Matrix3d J0_minimal = -(qp.oplus(q_WS.inverse())
                                     * qp.qplus(q_WS_meas_)).topLeftCorner(3,3);
 
       // get lift jacobian 
