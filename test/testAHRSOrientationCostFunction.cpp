@@ -16,6 +16,8 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   Eigen::Quaterniond q_WS_0_gt = Eigen::Quaterniond::UnitRandom();
   Eigen::Quaterniond q_WS_1_gt = Eigen::Quaterniond::UnitRandom();
 
+  LOG(ERROR) << "groundtruth: " << (q_WS_1_gt.inverse() * q_WS_0_gt).coeffs().transpose();
+
   // get random perturbations
   double scale = 0.01;
   Eigen::Vector3d delta_0 = scale * Eigen::Vector3d::Random();
@@ -30,6 +32,8 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   // set up ceres problem
   std::shared_ptr<ceres::Problem> problem = std::make_shared<ceres::Problem>();
   ceres::Solver::Options options;
+  options.num_threads = 1;
+  ceres::Solver::Summary summary;
 
   // add parameter blocks
   Eigen::Quaterniond q_WS_0_est = Eigen::Quaterniond::Identity();
@@ -46,14 +50,29 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   AHRSOrientationCostFunction *cost_func = new AHRSOrientationCostFunction(
     delta_q_meas, AHRS_to_imu);
 
+  LOG(ERROR) << "perturbed: " << delta_q_meas.coeffs().transpose();
+
   problem->AddResidualBlock(cost_func,
                             NULL, 
                             q_WS_0_est.coeffs().data(), 
                             q_WS_1_est.coeffs().data());
 
   // solve
-  ceres::Solver::Summary summary;
   ceres::Solve(options, problem.get(), &summary);
+  LOG(ERROR) << '\n' << summary.FullReport();
+
+  Eigen::Quaterniond delta_q_est = q_WS_1_est.inverse() * q_WS_0_est;
+  Eigen::Quaterniond delta_q_gt = q_WS_1_gt.inverse() * q_WS_0_gt;
+  Eigen::Vector3d delta_q_err = 2.0 * (delta_q_est.inverse() * delta_q_gt).vec();
+
+  LOG(ERROR) << "q_0: " << q_WS_0_est.coeffs().transpose();
+  LOG(ERROR) << "q_1: " << q_WS_1_est.coeffs().transpose();
+
+  double err_tolerance = 1.0e-3;
+  ASSERT_TRUE(delta_q_err.norm() < err_tolerance) << "delta orientation error of "
+    << delta_q_err.norm() << " is greater than tolerance of " << err_tolerance << '.'
+    << "\ndelta_q_est: " << delta_q_est.coeffs().transpose()
+    << "\ndelta_q_gt: " << delta_q_gt.coeffs().transpose();
 
   // manually check jacobians
   // automatic checking is not reliable because the information
@@ -74,12 +93,10 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   Eigen::Matrix<double,3,3,Eigen::RowMajor> J1_min; // w.r.t. orientation at t1
   jacobians_minimal[1] = J1_min.data();
 
-  double* residuals;
-  Eigen::Vector3d residuals_eigen;
-  residuals = residuals_eigen.data();
+  Eigen::Vector3d residuals;
 
   cost_func->EvaluateWithMinimalJacobians(parameters, 
-                                          residuals, 
+                                          residuals.data(), 
                                           jacobians,
                                           jacobians_minimal);
 
@@ -133,11 +150,10 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   qp->liftJacobian(parameters[1], J1_lift.data());
   if ((J1 - J1_numDiff * J1_lift).norm() > jacobianTolerance)
   {
-    LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
-      << '\n' << "user provided J0: \n" << J1_min
-      << '\n' << "\nnum diff J0: \n" << J1_numDiff  << "\n\n";
+    LOG(ERROR) << "User provided Jacobian 1 does not agree with num diff:"
+      << '\n' << "user provided J1: \n" << J1_min
+      << '\n' << "\nnum diff J1: \n" << J1_numDiff  << "\n\n";
   }
-
 }
 
 int main(int argc, char **argv)
