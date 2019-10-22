@@ -8,3 +8,6 @@ sigma_b_g: 4.0e-6
 sigma_b_a: 4.0e-5
 b_a_tau: 3600
 frequency: 200
+ahrs_to_imu: [0, 1, 0, 
+              1, 0, 0, 
+              0, 0, -1]
