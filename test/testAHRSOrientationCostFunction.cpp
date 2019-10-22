@@ -13,8 +13,11 @@ const double jacobianTolerance = 1.0e-6;
 TEST(googleTests, testAHRSOrientationCostFunction)
 {
   // Initialize groundtruth states
+  QuaternionParameterization* qp = new QuaternionParameterization;
   Eigen::Quaterniond q_WS_0_gt = Eigen::Quaterniond::UnitRandom();
-  Eigen::Quaterniond q_WS_1_gt = Eigen::Quaterniond::UnitRandom();
+  Eigen::Vector3d dq = Eigen::Vector3d::Random();
+  Eigen::Quaterniond q_WS_1_gt;
+  qp->Plus(q_WS_0_gt.coeffs().data(), dq.data(), q_WS_1_gt.coeffs().data());
 
   LOG(ERROR) << "groundtruth: " << (q_WS_1_gt.inverse() * q_WS_0_gt).coeffs().transpose();
 
@@ -24,7 +27,6 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   Eigen::Vector3d delta_1 = scale * Eigen::Vector3d::Random();
 
   // add perturbation to groundtruth to get measurements
-  QuaternionParameterization* qp = new QuaternionParameterization;
   Eigen::Quaterniond q_WS_0_meas, q_WS_1_meas;
   qp->Plus(q_WS_0_gt.coeffs().data(), delta_0.data(), q_WS_0_meas.coeffs().data());
   qp->Plus(q_WS_1_gt.coeffs().data(), delta_1.data(), q_WS_1_meas.coeffs().data());
@@ -71,7 +73,7 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   double err_tolerance = 1.0e-3;
   ASSERT_TRUE(delta_q_err.norm() < err_tolerance) << "delta orientation error of "
     << delta_q_err.norm() << " is greater than tolerance of " << err_tolerance << '.'
-    << "\ndelta_q_est: " << delta_q_est.coeffs().transpose()
+    << "\ndelta_q_est: " << delta_q_est.inverse().coeffs().transpose()
     << "\ndelta_q_gt: " << delta_q_gt.coeffs().transpose();
 
   // manually check jacobians
