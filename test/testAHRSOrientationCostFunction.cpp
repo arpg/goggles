@@ -14,20 +14,15 @@ TEST(googleTests, testAHRSOrientationCostFunction)
 {
   // Initialize groundtruth states
   QuaternionParameterization* qp = new QuaternionParameterization;
-  Eigen::Quaterniond q_WS_0_gt = Eigen::Quaterniond::UnitRandom();
-  Eigen::Vector3d dq = Eigen::Vector3d::Random();
-  Eigen::Quaterniond q_WS_1_gt;
-  qp->Plus(q_WS_0_gt.coeffs().data(), dq.data(), q_WS_1_gt.coeffs().data());
+  Eigen::Quaterniond q_WS_gt = Eigen::Quaterniond::UnitRandom();
 
   // get random perturbations
   double scale = 0.01;
-  Eigen::Vector3d delta_0 = scale * Eigen::Vector3d::Random();
-  Eigen::Vector3d delta_1 = scale * Eigen::Vector3d::Random();
+  Eigen::Vector3d delta = scale * Eigen::Vector3d::Random();
 
   // add perturbation to groundtruth to get measurements
-  Eigen::Quaterniond q_WS_0_meas, q_WS_1_meas;
-  qp->Plus(q_WS_0_gt.coeffs().data(), delta_0.data(), q_WS_0_meas.coeffs().data());
-  qp->Plus(q_WS_1_gt.coeffs().data(), delta_1.data(), q_WS_1_meas.coeffs().data());
+  Eigen::Quaterniond q_WS_meas;
+  qp->Plus(q_WS_gt.coeffs().data(), delta.data(), q_WS_meas.coeffs().data());
 
   // set up ceres problem
   std::shared_ptr<ceres::Problem> problem = std::make_shared<ceres::Problem>();
@@ -36,57 +31,47 @@ TEST(googleTests, testAHRSOrientationCostFunction)
   ceres::Solver::Summary summary;
 
   // add parameter blocks
-  Eigen::Quaterniond q_WS_0_est = Eigen::Quaterniond::Identity();
-  Eigen::Quaterniond q_WS_1_est = Eigen::Quaterniond::Identity();
+  Eigen::Quaterniond q_WS_est = Eigen::Quaterniond::Identity();
 
-  problem->AddParameterBlock(q_WS_0_est.coeffs().data(), 4);
-  problem->AddParameterBlock(q_WS_1_est.coeffs().data(), 4);
-  problem->SetParameterization(q_WS_0_est.coeffs().data(), qp);
-  problem->SetParameterization(q_WS_1_est.coeffs().data(), qp);
+  problem->AddParameterBlock(q_WS_est.coeffs().data(), 4);
+  problem->SetParameterization(q_WS_est.coeffs().data(), qp);
 
   // add residual
   Eigen::Matrix3d AHRS_to_imu = Eigen::Matrix3d::Identity();
-  Eigen::Quaterniond delta_q_meas = q_WS_1_meas.inverse() * q_WS_0_meas;
+  Eigen::Matrix3d initial_orientation = Eigen::Matrix3d::Identity();
   AHRSOrientationCostFunction *cost_func = new AHRSOrientationCostFunction(
-    delta_q_meas, AHRS_to_imu);
+    q_WS_meas, AHRS_to_imu, initial_orientation);
 
   problem->AddResidualBlock(cost_func,
                             NULL, 
-                            q_WS_0_est.coeffs().data(), 
-                            q_WS_1_est.coeffs().data());
+                            q_WS_est.coeffs().data());
 
   // solve
   ceres::Solve(options, problem.get(), &summary);
-  LOG(INFO) << '\n' << summary.FullReport();
+  LOG(ERROR) << '\n' << summary.FullReport();
 
-  Eigen::Quaterniond delta_q_est = q_WS_1_est.inverse() * q_WS_0_est;
-  Eigen::Quaterniond delta_q_gt = q_WS_1_gt.inverse() * q_WS_0_gt;
-  Eigen::Quaterniond delta_q_err = delta_q_est.inverse() * delta_q_gt;
 
+  Eigen::Quaterniond q_err = q_WS_est.inverse() * q_WS_gt;
+  
   double err_tolerance = 1.0e-2;
-  ASSERT_TRUE(delta_q_err.vec().norm() < err_tolerance) << "delta orientation error of "
-    << delta_q_err.vec().norm() << " is greater than tolerance of " << err_tolerance << '.'
-    << "\ndelta_q_est: " << delta_q_est.coeffs().transpose()
-    << "\ndelta_q_gt: " << delta_q_gt.coeffs().transpose();
-
+  ASSERT_TRUE(q_err.vec().norm() < err_tolerance) << "delta orientation error of "
+    << q_err.vec().norm() << " is greater than tolerance of " << err_tolerance << '.'
+    << "\nq_est: " << q_WS_est.coeffs().transpose()
+    << "\nq_gt: " << q_WS_gt.coeffs().transpose();
+  
   // manually check jacobians
   // automatic checking is not reliable because the information
   // matrix is a function of the states
-  double* parameters[2];
-  parameters[0] = q_WS_0_est.coeffs().data();
-  parameters[1] = q_WS_1_est.coeffs().data();
+  double* parameters[1];
+  parameters[0] = q_WS_est.coeffs().data();
 
-  double* jacobians[2];
+  double* jacobians[1];
   Eigen::Matrix<double,3,4,Eigen::RowMajor> J0; // w.r.t. orientation at t0
   jacobians[0] = J0.data();
-  Eigen::Matrix<double,3,4,Eigen::RowMajor> J1; // w.r.t. orientation at t1
-  jacobians[1] = J1.data();
 
-  double* jacobians_minimal[2];
+  double* jacobians_minimal[1];
   Eigen::Matrix<double,3,3,Eigen::RowMajor> J0_min; // w.r.t. orientation at t0
   jacobians_minimal[0] = J0_min.data();
-  Eigen::Matrix<double,3,3,Eigen::RowMajor> J1_min; // w.r.t. orientation at t1
-  jacobians_minimal[1] = J1_min.data();
 
   Eigen::Vector3d residuals;
 
@@ -105,14 +90,14 @@ TEST(googleTests, testAHRSOrientationCostFunction)
     Eigen::Vector3d residuals_m;
     dp_0.setZero();
     dp_0[i] = dx;
-    Eigen::Quaterniond q_ws_temp = q_WS_0_gt;
+    Eigen::Quaterniond q_ws_temp = q_WS_gt;
     qp->Plus(parameters[0],dp_0.data(),parameters[0]);
     cost_func->Evaluate(parameters,residuals_p.data(),NULL);
-    q_WS_0_gt = q_ws_temp; // reset to initial value
+    q_WS_gt = q_ws_temp; // reset to initial value
     dp_0[i] = -dx;
     qp->Plus(parameters[0],dp_0.data(),parameters[0]);
     cost_func->Evaluate(parameters,residuals_m.data(),NULL);
-    q_WS_0_gt = q_ws_temp; // reset again
+    q_WS_gt = q_ws_temp; // reset again
     J0_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
   Eigen::Matrix<double,3,4,Eigen::RowMajor> J0_lift;
@@ -122,32 +107,6 @@ TEST(googleTests, testAHRSOrientationCostFunction)
     LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
       << '\n' << "user provided J0: \n" << J0_min
       << '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
-  }
-  Eigen::Matrix<double,3,3> J1_numDiff;
-  for (size_t i=0; i<3; i++)
-  {
-    Eigen::Vector3d dp_1;
-    Eigen::Vector3d residuals_p;
-    Eigen::Vector3d residuals_m;
-    dp_1.setZero();
-    dp_1[i] = dx;
-    Eigen::Quaterniond q_ws_temp = q_WS_1_gt;
-    qp->Plus(parameters[1],dp_1.data(),parameters[1]);
-    cost_func->Evaluate(parameters,residuals_p.data(),NULL);
-    q_WS_1_gt = q_ws_temp; // reset to initial value
-    dp_1[i] = -dx;
-    qp->Plus(parameters[1],dp_1.data(),parameters[1]);
-    cost_func->Evaluate(parameters,residuals_m.data(),NULL);
-    q_WS_1_gt = q_ws_temp; // reset again
-    J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
-  }
-  Eigen::Matrix<double,3,4,Eigen::RowMajor> J1_lift;
-  qp->liftJacobian(parameters[1], J1_lift.data());
-  if ((J1 - J1_numDiff * J1_lift).norm() > jacobianTolerance)
-  {
-    LOG(ERROR) << "User provided Jacobian 1 does not agree with num diff:"
-      << '\n' << "user provided J1: \n" << J1_min
-      << '\n' << "\nnum diff J1: \n" << J1_numDiff  << "\n\n";
   }
 }
 

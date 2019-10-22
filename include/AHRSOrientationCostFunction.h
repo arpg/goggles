@@ -17,7 +17,9 @@ public:
 
   AHRSOrientationCostFunction();
 
-  AHRSOrientationCostFunction(Eigen::Quaterniond &delta_q, Eigen::Matrix3d &ahrs_to_imu);
+  AHRSOrientationCostFunction(Eigen::Quaterniond &q_WS_meas, 
+                              Eigen::Matrix3d &ahrs_to_imu,
+                              Eigen::Matrix3d &initial_orientation);
 
   ~AHRSOrientationCostFunction();
 
@@ -32,7 +34,7 @@ public:
                                     double** jacobians,
                                     double** jacobians_minimal) const;
 protected:
-  Eigen::Quaterniond delta_q_;
+  Eigen::Quaterniond q_WS_meas_;
 };
 
 
