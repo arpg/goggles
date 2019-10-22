@@ -53,7 +53,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
   Eigen::Matrix3d C_SW_1 = C_WS_1.transpose(); 
   */
   Eigen::Map<Eigen::Vector3d> error(residuals);
-  error = 2.0 * (delta_q_ * (q_WS_1.inverse() * q_WS_0)).vec();
+  error = 2.0 * (delta_q_.inverse() * (q_WS_1.inverse() * q_WS_0)).vec();
 
   QuaternionParameterization qp;
 
@@ -62,7 +62,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[0] != NULL)
     {
       // get minimal jacobian
-      Eigen::Matrix3d J0_minimal = 0.5 * (qp.oplus(delta_q_*q_WS_1.inverse())
+      Eigen::Matrix3d J0_minimal = 0.5 * (qp.oplus(delta_q_.inverse()*q_WS_1.inverse())
                                     * qp.qplus(q_WS_0)).topLeftCorner(3,3);
 
       // get lift jacobian 
@@ -87,7 +87,7 @@ bool AHRSOrientationCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[1] != NULL)
     {
       // get minimal jacobian
-      Eigen::Matrix3d J1_minimal = -0.5 * (qp.oplus(delta_q_) 
+      Eigen::Matrix3d J1_minimal = -0.5 * (qp.oplus(delta_q_.inverse()) 
         * qp.qplus(q_WS_0) 
         * qp.oplus(q_WS_1.inverse())).topLeftCorner(3,3);
 
