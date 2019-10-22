@@ -10,13 +10,18 @@
 
 struct ImuMeasurement
 {
-	Eigen::Vector3d g_; // gyro reading
-	Eigen::Vector3d a_; // accelerometer reading
-	double t_;          // timestamp
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+	Eigen::Vector3d g_;    // gyro reading
+	Eigen::Vector3d a_;    // accelerometer reading
+	Eigen::Quaterniond q_; // orientation from AHRS
+	double t_;             // timestamp
 };
 
 struct ImuParams
 {
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
 	double frequency_; // imu frequency
 	double g_;         // gravity magnitude
 	double g_max_;	   // max gyro reading
@@ -26,6 +31,7 @@ struct ImuParams
 	double sigma_b_g_; // gyro bias noise prior
 	double sigma_b_a_; // accelerometer bias noise prior
 	double b_a_tau_;   // accelerometir bias random walk parameter
+	Eigen::Matrix3d ahrs_to_imu_; // ahrs to imu frame transform
 };
 
 class ImuBuffer
