@@ -20,6 +20,7 @@
 #include <QuaternionParameterization.h>
 #include <GlobalImuVelocityCostFunction.h>
 #include <GlobalDopplerCostFunction.h>
+#include <AHRSOrientationCostFunction.h>
 #include <MarginalizationError.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
@@ -91,8 +92,8 @@ public:
     window_size_ = 4;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(.15);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    doppler_loss_ = new ceres::CauchyLoss(1.0);
+    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(10.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -129,6 +130,10 @@ public:
 		params_.sigma_b_g_ = config["sigma_b_g"].as<double>();
 		params_.sigma_b_a_ = config["sigma_b_a"].as<double>();
 		params_.b_a_tau_ = config["b_a_tau"].as<double>();
+    std::vector<double> vec = config["ahrs_to_imu"].as<std::vector<double>>();
+    params_.ahrs_to_imu_ << vec[0], vec[1], vec[2],
+                            vec[3], vec[4], vec[5],
+                            vec[6], vec[7], vec[8];
 	}
 
 	void imuCallback(const sensor_msgs::ImuConstPtr& msg)
@@ -144,6 +149,11 @@ public:
 		new_meas.a_ << msg->linear_acceleration.x,
 									 msg->linear_acceleration.y,
 									 msg->linear_acceleration.z;
+
+    new_meas.q_.x() = msg->orientation.x;
+    new_meas.q_.y() = msg->orientation.y;
+    new_meas.q_.z() = msg->orientation.z;
+    new_meas.q_.w() = msg->orientation.w;
 
     if (new_meas.g_.lpNorm<Eigen::Infinity>() > params_.g_max_)
       LOG(ERROR) << "Gyro saturation";
@@ -215,6 +225,7 @@ private:
   std::deque<Eigen::Vector3d*> speeds_;
   std::deque<Eigen::Vector3d*> gyro_biases_;
   std::deque<Eigen::Vector3d*> accel_biases_;
+  Eigen::Matrix3d initial_orientation_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
@@ -302,11 +313,45 @@ private:
                                    orientations_.front()->coeffs().data(),
                                 	 speeds_.front()->data());
       residual_blks_.front().push_back(res_id);
+
+      // find imu measurements bracketing t0 and t1
+      std::vector<ImuMeasurement> imu_measurements = 
+        imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
+      std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
+      ImuMeasurement before, after;
+      while ((it + 1) != imu_measurements.end())
+      {
+        if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
+        {
+          before = *it;
+          after = *(it + 1);
+        }
+        it++;
+      }
+      
+      // use slerp to find ahrs orientation at t0 and t1
+      double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
+      Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
+
+      // add new orientation cost function
+      ceres::CostFunction* orientation_cost_func = 
+        new AHRSOrientationCostFunction(q_WS_t0, 
+                                        params_.ahrs_to_imu_, 
+                                        initial_orientation_);
+
+      ceres::ResidualBlockId orientation_res_id =
+        problem_->AddResidualBlock(orientation_cost_func,
+                                   imu_loss_,
+                                   orientations_.front()->coeffs().data());
+
+      residual_blks_.front().push_back(orientation_res_id);
+      
     }
     
-    // add imu cost only if there are more than 1 radar measurements in the queue
+    // add imu and orientation cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
+      // add imu cost
       std::vector<ImuMeasurement> imu_measurements =
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 
@@ -316,7 +361,7 @@ private:
 																			      imu_measurements,
 																			      params_);
 
-			ceres::ResidualBlockId res_id
+			ceres::ResidualBlockId imu_res_id
 				= problem_->AddResidualBlock(imu_cost_func,
                                      imu_loss_,
                                      orientations_[1]->coeffs().data(),
@@ -327,7 +372,7 @@ private:
 																		 speeds_[0]->data(),
 																		 gyro_biases_[0]->data(),
 																		 accel_biases_[0]->data());
-			residual_blks_[1].push_back(res_id);
+			residual_blks_[1].push_back(imu_res_id);
     }
   
 		// solve the ceres problem and get result
@@ -335,7 +380,7 @@ private:
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     LOG(INFO) << summary.FullReport();
-    /*
+    
     std::ofstream orientation_log;
     orientation_log.open("/home/akramer/logs/radar/ICRA_2020/orientations.csv",std::ofstream::app);
     orientation_log << std::fixed << std::setprecision(5) << timestamps_.front()
@@ -343,7 +388,7 @@ private:
                     << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
                     << '\n';
     orientation_log.close();
-    */
+    
     // get estimate covariance
     /*
     ceres::Covariance::Options cov_options;
@@ -365,49 +410,6 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
-
-    //PrunePointCloud();
-  }
-
-  void PrunePointCloud()
-  {
-    std::vector<std::pair<double,size_t>> index_to_weights;
-    LOG(ERROR) << "getting weights";
-    for (size_t i = 0; i < residual_blks_.front().size(); i++)
-    {
-      LOG(ERROR) << "getting cost function";
-      ceres::ResidualBlockId res_id = residual_blks_.front()[i];
-      const ceres::CostFunction *cost_func = problem_->GetCostFunctionForResidualBlock(res_id);
-      double *residual;
-      double *parameters[2];
-      parameters[0] = orientations_.front()->coeffs().data();
-      parameters[1] = speeds_.front()->data();
-      LOG(ERROR) << "evaluating cost function";
-      cost_func->Evaluate(parameters,residual,NULL);
-      double weight = (*residual) * (*residual);
-      LOG(ERROR) << "making pair";
-      std::pair<double,size_t> new_pair = std::make_pair(weight,i);
-      LOG(ERROR) << "pushing";
-      index_to_weights.push_back(new_pair);
-    }
-    LOG(ERROR) << "sorting weights";
-    std::sort(index_to_weights.begin(), index_to_weights.end());
-
-    // only keep best 25% of measurements
-    double pct_to_remove = .75;
-    size_t num_to_remove = pct_to_remove * index_to_weights.size();
-    for (size_t i = 0; i < num_to_remove; i++)
-    {
-      size_t remove_idx = index_to_weights[i].second;
-      ceres::ResidualBlockId remove_id = residual_blks_.front()[remove_idx];
-      problem_->RemoveResidualBlock(remove_id);
-      residual_blks_.front().erase(residual_blks_.front().begin() + remove_idx);
-      for (size_t j = i; j < num_to_remove; j++)
-      {
-        if (index_to_weights[j].second > remove_idx)
-          index_to_weights[j].second--;
-      }
-    }
   }
 
   /** \brief uses initial IMU measurements to determine the magnitude of the
@@ -460,16 +462,17 @@ private:
     LOG(ERROR) << "      angle: " << angle;
     LOG(ERROR) << "g_direction: " << g_direction.transpose();
 
-    Eigen::Quaterniond orientation_initial = Eigen::Quaterniond::Identity();
+    Eigen::Quaterniond initial_orientation = Eigen::Quaterniond::Identity();
     // initial oplus increment
     QuaternionParameterization qp;
     Eigen::Quaterniond dq = qp.DeltaQ(increment);
 
-    orientation_initial = (dq * orientation_initial);
-    orientation_initial.normalize();
+    initial_orientation = (dq * initial_orientation);
+    initial_orientation.normalize();
 
     orientations_.push_front(
-        new Eigen::Quaterniond(orientation_initial));
+        new Eigen::Quaterniond(initial_orientation));
+    initial_orientation_ = initial_orientation.toRotationMatrix();
 
     problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
     problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
@@ -481,7 +484,7 @@ private:
 
     initialized_ = true;
     LOG(ERROR) << "initialized!";
-    LOG(ERROR) << "initial orientation: " << orientation_initial.coeffs().transpose();
+    LOG(ERROR) << "initial orientation: " << initial_orientation.coeffs().transpose();
     LOG(ERROR) << "initial biases: " << b_g_initial.transpose();
   }
 
@@ -603,7 +606,6 @@ int main(int argc, char** argv)
   google::InitGoogleLogging(argv[0]);
 	ros::init(argc, argv, "radar_vel");
   ros::NodeHandle nh("~");
-	ImuParams params;
   RadarInertialVelocityReader* rv_reader = new RadarInertialVelocityReader(nh);
 
   //ros::spin();
