@@ -292,7 +292,7 @@ private:
 
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-    
+    /*
     double weight = 1.0 / cloud->size();
     
 		// add residuals on doppler readings
@@ -352,7 +352,7 @@ private:
                                  orientations_.front()->coeffs().data());
 
     residual_blks_.front().push_back(orientation_res_id);
-    
+    */
     // add imu and orientation cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
