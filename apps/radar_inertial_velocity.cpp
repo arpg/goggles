@@ -20,7 +20,7 @@
 #include <QuaternionParameterization.h>
 #include <GlobalImuVelocityCostFunction.h>
 #include <GlobalDopplerCostFunction.h>
-#include <AHRSOrientationCostFunction.h>
+#include <AHRSYawCostFunction.h>
 #include <MarginalizationError.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
@@ -292,7 +292,7 @@ private:
 
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-    /*
+    
     double weight = 1.0 / cloud->size();
     
 		// add residuals on doppler readings
@@ -340,19 +340,16 @@ private:
     Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
 
     // add new orientation cost function
-    ceres::CostFunction* orientation_cost_func = 
-      new AHRSOrientationCostFunction(q_WS_t0, 
-                                      params_.ahrs_to_imu_, 
-                                      initial_orientation_,
-                                      100.0);
+    ceres::CostFunction* yaw_cost_func = 
+      new AHRSYawCostFunction(q_WS_t0,true);
 
     ceres::ResidualBlockId orientation_res_id =
-      problem_->AddResidualBlock(orientation_cost_func,
+      problem_->AddResidualBlock(yaw_cost_func,
                                  NULL,
                                  orientations_.front()->coeffs().data());
 
     residual_blks_.front().push_back(orientation_res_id);
-    */
+    
     // add imu and orientation cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
