@@ -124,7 +124,7 @@ catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${H
 target_link_libraries(testMarginalization ${LINK_LIBS})
 catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
 target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
-#atkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
+catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
 target_link_libraries(testGlobalDoppler ${LINK_LIBS})
 catkin_add_gtest(testAHRSOrientationCostFunction test/testAHRSOrientationCostFunction ${SOURCES} ${HEADERS})
 target_link_libraries(testAHRSOrientationCostFunction ${LINK_LIBS})
