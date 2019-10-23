@@ -36,6 +36,8 @@ Run with the following command:
 
 The radar-inertial node requires a config file for the IMU containing priors on the IMU noise and biases. An example config file for the LORD Microstrain 3DM-GX5-25 can be found in the config directory.
 
+Also note the radar-inertial node currently relies on a yaw estimate from the IMU's internal attitude and heading reference system (AHRS). So an IMU with an internal AHRS is required. An option to use magnetometer measurements instead is currently in development.
+
 The radar-inertial node can also be launched with default parameters using the launch file ```radar_inertial_velocity.launch```
 
 As with ```radar_velocity.launch``` the parameter ```launch_radar``` must be set to false if you're not also using the TI AWR1843 board.
