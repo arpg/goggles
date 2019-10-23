@@ -96,8 +96,12 @@ public:
     window_size_ = 4;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(1.0);
-    imu_loss_ = new ceres::ScaledLoss(new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    doppler_loss_ = new ceres::ScaledLoss(
+      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    imu_loss_ = new ceres::ScaledLoss(
+      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    marginalization_loss_ = new ceres::ScaledLoss(NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    yaw_loss_ = new ceres::ScaledLoss(NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -223,8 +227,10 @@ private:
   ros::Subscriber radar_sub_;
 	ros::Subscriber imu_sub_;
 	tf::StampedTransform radar_to_imu_;
-  ceres::CauchyLoss *doppler_loss_;
+  ceres::ScaledLoss *doppler_loss_;
   ceres::ScaledLoss *imu_loss_;
+  ceres::ScaledLoss *marginalization_loss_;
+  ceres::ScaledLoss *yaw_loss_;
 	ceres::LocalParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> orientations_;
   std::deque<Eigen::Vector3d*> speeds_;
@@ -364,7 +370,7 @@ private:
 
     ceres::ResidualBlockId orientation_res_id =
       problem_->AddResidualBlock(yaw_cost_func,
-                                 NULL,
+                                 yaw_loss_,
                                  orientations_.front()->coeffs().data());
 
     residual_blks_.front().push_back(orientation_res_id);
@@ -582,7 +588,7 @@ private:
           parameter_block_ptrs);
         marginalization_id_ = problem_->AddResidualBlock(
           marginalization_error_ptr_.get(),
-          NULL,
+          marginalization_loss_,
           parameter_block_ptrs);
       }
     }
