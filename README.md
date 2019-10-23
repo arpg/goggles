@@ -5,7 +5,7 @@ Goggles
 
 ROS package for state estimation using millimeter wave radar data. Includes:
  - radar\_velocity: estimates body-frame velocity of a radar sensor
- - radar\_inertial\_velocity: estimates the imu-frame velocity of a rigidly mounted imu and radar system
+ - radar\_inertial\_velocity: estimates the global frame velocity of a rigidly mounted imu and radar system
 
 # 2. Building
 The following dependencies need to be installed independently:
