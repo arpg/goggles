@@ -261,10 +261,11 @@ private:
     }
   }
 
-  /** \brief uses ceres solver to estimate the body velocity from the input
+  /** \brief uses ceres solver to estimate the global frame velocity from the input
     * point cloud
-    * \param[out] the resultant body velocity
-    * \param[out] the resultant velocity and covariance in ros message form
+    * \param[in] raw_cloud the new pointcloud from the radar sensor
+    * \param[in] timestamp the timestamp of the new point cloud
+    * \param[out] vel_out the resultant velocity and covariance in ros message form
     */
   void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
                    double timestamp,
@@ -295,6 +296,11 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 
+    // marginalize old states and measurements
+    if (!ApplyMarginalization())
+      LOG(ERROR) << "marginalization step failed";
+
+    // use MLESAC to reject outlier measurements
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
     std::vector<int> inliers;
@@ -305,9 +311,6 @@ private:
     // copy inlier points to new data structure;
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
-
-		if (!ApplyMarginalization())
-      LOG(ERROR) << "marginalization step failed";
     
     double weight = 1.0 / cloud->size();
     
@@ -332,7 +335,7 @@ private:
       
     }
 
-    // find imu measurements bracketing t0
+    // find imu measurements bracketing current timestep
     std::vector<ImuMeasurement> imu_measurements = 
       imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
     if (imu_measurements.size() < 2)
@@ -351,11 +354,11 @@ private:
     if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
       LOG(FATAL) << "imu measurements do not bracket current time";
       
-    // use slerp to find ahrs orientation at t0 and t1
+    // use slerp to interpolate orientation at current timestep
     double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
     Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
 
-    // add new orientation cost function
+    // add constraint on yaw at current timestep
     ceres::CostFunction* yaw_cost_func = 
       new AHRSYawCostFunction(q_WS_t0,params_.invert_yaw_);
 
@@ -366,10 +369,9 @@ private:
 
     residual_blks_.front().push_back(orientation_res_id);
     
-    // add imu and orientation cost only if there are more than 1 radar measurements in the queue
+    // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      // add imu cost
       std::vector<ImuMeasurement> imu_measurements =
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 
@@ -400,7 +402,8 @@ private:
     LOG(INFO) << summary.FullReport();
     
     std::ofstream orientation_log;
-    orientation_log.open("/home/akramer/logs/radar/ICRA_2020/orientations.csv",std::ofstream::app);
+    std::string filename = "/home/akramer/logs/radar/ICRA_2020/orientations.csv";
+    orientation_log.open(filename,std::ofstream::app);
     orientation_log << std::fixed << std::setprecision(5) << timestamps_.front()
                     << ',' << orientations_.front()->x() << ',' << orientations_.front()->y()
                     << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
@@ -424,7 +427,7 @@ private:
                                   speeds_and_biases_.front()->head<3>().data(),
                                   covariance_matrix.data());
 
-    VLOG(2) << "covariance: \n" << covariance_matrix;
+    LOG(INFO) << "covariance: \n" << covariance_matrix;
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
