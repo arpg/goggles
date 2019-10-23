@@ -31,6 +31,7 @@ struct ImuParams
 	double sigma_b_g_; // gyro bias noise prior
 	double sigma_b_a_; // accelerometer bias noise prior
 	double b_a_tau_;   // accelerometir bias random walk parameter
+	double invert_yaw_; // is the yaw estimated by the ahrs inverted?
 	Eigen::Matrix3d ahrs_to_imu_; // ahrs to imu frame transform
 };
 

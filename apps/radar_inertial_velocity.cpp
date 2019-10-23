@@ -130,6 +130,7 @@ public:
 		params_.sigma_b_g_ = config["sigma_b_g"].as<double>();
 		params_.sigma_b_a_ = config["sigma_b_a"].as<double>();
 		params_.b_a_tau_ = config["b_a_tau"].as<double>();
+    params_.invert_yaw_ = config["invert_yaw"].as<bool>();
     std::vector<double> vec = config["ahrs_to_imu"].as<std::vector<double>>();
     params_.ahrs_to_imu_ << vec[0], vec[1], vec[2],
                             vec[3], vec[4], vec[5],
@@ -341,7 +342,7 @@ private:
 
     // add new orientation cost function
     ceres::CostFunction* yaw_cost_func = 
-      new AHRSYawCostFunction(q_WS_t0,true);
+      new AHRSYawCostFunction(q_WS_t0,params_.invert_yaw_);
 
     ceres::ResidualBlockId orientation_res_id =
       problem_->AddResidualBlock(yaw_cost_func,
