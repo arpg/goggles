@@ -24,6 +24,10 @@
 #include <MarginalizationError.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
+#include <pcl/sample_consensus/impl/mlesac.hpp>
+#include <boost/foreach.hpp>
+#include <pcl_conversions/pcl_conversions.h>
+#include <BodyDopplerSacModel.h>
 #include <chrono>
 
 struct RadarPoint
@@ -262,7 +266,7 @@ private:
     * \param[out] the resultant body velocity
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr cloud,
+  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
@@ -290,6 +294,17 @@ private:
     std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
+
+    pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
+      new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
+    std::vector<int> inliers;
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.10);
+    mlesac.computeModel();
+    mlesac.getInliers(inliers);
+
+    // copy inlier points to new data structure;
+    pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
+    pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
 
 		if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";

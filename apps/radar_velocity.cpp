@@ -17,6 +17,10 @@
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
 #include <MarginalizationError.h>
+#include <pcl/sample_consensus/impl/mlesac.hpp>
+#include <boost/foreach.hpp>
+#include <pcl_conversions/pcl_conversions.h>
+#include <BodyDopplerSacModel.h>
 #include <chrono>
 
 struct RadarPoint
@@ -48,12 +52,15 @@ public:
     nh_ = nh;
     std::string radar_topic;
     nh_.getParam("radar_topic", radar_topic);
+    nh_.getParam("publish_inliers", publish_inliers_);
     VLOG(2) << "radar topic: " << radar_topic;
 
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
+    vel_est_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
+    if (publish_inliers_)
+      inlier_set_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(ns + "/mmWaveDataHdl/RScanInliers",1);
     sub_ = nh_.subscribe(radar_topic, 0, &RadarVelocityReader::callback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -62,7 +69,7 @@ public:
     window_size_ = 4;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(0.15);
+    doppler_loss_ = new ceres::CauchyLoss(1.0);
     //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
 
@@ -113,7 +120,6 @@ public:
 		}
 		else
 		{
-			LOG(ERROR) << "getting velocity";
     	geometry_msgs::TwistWithCovarianceStamped vel_out;
     	vel_out.header.stamp = msg->header.stamp;
 
@@ -126,13 +132,15 @@ public:
     	sum_time_ += elapsed.count();
     	num_iter_++;
     	LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
-    	pub_.publish(vel_out);
+    	vel_est_publisher_.publish(vel_out);
 		}
   }
 
 private:
   ros::NodeHandle nh_;
-  ros::Publisher pub_;
+  ros::Publisher vel_est_publisher_;
+  ros::Publisher inlier_set_publisher_;
+  bool publish_inliers_;
   ros::Subscriber sub_;
   ceres::CauchyLoss *doppler_loss_;
   ceres::CauchyLoss *accel_loss_;
@@ -279,10 +287,33 @@ private:
     * point cloud
     * \param[out] the resultant velocity and covariance in ros message form
     */
-  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr cloud,
+  void GetVelocityCeres(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
                    double timestamp,
                    geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+    
+    // remove outliers with mlesac
+    pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
+      new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
+    std::vector<int> inliers;
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.10);
+    mlesac.computeModel();
+    mlesac.getInliers(inliers);
+
+    // copy inlier points to new data structure;
+    pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
+    pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
+
+    // publish inlier set if requested
+    if (publish_inliers_)
+    {
+      sensor_msgs::PointCloud2 inliers_out;
+      pcl::PCLPointCloud2 cloud2;
+      pcl::toPCLPointCloud2(*cloud, cloud2);
+      pcl_conversions::fromPCL(cloud2, inliers_out);
+      inlier_set_publisher_.publish(inliers_out);
+    }
+    
     // add latest parameter block and remove old one if necessary
     if (velocities_.size() == 0)
 		{

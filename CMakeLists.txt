@@ -72,6 +72,7 @@ set( HEADERS
   ${INC_DIR}/MarginalizationError.h
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
+  ${INC_DIR}/BodyDopplerSacModel.h
 )
 
 set( SOURCES 
@@ -130,6 +131,8 @@ catkin_add_gtest(testAHRSOrientationCostFunction test/testAHRSOrientationCostFun
 target_link_libraries(testAHRSOrientationCostFunction ${LINK_LIBS})
 catkin_add_gtest(testAHRSYawCostFunction test/testAHRSYawCostFunction ${SOURCES} ${HEADERS})
 target_link_libraries(testAHRSYawCostFunction ${LINK_LIBS})
+catkin_add_gtest(testBodyDopplerSacProblem test/testBodyDopplerSacProblem.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testBodyDopplerSacProblem ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity
