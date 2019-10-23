@@ -597,7 +597,6 @@ private:
 
   /** \brief populate ros message with velocity and covariance
     * \param[out] vel the resultant ros message
-    * \param[in] velocity the estimated velocity
     * \param[in] covariance the estimate covariance
     */
   void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
