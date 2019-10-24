@@ -406,7 +406,7 @@ private:
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
-    LOG(INFO) << summary.FullReport();
+    LOG(ERROR) << summary.FullReport();
     LOG(ERROR) << "logging orientation";
     std::ofstream orientation_log;
     std::string filename = "/home/akramer/logs/radar/ICRA_2020/orientations.csv";
