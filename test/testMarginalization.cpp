@@ -211,6 +211,7 @@ TEST(googleTests, testMarginalization)
   problem->SetParameterBlockConstant(b_a_0_est->data());
   problem->SetParameterBlockConstant(b_g_0_est->data());
 
+
   // create the IMU error terms
   
   ceres::CostFunction* imu_cost_func_0 = 
@@ -425,19 +426,20 @@ TEST(googleTests, testMarginalization)
       = new MarginalizationError(problem);
 
   // add residuals and states
-  LOG(INFO) << "Adding " << state_0_residuals.size() << " residual blocks";
+  LOG(ERROR) << "Adding " << state_0_residuals.size() << " residual blocks";
   marginalization_error->AddResidualBlocks(state_0_residuals);
   std::vector<double*> marginalize_param_blocks;
   marginalize_param_blocks.push_back(q_ws_0_est->coeffs().data());
   marginalize_param_blocks.push_back(v_s_0_est->data());
   marginalize_param_blocks.push_back(b_g_0_est->data());
   marginalize_param_blocks.push_back(b_a_0_est->data());
-  LOG(INFO) << "Marginalizing parameter blocks"; // currently fails at this step
+  LOG(ERROR) << "Marginalizing parameter blocks"; // currently fails at this step
   marginalization_error->MarginalizeOut(marginalize_param_blocks);
   marginalization_error->UpdateErrorComputation();
 
   // add marginalization error to problem
-  LOG(INFO) << "Adding marginalization residual to problem";
+  LOG(ERROR) << "Adding marginalization residual to problem";
+  LOG(ERROR) << b_g_1_est;
   problem->AddResidualBlock(marginalization_error, 
                            NULL, 
                            q_ws_1_est->coeffs().data(),
@@ -507,8 +509,8 @@ TEST(googleTests, testMarginalization)
   if ((J0 - J0_numDiff).norm() > jacobianTolerance)
   {
     LOG(ERROR) << "User provided Jacobian 0 does not agree with num diff:"
-      << '\n' << "user provided J0: \n" << J0
-      << '\n' << "\nnum diff J0: \n" << J0_numDiff  << "\n\n";
+      << '\n' << "user provided J0: \n" << J0_min
+      << '\n' << "\nnum diff J0: \n" << J0_min_numDiff  << "\n\n";
   }
 
   Eigen::Matrix<double,12,3> J1_numDiff;
