@@ -184,7 +184,6 @@ bool MarginalizationError::AddResidualBlock(
     }
 
     // correct jacobians
-    // this won't work as-is, need a way to access the minimal jacobian representation
     for (size_t i = 0; i < param_blks.size(); i++)
     {
       jacobians_minimal_eigen[i] = sqrt_rho1
@@ -251,6 +250,8 @@ bool MarginalizationError::AddResidualBlock(
   delete[] jacobians_raw;
   delete[] jacobians_minimal_raw;
 
+  Check();
+
   return true;
 }
 
@@ -262,6 +263,70 @@ void MarginalizationError::GetParameterBlockPtrs(
   {
     parameter_block_ptrs.push_back(
       param_block_info_[i]->parameter_block_ptr.get());
+  }
+}
+
+void MarginalizationError::Check()
+{
+  // check number of parameter blocks
+  if (param_block_info_.size() != base_t::parameter_block_sizes().size())
+  {
+    LOG(FATAL) << "check failed: number of parameter blocks in local"
+               << " bookkeeping (" << param_block_info_.size() 
+               << ") does not match number in base type ("
+               << base_t::parameter_block_sizes().size() << ")";
+  }
+
+  int total_size = 0;
+  for (size_t i = 0; i < param_block_info_.size(); i++)
+  {
+    total_size += param_block_info_[i]->minimal_dimension;
+
+    // check parameter block size
+    if (param_block_info_[i]->dimension != 
+      size_t(base_t::parameter_block_sizes()[i]))
+    {
+      LOG(FATAL) << "check failed: size of parameter block " << i 
+                 << " (" << param_block_info_[i]->dimension 
+                 << ") does not match size in base type ("
+                 << parameter_block_sizes()[i] << ")";
+    }
+
+    // check parameter block existence
+    if (!problem_->HasParameterBlock(
+      param_block_info_[i]->parameter_block_ptr.get()))
+    {
+      LOG(FATAL) << "check failed: parameter block " << i 
+                 << " does not exist in the ceres problem";
+    }
+
+    // check for proper bookkeeping
+    if (parameter_block_id_2_block_info_idx_[
+      param_block_info_[i]->parameter_block_ptr.get()] != i)
+    {
+      LOG(FATAL) << "check failed: index of parameter block " << i 
+                 << " is incorrect in internal bookkeeping";
+    }
+  }
+
+  // check that parameters are contiguous
+  for (size_t i = 1; i < param_block_info_.size(); i++)
+  {
+    if (param_block_info_[i-1]->ordering_idx 
+      + param_block_info_[i-1]->minimal_dimension
+      != param_block_info_[i]->ordering_idx)
+    {
+      LOG(FATAL) << "check failed: parameter block " << i-1 
+                 << " is not contiguous with parameter block " << i;
+    }
+  }
+
+  // check residual dimension
+  if (base_t::num_residuals() != total_size)
+  {
+    LOG(FATAL) << "check failed: residual size (" << base_t::num_residuals()
+               << ") does not agree with parameter block sizes (" 
+               << total_size << ")";
   }
 }
 
@@ -433,6 +498,8 @@ bool MarginalizationError::MarginalizeOut(
     problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
   }
 
+  Check();
+
   return true;
 }
 
@@ -474,6 +541,9 @@ void MarginalizationError::UpdateErrorComputation()
     * saes.eigenvectors().transpose() * p_inv.asDiagonal();
 
   e0_ = (-J_pinv_T * b0_);
+
+  H_ = J_.transpose() * J_;
+  b0_ = -J_.transpose() * e0_;
 
   error_computation_valid_ = true;
 }
@@ -808,8 +878,8 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
               param_block_info_[i]->minimal_dimension,
               param_block_info_[i]->dimension);
           QuaternionParameterization qp; 
-          qp.liftJacobian(
-              param_block_info_[i]->linearization_point.get(), J_lift.data());
+          qp.liftJacobian(parameters[i], J_lift.data());
+              //param_block_info_[i]->linearization_point.get(), J_lift.data());
           J_i = Jmin_i * J_lift;
         }
         else
