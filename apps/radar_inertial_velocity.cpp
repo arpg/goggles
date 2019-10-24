@@ -93,15 +93,15 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 4;
+    window_size_ = 3;
 
     // set up ceres problem
     doppler_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      NULL,2.0,ceres::DO_NOT_TAKE_OWNERSHIP);
     imu_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
-    marginalization_loss_ = new ceres::ScaledLoss(NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
-    yaw_loss_ = new ceres::ScaledLoss(NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      new ceres::CauchyLoss(0.5),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    yaw_loss_ = new ceres::ScaledLoss(
+      NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -109,7 +109,7 @@ public:
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-4;
-    solver_options_.num_threads = 1;
+    solver_options_.num_threads = 8;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-10;
@@ -229,7 +229,6 @@ private:
 	tf::StampedTransform radar_to_imu_;
   ceres::ScaledLoss *doppler_loss_;
   ceres::ScaledLoss *imu_loss_;
-  ceres::ScaledLoss *marginalization_loss_;
   ceres::ScaledLoss *yaw_loss_;
 	ceres::LocalParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> orientations_;
@@ -305,7 +304,7 @@ private:
     // marginalize old states and measurements
     if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-    /*
+    
     // use MLESAC to reject outlier measurements
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
@@ -374,11 +373,10 @@ private:
                                  orientations_.front()->coeffs().data());
 
     residual_blks_.front().push_back(orientation_res_id);
-    */
+    
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      LOG(ERROR) << "adding imu residual";
       std::vector<ImuMeasurement> imu_measurements =
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 
@@ -401,13 +399,11 @@ private:
 																		 accel_biases_[0]->data());
 			residual_blks_[1].push_back(imu_res_id);
     }
-    LOG(ERROR) << "solving";
 		// solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
-
-    LOG(ERROR) << summary.FullReport();
-    LOG(ERROR) << "logging orientation";
+    /*
+    LOG(INFO) << summary.FullReport();
     std::ofstream orientation_log;
     std::string filename = "/home/akramer/logs/radar/ICRA_2020/orientations.csv";
     orientation_log.open(filename,std::ofstream::app);
@@ -416,7 +412,7 @@ private:
                     << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
                     << '\n';
     orientation_log.close();
-    LOG(ERROR) << "populating message";
+    */
     // get estimate covariance
     /*
     ceres::Covariance::Options cov_options;
@@ -438,7 +434,6 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
-    LOG(ERROR) << "done";
   }
 
   /** \brief uses initial IMU measurements to determine the magnitude of the
@@ -526,7 +521,6 @@ private:
   {
     if (timestamps_.size() > window_size_)
     {
-      LOG(ERROR) << "marginalizing";
       // remove marginalization error from problem
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
@@ -543,7 +537,6 @@ private:
       }
 
       // add oldest residuals
-      LOG(ERROR) << "removing " << residual_blks_.back().size() << " residuals";
       if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
       {
         LOG(ERROR) << "failed to add residuals";
@@ -592,7 +585,7 @@ private:
           parameter_block_ptrs);
         marginalization_id_ = problem_->AddResidualBlock(
           marginalization_error_ptr_.get(),
-          marginalization_loss_,
+          NULL,
           parameter_block_ptrs);
       }
     }
