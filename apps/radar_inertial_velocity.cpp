@@ -93,15 +93,15 @@ public:
     num_iter_ = 0;
 		initialized_ = false;
 
-    window_size_ = 3;
+    window_size_ = 5;
 
     // set up ceres problem
     doppler_loss_ = new ceres::ScaledLoss(
-      NULL,2.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      new ceres::CauchyLoss(0.5),4.0,ceres::DO_NOT_TAKE_OWNERSHIP);
     imu_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(0.5),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      new ceres::CauchyLoss(0.25),2.0,ceres::DO_NOT_TAKE_OWNERSHIP);
     yaw_loss_ = new ceres::ScaledLoss(
-      NULL,1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      NULL,10.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     ceres::Problem::Options prob_options;
 
@@ -109,7 +109,7 @@ public:
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-4;
-    solver_options_.num_threads = 8;
+    solver_options_.num_threads = 12;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-10;
@@ -194,11 +194,6 @@ public:
 		{
 			if (raw_cloud->at(i).doppler > 0)
 				no_doppler = false;
-		}
-		if (no_doppler)
-		{
-			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
-			//return;
 		}
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
@@ -293,8 +288,6 @@ private:
     	problem_->AddParameterBlock(speeds_.front()->data(),3);
 			problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
 			problem_->AddParameterBlock(accel_biases_.front()->data(),3);
-      //problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
-      //problem_->SetParameterBlockConstant(accel_biases_.front()->data());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
@@ -309,7 +302,7 @@ private:
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
     std::vector<int> inliers;
-    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.10);
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.1);
     mlesac.computeModel();
     mlesac.getInliers(inliers);
 
@@ -571,7 +564,7 @@ private:
       timestamps_.pop_back();
 
       // discard marginalization error if it has no residuals
-      if (marginalization_error_ptr_->num_residuals() == 0)
+      if (marginalization_error_ptr_->ResidualDim() == 0)
       {
         LOG(ERROR) << "no residuals associated to marginalization, resetting";
         marginalization_error_ptr_.reset();
