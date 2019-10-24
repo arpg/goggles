@@ -109,7 +109,7 @@ public:
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-4;
-    solver_options_.num_threads = 8;
+    solver_options_.num_threads = 1;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-10;
@@ -198,7 +198,7 @@ public:
 		if (no_doppler)
 		{
 			LOG(ERROR) << std::fixed << std::setprecision(5) << "no doppler reading at " << timestamp;
-			return;
+			//return;
 		}
 		// transform to imu frame
 		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
@@ -305,7 +305,7 @@ private:
     // marginalize old states and measurements
     if (!ApplyMarginalization())
       LOG(ERROR) << "marginalization step failed";
-
+    /*
     // use MLESAC to reject outlier measurements
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
@@ -374,10 +374,11 @@ private:
                                  orientations_.front()->coeffs().data());
 
     residual_blks_.front().push_back(orientation_res_id);
-    
+    */
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
+      LOG(ERROR) << "adding imu residual";
       std::vector<ImuMeasurement> imu_measurements =
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
 
@@ -400,13 +401,13 @@ private:
 																		 accel_biases_[0]->data());
 			residual_blks_[1].push_back(imu_res_id);
     }
-  
+    LOG(ERROR) << "solving";
 		// solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
 
     LOG(INFO) << summary.FullReport();
-    
+    LOG(ERROR) << "logging orientation";
     std::ofstream orientation_log;
     std::string filename = "/home/akramer/logs/radar/ICRA_2020/orientations.csv";
     orientation_log.open(filename,std::ofstream::app);
@@ -415,7 +416,7 @@ private:
                     << ',' << orientations_.front()->z() << ',' << orientations_.front()->w()
                     << '\n';
     orientation_log.close();
-    
+    LOG(ERROR) << "populating message";
     // get estimate covariance
     /*
     ceres::Covariance::Options cov_options;
@@ -437,6 +438,7 @@ private:
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
     populateMessage(vel_out,covariance_matrix);
+    LOG(ERROR) << "done";
   }
 
   /** \brief uses initial IMU measurements to determine the magnitude of the
@@ -524,6 +526,7 @@ private:
   {
     if (timestamps_.size() > window_size_)
     {
+      LOG(ERROR) << "marginalizing";
       // remove marginalization error from problem
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
@@ -540,6 +543,7 @@ private:
       }
 
       // add oldest residuals
+      LOG(ERROR) << "removing " << residual_blks_.back().size() << " residuals";
       if(!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
       {
         LOG(ERROR) << "failed to add residuals";
