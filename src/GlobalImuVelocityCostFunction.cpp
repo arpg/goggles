@@ -546,7 +546,6 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
   double** jacobians,
   double** jacobians_minimal) const
 {
-  LOG(ERROR) << "evaluating imu cost function";
   // get parameters
   const Eigen::Quaterniond q_WS_0(parameters[0][3], 
                                   parameters[0][0], 
@@ -783,7 +782,6 @@ bool GlobalImuVelocityCostFunction::EvaluateWithMinimalJacobians(
       }
     }
   }
-  LOG(ERROR) << "done with imu cost";
   return true;
 }
 

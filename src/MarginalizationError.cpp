@@ -756,7 +756,6 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
                                     double* residuals, double** jacobians,
                                     double** jacobians_minimal) const
 {
-  LOG(ERROR) << "evaluating marginalization";
   if (!error_computation_valid_) 
     LOG(FATAL) << "trying to evaluate with invalid error computation";
 
@@ -823,6 +822,5 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
 
   Eigen::Map<Eigen::VectorXd> e(residuals, e0_.rows());
   e = e0_ + J_ * Delta_Chi;
-  LOG(ERROR) << "done evaluating marginalization";
   return true;
 }
