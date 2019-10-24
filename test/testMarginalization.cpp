@@ -449,10 +449,10 @@ TEST(googleTests, testMarginalization)
   
   // check marginalization jacobians by finite differences
   double* parameters[4];
-  parameters[0] = q_ws_1.coeffs().data();
-  parameters[1] = v_s_1.data();
-  parameters[2] = b_g_1.data();
-  parameters[3] = b_a_1.data();
+  parameters[0] = q_ws_1_est->coeffs().data();
+  parameters[1] = v_s_1_est->data();
+  parameters[2] = b_g_1_est->data();
+  parameters[3] = b_a_1_est->data();
 
   double* jacobians_minimal[4];
   Eigen::Matrix<double,12,3,Eigen::RowMajor> J0_min; // w.r.t. orientation at t1
@@ -492,14 +492,14 @@ TEST(googleTests, testMarginalization)
     Eigen::Matrix<double,12,1> residuals_m;
     dp_0.setZero();
     dp_0[i] = dx;
-    Eigen::Quaterniond q_ws_1_temp = q_ws_1;
+    Eigen::Quaterniond q_ws_1_temp = *q_ws_1_est;
     quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
     marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
-    q_ws_1 = q_ws_1_temp; // reset to initial value
+    *q_ws_1_est = q_ws_1_temp; // reset to initial value
     dp_0[i] = -dx;
     quat_param->Plus(parameters[0],dp_0.data(),parameters[0]);
     marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
-    q_ws_1 = q_ws_1_temp; // reset again
+    *q_ws_1_est = q_ws_1_temp; // reset again
     J0_min_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
   Eigen::Matrix<double,3,4,Eigen::RowMajor> J0_lift;
@@ -521,13 +521,13 @@ TEST(googleTests, testMarginalization)
     Eigen::Matrix<double,12,1> residuals_m;
     dp_1.setZero();
     dp_1[i] = dx;
-    Eigen::Vector3d v_s_1_temp = v_s_1; // save initial state
-    v_s_1 = v_s_1 + dp_1;
+    Eigen::Vector3d v_s_1_temp = *v_s_1_est; // save initial state
+    *v_s_1_est = *v_s_1_est + dp_1;
     marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
-    v_s_1 = v_s_1_temp; // reset
-    v_s_1 = v_s_1 - dp_1;
+    *v_s_1_est = v_s_1_temp; // reset
+    *v_s_1_est = *v_s_1_est - dp_1;
     marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
-    v_s_1 = v_s_1_temp;
+    *v_s_1_est = v_s_1_temp;
     J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
@@ -546,13 +546,13 @@ TEST(googleTests, testMarginalization)
     Eigen::Matrix<double,12,1> residuals_m;
     dp_2.setZero();
     dp_2[i] = dx;
-    Eigen::Vector3d b_g_1_temp = b_g_1; // save initial state
-    b_g_1 = b_g_1 + dp_2;
+    Eigen::Vector3d b_g_1_temp = *b_g_1_est; // save initial state
+    *b_g_1_est = *b_g_1_est + dp_2;
     marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
-    b_g_1 = b_g_1_temp; // reset
-    b_g_1 = b_g_1 - dp_2;
+    *b_g_1_est = b_g_1_temp; // reset
+    *b_g_1_est = *b_g_1_est - dp_2;
     marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
-    b_g_1 = b_g_1_temp;
+    *b_g_1_est = b_g_1_temp;
     J2_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
@@ -571,13 +571,13 @@ TEST(googleTests, testMarginalization)
     Eigen::Matrix<double,12,1> residuals_m;
     dp_3.setZero();
     dp_3[i] = dx;
-    Eigen::Vector3d b_a_1_temp = b_a_1; // save initial state
-    b_a_1 = b_a_1 + dp_3;
+    Eigen::Vector3d b_a_1_temp = *b_a_1_est; // save initial state
+    *b_a_1_est = *b_a_1_est + dp_3;
     marginalization_error->Evaluate(parameters,residuals_p.data(),NULL);
-    b_a_1 = b_a_1_temp; // reset
-    b_a_1 = b_a_1 - dp_3;
+    *b_a_1_est = b_a_1_temp; // reset
+    *b_a_1_est = *b_a_1_est - dp_3;
     marginalization_error->Evaluate(parameters,residuals_m.data(),NULL);
-    b_a_1 = b_a_1_temp;
+    *b_a_1_est = b_a_1_temp;
     J3_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
