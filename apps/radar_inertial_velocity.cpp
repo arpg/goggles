@@ -175,12 +175,8 @@ public:
 
     if (publish_imu_propagated_state_ && first_state_optimized_)
     {
-      //auto start = std::chrono::high_resolution_clock::now();
       Eigen::Matrix3d covariance = Eigen::Matrix3d::Identity();
       propagateStateWithImu(new_meas.t_);
-      //auto finish = std::chrono::high_resolution_clock::now();
-      //std::chrono::duration<double> elapsed = finish - start;
-      //LOG(ERROR) << "imu propagation time: " << elapsed.count();
       geometry_msgs::TwistWithCovarianceStamped vel_out;
       vel_out.header.stamp = msg->header.stamp;
       populateMessage(imu_propagated_speed_,vel_out,covariance);
@@ -285,7 +281,7 @@ private:
   int num_iter_;
   double sum_time_;
 
-  
+
 
   /** \brief Clean up radar point cloud prior to processing
     * \param[in,out] cloud the input point cloud
