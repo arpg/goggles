@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   message_generation
 	tf
+  tf_conversions
 )
 
 enable_testing()
@@ -39,6 +40,7 @@ catkin_package(
   roscpp std_msgs 
   sensor_msgs 
   tf 
+  tf_conversions
   pcl_ros
   geometry_msgs
 )
@@ -121,12 +123,12 @@ add_definitions(${PCL_DEFINITIONS})
 
 #catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testImuIntegration ${LINK_LIBS})
-catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testMarginalization ${LINK_LIBS})
+#catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testMarginalization ${LINK_LIBS})
 #catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
-#catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
-#target_link_libraries(testGlobalDoppler ${LINK_LIBS})
+catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testGlobalDoppler ${LINK_LIBS})
 #catkin_add_gtest(testAHRSOrientationCostFunction test/testAHRSOrientationCostFunction ${SOURCES} ${HEADERS})
 #target_link_libraries(testAHRSOrientationCostFunction ${LINK_LIBS})
 #catkin_add_gtest(testAHRSYawCostFunction test/testAHRSYawCostFunction ${SOURCES} ${HEADERS})

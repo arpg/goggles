@@ -1,16 +1,27 @@
 #include <GlobalDopplerCostFunction.h>
 
 GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
-      Eigen::Vector3d & target,
+      Eigen::Vector3d &target,
+      Eigen::Matrix3d &radar_to_imu_mat,
       double weight) 
       : doppler_(doppler),
-      target_ray_(target),
-      weight_(weight) 
+      target_ray_(target)
 {
   set_num_residuals(1);
   mutable_parameter_block_sizes()->push_back(4);
   mutable_parameter_block_sizes()->push_back(3);
   target_ray_.normalize();
+
+  // transform target ray from imu to radar board frame of reference
+  Eigen::Vector3d radar_frame_ray = radar_to_imu_mat.transpose() * target_ray_;
+
+  // reweight cost function based on x, y, and z components
+  // (lower weight if target is more in z or y direction,
+  // higher weight for x)
+  radar_frame_ray[0] *= 1.2;
+  radar_frame_ray[1] *= 0.25;
+  radar_frame_ray[2] *= 0.005;
+  weight_ = weight * radar_frame_ray.lpNorm<1>();
 }
 
 GlobalDopplerCostFunction::~GlobalDopplerCostFunction(){}
