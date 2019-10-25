@@ -57,6 +57,7 @@ TEST(googleTests, testGlobalDoppler)
   problem->AddParameterBlock(v_w_est.data(),3);
   problem->AddParameterBlock(q_ws_est.coeffs().data(),4);
   problem->SetParameterization(q_ws_est.coeffs().data(), quat_param);
+  Eigen::Matrix3d radar_to_imu = Eigen::Matrix3d::Identity();
   
   // create and add residuals and record their ids
   double weight = 1.0 / double(targets.size());
@@ -65,6 +66,7 @@ TEST(googleTests, testGlobalDoppler)
     ceres::CostFunction* v_cost_func = 
       new GlobalDopplerCostFunction(targets[i].first,
                                     targets[i].second,
+                                    radar_to_imu,
                                     weight);
     ceres::ResidualBlockId id = problem->AddResidualBlock(v_cost_func,
                                                           NULL,
@@ -75,6 +77,7 @@ TEST(googleTests, testGlobalDoppler)
   GlobalDopplerCostFunction* v_cost_func =
     new GlobalDopplerCostFunction(targets[0].first,
                                   targets[0].second,
+                                  radar_to_imu,
                                   weight);
     
   // check jacobians by manual inspection
