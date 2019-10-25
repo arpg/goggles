@@ -314,10 +314,11 @@ private:
 		// else add new params copied from previous values
 		else
 		{
-			speeds_.push_front(new Eigen::Vector3d(*speeds_.front()));
+  		speeds_.push_front(new Eigen::Vector3d(*speeds_.front()));
       gyro_biases_.push_front(new Eigen::Vector3d(*gyro_biases_.front()));
       accel_biases_.push_front(new Eigen::Vector3d(*accel_biases_.front()));
-			orientations_.push_front(new Eigen::Quaterniond(*orientations_.front()));
+  		orientations_.push_front(new Eigen::Quaterniond(*orientations_.front()));
+
 			problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
 			problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
     	problem_->AddParameterBlock(speeds_.front()->data(),3);
