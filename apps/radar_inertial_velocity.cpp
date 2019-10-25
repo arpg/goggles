@@ -97,6 +97,7 @@ public:
     sum_time_ = 0.0;
     num_iter_ = 0;
 		initialized_ = false;
+    first_state_optimized_ = false;
 
     window_size_ = 5;
 
@@ -171,6 +172,20 @@ public:
       LOG(ERROR) << "Accelerometer saturation";
 
 		imu_buffer_.AddMeasurement(new_meas);
+
+    if (publish_imu_propagated_state_ && first_state_optimized_)
+    {
+      //auto start = std::chrono::high_resolution_clock::now();
+      Eigen::Matrix3d covariance = Eigen::Matrix3d::Identity();
+      propagateStateWithImu(new_meas.t_);
+      //auto finish = std::chrono::high_resolution_clock::now();
+      //std::chrono::duration<double> elapsed = finish - start;
+      //LOG(ERROR) << "imu propagation time: " << elapsed.count();
+      geometry_msgs::TwistWithCovarianceStamped vel_out;
+      vel_out.header.stamp = msg->header.stamp;
+      populateMessage(imu_propagated_speed_,vel_out,covariance);
+      pub_.publish(vel_out);
+    }
 	}
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -202,19 +217,23 @@ public:
 		if (cloud->size() < 10)
 			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
 
-    geometry_msgs::TwistWithCovarianceStamped vel_out;
-    vel_out.header.stamp = msg->header.stamp;
-
     // Get velocity measurements
     auto start = std::chrono::high_resolution_clock::now();
-    GetVelocity(cloud, timestamp, vel_out);
+    GetVelocity(cloud, timestamp);
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
     num_iter_++;
     LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
-    pub_.publish(vel_out);
 
+    if (!publish_imu_propagated_state_)
+    {
+      geometry_msgs::TwistWithCovarianceStamped vel_out;
+      vel_out.header.stamp = msg->header.stamp;
+      Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
+      populateMessage(*(speeds_.front()),vel_out,covariance_matrix);
+      pub_.publish(vel_out);
+    }
 	}
 
 private:
@@ -247,6 +266,14 @@ private:
   double sum_time_;
 	bool initialized_;
   bool publish_imu_propagated_state_;
+  bool first_state_optimized_;
+  std::mutex imu_propagation_mutex_;
+  Eigen::Vector3d imu_propagated_speed_;
+  Eigen::Quaterniond imu_propagated_orientation_;
+  Eigen::Vector3d imu_propagated_g_bias_;
+  Eigen::Vector3d imu_propagated_a_bias_;
+  double propagated_state_timestamp_;
+  double last_optimized_state_timestamp_;
 
   /** \brief Clean up radar point cloud prior to processing
     * \param[in,out] cloud the input point cloud
@@ -268,11 +295,8 @@ private:
     * point cloud
     * \param[in] raw_cloud the new pointcloud from the radar sensor
     * \param[in] timestamp the timestamp of the new point cloud
-    * \param[out] vel_out the resultant velocity and covariance in ros message form
     */
-  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
-                   double timestamp,
-                   geometry_msgs::TwistWithCovarianceStamped &vel_out)
+  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud, double timestamp)
   {
 		// if imu is not initialized, run initialization
 		if (!initialized_)
@@ -374,8 +398,15 @@ private:
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      std::vector<ImuMeasurement> imu_measurements =
-					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], true);
+      //LOG(ERROR) << std::fixed << std::setprecision(3) << "adding imu cost from "
+      //           << timestamps_[1] << " to " << timestamps_[0];
+      bool delete_measurements = timestamps_[0] < propagated_state_timestamp_;
+      //if (delete_measurements)
+      //  LOG(ERROR) << "deleting measurements";
+      //else
+      //  LOG(ERROR) << "saving measurements";
+      std::vector<ImuMeasurement> imu_measurements = 
+					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], delete_measurements);
 
 			ceres::CostFunction* imu_cost_func =
         	new GlobalImuVelocityCostFunction(timestamps_[1],
@@ -399,6 +430,19 @@ private:
 		// solve the ceres problem and get result
     ceres::Solver::Summary summary;
     ceres::Solve(solver_options_, problem_.get(), &summary);
+
+    if (publish_imu_propagated_state_)
+    {
+      std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
+      propagated_state_timestamp_ = timestamps_[0];
+      last_optimized_state_timestamp_ = timestamps_[0];
+      imu_propagated_orientation_ = *(orientations_.front());
+      imu_propagated_speed_ = *(speeds_.front());
+      imu_propagated_g_bias_ = *(gyro_biases_.front());
+      imu_propagated_a_bias_ = *(accel_biases_.front());
+      first_state_optimized_ = true;
+    }
+    
     /*
     LOG(INFO) << summary.FullReport();
     std::ofstream orientation_log;
@@ -430,7 +474,7 @@ private:
     LOG(INFO) << "covariance: \n" << covariance_matrix;
     */
     Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-    populateMessage(vel_out,covariance_matrix);
+    
   }
 
   /** \brief uses initial IMU measurements to determine the magnitude of the
@@ -589,11 +633,47 @@ private:
     return true;
   }
 
+  /** \brief propagates state from last optimized state to time of most recent
+    * imu measurement
+    * \param[in] timestamp of the most recent imu measurement
+    */
+  void propagateStateWithImu(double t1)
+  {
+    // ensure unique access
+    std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
+    //LOG(ERROR) << std::fixed << std::setprecision(5) 
+    //           << "propagating imu state from " << propagated_state_timestamp_
+    //           << " to " << t1;
+
+    // propagate state using imu measurement
+    std::vector<ImuMeasurement> imu_measurements;
+    bool delete_measurements = propagated_state_timestamp_ < last_optimized_state_timestamp_;
+    imu_measurements = imu_buffer_.GetRange(propagated_state_timestamp_, t1, delete_measurements);
+    //LOG(ERROR) << std::fixed << std::setprecision(5) 
+    //           << "doing propagation with measurements from "
+    //           << imu_measurements.front().t_ << " to " 
+    //           << imu_measurements.back().t_;
+    GlobalImuVelocityCostFunction::Propagation(imu_measurements,
+                                               params_,
+                                               imu_propagated_orientation_,
+                                               imu_propagated_speed_,
+                                               imu_propagated_g_bias_,
+                                               imu_propagated_a_bias_,
+                                               propagated_state_timestamp_,
+                                               t1);
+
+    propagated_state_timestamp_ = t1;
+    //LOG(ERROR) << "done propagating state";
+    //LOG(ERROR) << "imu buffer size: " << imu_buffer_.size();
+  }
+
   /** \brief populate ros message with velocity and covariance
+    * \param[in] velocity the estimated velocity
     * \param[out] vel the resultant ros message
     * \param[in] covariance the estimate covariance
     */
-  void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
+  void populateMessage(Eigen::Vector3d velocity,
+                       geometry_msgs::TwistWithCovarianceStamped &vel,
                        Eigen::Matrix3d &covariance)
   {
 
@@ -609,7 +689,6 @@ private:
     	vel.header.frame_id = ns.erase(0,1) + "_link";
     }
 
-    Eigen::Vector3d velocity = *(speeds_.front());
     vel.twist.twist.linear.x = velocity[0];
     vel.twist.twist.linear.y = velocity[1];
     vel.twist.twist.linear.z = velocity[2];
