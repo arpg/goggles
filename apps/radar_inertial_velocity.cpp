@@ -101,9 +101,9 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(1.0),3.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
     imu_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(0.5),2.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+      new ceres::CauchyLoss(0.5),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
