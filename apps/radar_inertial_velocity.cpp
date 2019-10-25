@@ -237,16 +237,24 @@ public:
 	}
 
 private:
+  // ros-related objects
   ros::NodeHandle nh_;
   ros::Publisher pub_;
   ros::Subscriber radar_sub_;
 	ros::Subscriber imu_sub_;
 	tf::StampedTransform radar_to_imu_;
   Eigen::Matrix3d radar_to_imu_mat_;
+
+  // ceres objects
+  std::shared_ptr<ceres::Problem> problem_;
+  ceres::Solver::Options solver_options_;
   ceres::ScaledLoss *doppler_loss_;
   ceres::ScaledLoss *imu_loss_;
   ceres::ScaledLoss *yaw_loss_;
-	ceres::LocalParameterization* quat_param_;
+  ceres::ResidualBlockId marginalization_id_;
+
+  // optimized state and residual containers
+	QuaternionParameterization* quat_param_;
 	std::deque<Eigen::Quaterniond*> orientations_;
   std::deque<Eigen::Vector3d*> speeds_;
   std::deque<Eigen::Vector3d*> gyro_biases_;
@@ -255,25 +263,29 @@ private:
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
-  ceres::ResidualBlockId marginalization_id_;
+  bool initialized_;
+  
+  // imu sensor buffer and parameters
 	ImuBuffer imu_buffer_;
 	ImuParams params_;
-  std::shared_ptr<ceres::Problem> problem_;
-  ceres::Solver::Options solver_options_;
-  int window_size_;
-  double min_range_;
-  int num_iter_;
-  double sum_time_;
-	bool initialized_;
+	
+  // imu propagated state containers
   bool publish_imu_propagated_state_;
   bool first_state_optimized_;
+  double propagated_state_timestamp_;
+  double last_optimized_state_timestamp_;
   std::mutex imu_propagation_mutex_;
   Eigen::Vector3d imu_propagated_speed_;
   Eigen::Quaterniond imu_propagated_orientation_;
   Eigen::Vector3d imu_propagated_g_bias_;
   Eigen::Vector3d imu_propagated_a_bias_;
-  double propagated_state_timestamp_;
-  double last_optimized_state_timestamp_;
+
+  int window_size_;
+  double min_range_;
+  int num_iter_;
+  double sum_time_;
+
+  
 
   /** \brief Clean up radar point cloud prior to processing
     * \param[in,out] cloud the input point cloud
