@@ -68,6 +68,7 @@ public:
 		nh_.getParam("imu_frame", imu_frame);
 		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
+    nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
 
 		// get imu params and extrinsics
 		LoadParams(config);
@@ -245,6 +246,7 @@ private:
   int num_iter_;
   double sum_time_;
 	bool initialized_;
+  bool publish_imu_propagated_state_;
 
   /** \brief Clean up radar point cloud prior to processing
     * \param[in,out] cloud the input point cloud
