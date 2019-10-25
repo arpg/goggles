@@ -111,8 +111,6 @@ public:
 
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
-    //solver_options_.check_gradients = true;
-    //solver_options_.gradient_check_relative_precision = 1.0e-4;
     solver_options_.num_threads = 8;
     solver_options_.max_solver_time_in_seconds = 5.0e-2;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
