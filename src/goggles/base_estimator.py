@@ -20,6 +20,10 @@ class dopplerRANSAC(BaseEstimator, RegressorMixin):
         self.model = model
         self.utils = RadarUtilities()
 
+        self.sample_size    = self.model.min_pts     # the minimum number of data values required to fit the model
+        self.max_iterations = 25    # the maximum number of iterations allowed in the algorithm
+        self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
+
         # body-frame velocity vector - to be estimated by RANSAC
         self.param_vec_ = None
 

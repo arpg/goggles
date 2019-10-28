@@ -17,6 +17,8 @@ from goggles.radar_utilities import RadarUtilities
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
 from goggles.base_estimator_mlesac import dopplerMLESAC
+# from sklearn.linear_model import RANSACRegressor
+# from goggles.base_estimator import dopplerRANSAC
 
 class MLESAC:
 
@@ -140,13 +142,13 @@ def test(model):
     mlesac = MLESAC(base_estimator_mlesac, report_scores, ols_flag, get_covar)
 
     # instantiate scikit-learn RANSAC object with base_estimator class object
-    base_estimator_ransac = dopplerRANSAC(model=model)
-    ransac = RANSACRegressor(base_estimator=base_estimator_ransac, \
-        min_samples=base_estimator_ransac.sampleSize, \
-        residual_threshold=base_estimator_ransac.max_distance, \
-        is_data_valid=self.base_estimator.is_data_valid, \
-        max_trials=base_estimator_ransac.max_iterations, \
-        loss=self.base_estimator.loss)
+    # base_estimator_ransac = dopplerRANSAC(model=model)
+    # ransac = RANSACRegressor(base_estimator=base_estimator_ransac, \
+    #     min_samples=base_estimator_ransac.sample_size, \
+    #     residual_threshold=base_estimator_ransac.max_distance, \
+    #     is_data_valid=base_estimator_ransac.is_data_valid, \
+    #     max_trials=base_estimator_ransac.max_iterations, \
+    #     loss=base_estimator_ransac.loss)
 
     ## outlier std deviation
     sigma_vr_outlier = 1.5
@@ -162,7 +164,7 @@ def test(model):
     Noutliers = 35
 
     ## generate truth velocity vector
-    velocity = (max_vel-min_vel)*np.random.random((base_estimator.sample_size,)) + min_vel
+    velocity = (max_vel-min_vel)*np.random.random((base_estimator_mlesac.sample_size,)) + min_vel
 
     ## create noisy INLIER  simulated radar measurements
     _, inlier_data = model.getSimulatedRadarMeasurements(Ninliers, \
@@ -188,16 +190,17 @@ def test(model):
     time_mlesac = time.time() - start_time
 
     ## get scikit-learn RANSAC estimate + inlier set
-    start_time = time.time()
-    self.ransac.fit(radar_data)
-    model_ransac = np.squeeze(self.ransac.estimator_.param_vec_)
-    inlier_mask = self.ransac.inlier_mask_
-    outlier_mask = np.logical_not(inlier_mask)
-    time_ransac = time.time() - start_time
+    #3 NOTE: DOES NOT WORK YET
+    # start_time = time.time()
+    # ransac.fit(radar_data)
+    # model_ransac = np.squeeze(self.ransac.estimator_.param_vec_)
+    # inlier_mask = self.ransac.inlier_mask_
+    # outlier_mask = np.logical_not(inlier_mask)
+    # time_ransac = time.time() - start_time
 
     print("\nMLESAC Velocity Profile Estimation:\n")
     print("Truth\t MLESAC\t\tOLS")
-    for i in range(base_estimator.sample_size):
+    for i in range(base_estimator_mlesac.sample_size):
         print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
               + " \t" + str.format('{0:.4f}',model_ols[i]))
 
@@ -208,7 +211,7 @@ def test(model):
         rmse_ols = np.sqrt(np.mean(np.square(velocity - model_ols)))
         print("RMSE (OLS)\t= " + str.format('{0:.4f}',rmse_ols) + " m/s")
 
-    print("\nExecution Time = %s" % (end_time-start_time))
+    print("\nExecution Time = %s" % time_mlesac)
 
 def test_montecarlo(model):
     pass

@@ -110,7 +110,7 @@ class VelocityEstimator():
         rospy.loginfo("INIT: VelocityEstimator Node Initialized")
 
     def ptcloud_cb(self, msg):
-        rospy.loginfo("GOT HERE: ptcloud_cb")
+        # rospy.loginfo("GOT HERE: ptcloud_cb")
         pts_list = list(pc2.read_points(msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
         pts = np.array(pts_list)
 
@@ -120,19 +120,14 @@ class VelocityEstimator():
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("ptcloud_cb: EMPTY RADAR MESSAGE")
         else:
-            # rospy.loginfo("\n")
-            # rospy.loginfo("New Scan")
-            # rospy.loginfo("Ntargets = %d", pts.shape[0])
-
             pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
             pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
 
             self.estimate_velocity(pts, msg)
 
     def estimate_velocity(self, pts, radar_msg):
-        rospy.loginfo("GOT HERE: estimate_velocity")
+        # rospy.loginfo("GOT HERE: estimate_velocity")
         Ntargets = pts.shape[0]
-        # rospy.loginfo("Ntargets = " + str(Ntargets))
 
         ## create target azimuth vector (in radians)
         azimuth = np.arctan(np.divide(pts[:,1],pts[:,0]))       # [rad]
@@ -150,7 +145,6 @@ class VelocityEstimator():
         data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
         idx_AIRE = self.utils.AIRE_filtering(data_AIRE, self.thresholds)
         Ntargets_valid = idx_AIRE.shape[0]
-        # rospy.loginfo("Ntargets_valid = %d", Ntargets_valid)
 
         ## define pre-filtered radar data for further processing
         radar_intensity = pts[idx_AIRE,3]
@@ -164,7 +158,6 @@ class VelocityEstimator():
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("estimate_velocity: < %d TARGETS AFTER AIR THRESHOLDING" % self.base_estimator.sample_size)
         else:
-            # rospy.loginfo("Nbins = %d", self.utils.getNumAzimuthBins(radar_azimuth))
             # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
 
             ## get MLESAC estimate + inlier set
@@ -172,8 +165,7 @@ class VelocityEstimator():
             self.mlesac.mlesac(radar_data)
             self.vel_estimate_ = -self.mlesac.estimator_.param_vec_
             self.vel_covariance_ = self.mlesac.estimator_.covariance_
-            rospy.loginfo("diag(covariance) = " + str(np.diag(self.vel_covariance_)))
-            # rospy.loginfo("model_mlesac = " + str(model_mlesac.T))
+            # rospy.loginfo("diag(covariance) = " + str(np.diag(self.vel_covariance_)))
 
             ## this data to be published on filtered ptcloud topic
             intensity_inlier = radar_intensity[self.mlesac.inliers_]
@@ -239,8 +231,6 @@ def main():
 
 
     # use composition to ascribe a model to the VelocityEstimator class
-    # velocity_estimator = VelocityEstimator(model=RadarDopplerModel3D(), \
-    #                                        odr=OrthogonalDistanceRegression())
     velocity_estimator = VelocityEstimator(model=model)
 
     rospy.loginfo("End of main()")
