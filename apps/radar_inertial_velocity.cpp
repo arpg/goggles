@@ -99,13 +99,11 @@ public:
 		initialized_ = false;
     first_state_optimized_ = false;
 
-    window_size_ = 5;
+    window_size_ = 15;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(1.0),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
-    imu_loss_ = new ceres::ScaledLoss(
-      new ceres::CauchyLoss(0.5),1.0,ceres::DO_NOT_TAKE_OWNERSHIP);
+    doppler_loss_ = new ceres::CauchyLoss(1.0);
+    imu_loss_ = new ceres::CauchyLoss(1.0);
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
@@ -114,7 +112,7 @@ public:
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
     solver_options_.num_threads = 8;
-    solver_options_.max_solver_time_in_seconds = 5.0e-2;
+    solver_options_.max_solver_time_in_seconds = 7.0e-2;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
@@ -244,9 +242,9 @@ private:
   // ceres objects
   std::shared_ptr<ceres::Problem> problem_;
   ceres::Solver::Options solver_options_;
-  ceres::ScaledLoss *doppler_loss_;
-  ceres::ScaledLoss *imu_loss_;
-  ceres::ScaledLoss *yaw_loss_;
+  ceres::LossFunction *doppler_loss_;
+  ceres::LossFunction *imu_loss_;
+  ceres::LossFunction *yaw_loss_;
   ceres::ResidualBlockId marginalization_id_;
 
   // optimized state and residual containers
@@ -338,10 +336,10 @@ private:
     pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
       new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
     std::vector<int> inliers;
-    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.1);
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.15);
     mlesac.computeModel();
     mlesac.getInliers(inliers);
-
+    
     // copy inlier points to new data structure;
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
@@ -369,7 +367,7 @@ private:
       residual_blks_.front().push_back(res_id);
       
     }
-
+    
     // find imu measurements bracketing current timestep
     std::vector<ImuMeasurement> imu_measurements = 
       imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
@@ -407,13 +405,8 @@ private:
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
-      //LOG(ERROR) << std::fixed << std::setprecision(3) << "adding imu cost from "
-      //           << timestamps_[1] << " to " << timestamps_[0];
       bool delete_measurements = timestamps_[0] < propagated_state_timestamp_;
-      //if (delete_measurements)
-      //  LOG(ERROR) << "deleting measurements";
-      //else
-      //  LOG(ERROR) << "saving measurements";
+
       std::vector<ImuMeasurement> imu_measurements = 
 					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], delete_measurements);
 
@@ -650,7 +643,7 @@ private:
   {
     // ensure unique access
     std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
-    //LOG(ERROR) << std::fixed << std::setprecision(5) 
+    //LOG(ERROR) << std::fixed << std::setprecision(3) 
     //           << "propagating imu state from " << propagated_state_timestamp_
     //           << " to " << t1;
 

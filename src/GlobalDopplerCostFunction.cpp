@@ -19,8 +19,8 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   // (lower weight if target is more in z or y direction,
   // higher weight for x)
   radar_frame_ray[0] *= 1.2;
-  radar_frame_ray[1] *= 0.25;
-  radar_frame_ray[2] *= 0.005;
+  radar_frame_ray[1] *= 0.30;
+  radar_frame_ray[2] *= 0.075;
   weight_ = weight * radar_frame_ray.lpNorm<1>();
 }
 
