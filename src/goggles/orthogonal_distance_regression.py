@@ -7,104 +7,124 @@ Last Edited:    Apr 28, 2019
 Description:
 
 """
-
+import time
 import rospy
 import numpy as np
-from scipy.linalg import fractional_matrix_power
+from scipy.linalg import block_diag, fractional_matrix_power
 from scipy.linalg.blas import sgemm
 from scipy.optimize import minimize
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
+from goggles.radar_doppler_model_3D import RadarDopplerModel3D
+from goggles.base_estimator_mlesac import dopplerMLESAC
+from goggles.mlesac import MLESAC
 
-class OrthogonalDistanceRegression2D:
+class OrthogonalDistanceRegression:
 
-    def __init__(self, debug=False):
-        self.model = RadarDopplerModel2D()
+    def __init__(self, model, converge_thres, max_iter, debug=False):
+        self.model = model                      # radar Doppler model (2D or 3D)
+        self.converge_thres = converge_thres    # ODR convergence threshold on step size s
+        self.maxIterations = max_iter           # max number of ODR iterations
+        self.debug = debug                      # for comparison to MATLAB implementation
 
-        self.sigma_vr = 0.044
-        self.sigma_theta = 0.0413
-        self.d = self.sigma_vr/self.sigma_theta     # error variance ratio
-
-        self.converge_thres = 0.0002    # ODR convergence threshold on step s
-        self.maxIterations = 100        # max number of ODR iterations
-        self.debug = debug              # for comparison to MATLAB implementation
-
-
-    def odr(self, radar_doppler, radar_azimuth, d, beta0, delta0, weights):
+    def odr(self, data, beta0, weights, s, get_covar):
         """
         d - error variance ratio := sigma_vr / sigma_theta
         """
+        ## unpack radar data (into colum vectors)
+        radar_doppler   = data[:,0]
+        radar_azimuth   = data[:,1]
+        radar_elevation = data[:,2]
+
+        ## dimensionality of data
         Ntargets = delta0.shape[0]
         p = beta0.shape[0]
+        m = self.model.d.shape[0]
 
-        S = 10*np.eye(p)        # s scaling matrix - 10 empirically chosen
-        T = np.eye(Ntargets)    # t scaling matrix
-        alpha = 0.001           # Lagrange multiplier
+        # [ S, T ] = self.getScalingMatrices()
+        S = np.diag(s)          # s scaling matrix - 10 empirically chosen
+        T = np.eye(Ntargets*m)  # t scaling matrix
+        alpha = 1               # Lagrange multiplier
+
+        if p == 2:
+            ## init delta vector
+            delta0 = np.random.normal(0,self.model.sigma,(Ntargets,))
+
+            ## construct weighted diagonal matrix D
+            D = np.diag(np.multiply(weights,d))
+
+        elif p == 3:
+            ## init delta vector - "interleaved" vector
+            delta0_theta = np.random.normal(0,self.model.sigma[0],(Ntargets,))
+            delta0_phi   = np.random.normal(0,self.model.sigma[1],(Ntargets,))
+            delta0 = np.column_stack((delta0_theta, delta0_phi))
+            delta0 = delta0.reshape((m*Ntargets,))
+
+            ## construct weighted block-diagonal matrix D
+            D_i = np.diag(self.model.d)
+            Drep = D_i.reshape(1,m,m).repeat(Ntargets,axis=0)
+            Dblk = block_diag(*Drep)
+            weights_diag = np.diag(np.repeat(weights,m))
+            D = np.matmul(weights_diag,Dblk)
+
+        else:
+            rospy.logerr("odr: initial guess must be a 2D or 3D vector")
+
+        ## construct E matrix - E = D^2 + alpha*T^2 (ODR-1987 Prop. 2.1)
+        E = np.matmul(D,D) + alpha*np.matmul(T,T)
+        Einv = np.linalg.inv(E)
 
         ## initialize
         beta = beta0
         delta = delta0
-        s = np.ones((p,), dtype=np.float32)
+        # s = np.ones((p,), dtype=np.float32)
 
-        iter = 0
-        while (np.abs(s[0]) > self.converge_thres) or (np.abs(s[1]) > self.converge_thres):
-            # get Jacobian matrices
-            G, V, D = self.getJacobian(radar_azimuth, delta, beta, weights, d)
+        iter = 1
+        while np.linalg.norm(s) > converge_thres:
 
-            ## defined to simplify the notation in objectiveFunc
-            # P0 = sgemm(1.0,V.conj().T,V) + sgemm(1.0,D,D) + alpha*sgemm(1,0,T,T)
-            P = np.matmul(V.conj().T,V) + np.matmul(D,D) + alpha*np.matmul(T,T)
+            if p == 2:
+                G, V, M = self.getJacobian2D(data[:,1], delta, beta, weights, E)
+
+            elif p ==3:
+                G, V, M = self.getJacobian3D(data[:,1:2], delta, beta, weights, E)
+            else:
+                rospy.logerr("odr: initial guess must be a 2D or 3D vector")
 
             doppler_predicted = self.model.simulateRadarDoppler(beta, \
                     radar_azimuth, np.zeros((Ntargets,), dtype=np.float32), delta)
 
             ## re-calculate epsilon
-            eps = doppler_predicted - radar_doppler
+            eps = np.subtract(doppler_predicted, radar_doppler)
 
-            ## anonymous function defined within interation loop in order to use
-            ## current values of G, V, D, eps and delta
-            f = lambda param: self.objectiveFunc(param,G,V,D,P,eps,delta)
+            ## form the elements of the linear least squares problem
+            Gbar = np.matmul(M,G)
+            y = np.matmul(-M,np.subtract(eps,reduce(np.dot,[V,Einv,D,delta])))
+            # s = np.linalg.solve(Gbar,y)
 
-            soln = minimize(f,s)
-            # print("soln =\n" + str(soln))
-            s = soln.x
-            t = np.matmul(-np.linalg.inv(P), np.matmul(V.conj().T,eps) + \
-                    np.matmul(D,delta) + np.matmul(np.matmul(V.conj().T,G),s))
+            ## Compute s via QR factorization of Gbar
+            Q,R = np.linalg.qr(Gbar,mode='reduced')
+            s = np.squeeze(np.linalg.solve(R,np.matmul(Q.T,y)))
+            ### STOPPED HERE ###################################################
+            # t = -Einv*(V'*M^2*(eps + G*s - V*Einv*D*delta) + D*delta)
 
             # use s and t to iteratively update beta and delta, respectively
             beta = beta + np.matmul(S,s)
             delta = delta + np.matmul(T,t)
 
-            # rospy.loginfo("[k, s] = " + str(np.array([[k, s[0], s[1]]]) ) )
-
             iter+=1
             if iter > self.maxIterations:
+                rospy.loginfo('ODR: max iterations reached')
                 break
 
         model = beta
-        return model
-
-    def objectiveFunc(self,s,G,V,D,P,eps,delta):
-        if (G.shape[0] != V.shape[0]) and (G.shape[0] != V.shape[0]) \
-            and (G.shape[0] != P.shape[0]) and (G.shape[1] != s.shape[0]):
-
-            rospy.logerr('objectiveFunc: MATRIX SIZE MISMATCH')
+        if get_covar:
+            cov_beta = odr_getCovariance( Gbar, D, eps, delta, weights );
         else:
-            n = G.shape[0]
+            cov_beta = float('nan')*np.ones((p,))
 
-            # defined to simply the final form of the objective function, f
-            f1 = fractional_matrix_power(np.eye(n) - \
-                    np.matmul(np.matmul(V,np.linalg.inv(P)),V.conj().T), 0.5)
-            f2 = fractional_matrix_power(np.eye(n) - \
-                    np.matmul(np.matmul(V,np.linalg.inv(P)),V.conj().T), -0.5)
-            f3 = np.matmul(V.conj().T,eps) + np.matmul(D,delta)
-            f4 = -eps + np.matmul(np.matmul(V,np.linalg.inv(P)),f3)
-
-            f = np.matmul(np.matmul(f1,G),s) - np.matmul(f2,f4)
-
-            return np.linalg.norm(f)
+        return model, cov_beta, iter
 
 
-    def getJacobian(self, X, delta, beta, weights, d):
+    def getJacobian2D(self, X, delta, beta, weights, E):
         ## NOTE: We will use ODRPACK95 notation where the total Jacobian J has
         ## block components G, V and D:
 
@@ -115,25 +135,64 @@ class OrthogonalDistanceRegression2D:
         # V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
         # D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
 
-        # d - error variance ratio := sigma_epsilon/sigma_delta
-
         Ntargets = X.shape[0]   # X is a column vector of azimuth values
         p = beta.shape[0]
 
         # initialize
         G = np.zeros((Ntargets,p), dtype=np.float32)
         V = np.zeros((Ntargets,Ntargets), dtype=np.float32)
-        D = np.zeros((Ntargets,Ntargets), dtype=np.float32)
+        M = np.zeros((Ntargets,Ntargets), dtype=np.float32)
 
         for i in range(Ntargets):
-            G[i,:] = np.array([np.cos(X[i] + delta[i]), np.sin(X[i] + delta[i])])
-            V[i,i] = -beta[0]*np.sin(X[i] + delta[i]) + beta[1]*np.cos(X[i] + delta[i])
+            G[i,:] = weights[i]*np.array([np.cos(X[i] + delta[i]), np.sin(X[i] + delta[i])])
+            V[i,i] = weights[i]*(-beta[0]*np.sin(X[i] + delta[i]) + beta[1]*np.cos(X[i] + delta[i]))
 
-        G = np.matmul(np.diag(weights), G)
-        V = np.matmul(np.diag(weights), V)
-        D = d*np.diag(weights)
+            ## (ODR-1987 Prop. 2.1)
+            w =  V[i,i]**2 / E[i,i]
+            M[i,i] = np.sqrt(1/(1+w));
 
-        return G, V, D
+        return G, V, M
+
+    def getJacobian3D(self, X, delta, beta, weights, e):
+        pass
+        ## NOTE: We will use ODRPACK95 notation where the total Jacobian J has
+        ## block components G, V and D:
+
+        # J = [G,          V;
+        #      zeros(n,p), D]
+
+        # G - the Jacobian matrix of epsilon wrt/ beta and has no special properites
+        # V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
+        # D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
+
+        Ntargets = X.shape[0]   # X is a column vector of azimuth values
+        p = beta.shape[0]
+        m = delta.shape[0] / Ntargets
+
+        ## "un-interleave" delta vector into (Ntargets x m) matrix
+        # delta = reshape(delta,[m,Ntargets])';
+        # delta_theta = delta(:,1);
+        # delta_phi   = delta(:,2);
+
+        ## defined to simplify the following calculations
+        ### STOPPED HERE #######################################################
+        # x1 = theta + delta_theta;
+        # x2 = phi + delta_phi;
+
+        # initialize
+        G = np.zeros((Ntargets,p), dtype=np.float32)
+        V = np.zeros((Ntargets,Ntargets*m), dtype=np.float32)
+        M = np.zeros((Ntargets,Ntargets), dtype=np.float32)
+
+        for i in range(Ntargets):
+            G[i,:] = weights[i]*np.array([np.cos(X[i] + delta[i]), np.sin(X[i] + delta[i])])
+            V[i,i] = weights[i]*(-beta[0]*np.sin(X[i] + delta[i]) + beta[1]*np.cos(X[i] + delta[i]))
+
+            ## (ODR-1987 Prop. 2.1)
+            w =  V[i,i]**2 / E[i,i]
+            M[i,i] = np.sqrt(1/(1+w));
+
+        return G, V, M
 
     def getWeights(self):
         pass
@@ -141,71 +200,99 @@ class OrthogonalDistanceRegression2D:
     def getCovariance(self):
         pass
 
-def test_odr():
+def test_odr(model):
     import pylab
 
-    # init instance of ODR class
-    odr = OrthogonalDistanceRegression2D(debug=False)
+    ## define MLESAC parameters
+    report_scores = False
 
-    # number of simulated targets
-    Ntargets = 10
+    ## define ODR parameters
+    s = np.ones((model.min_pts,), dtype=np.float32)
+    converge_thres = 0.0005
+    max_iter = 50
+    get_covar = True
 
-    ## Generate Simulated Radar Measurements
-    # hard-coded values
-    velocity = np.array([[1.2], [0.75]])
+    ## init instances of MLESAC class
+    base_estimator = dopplerMLESAC(model)
+    mlesac = MLESAC(base_estimator,False,report_scores)
+    mlesac_ols = MLESAC(base_estimator,True,report_scores)
 
-    # simulated 'true' platform velocity
+    ## init instance of ODR class
+    odr = OrthogonalDistanceRegression(model,converge_thres,max_iter,debug=False)
+
+    ## outlier std deviation
+    sigma_vr_outlier = 1.5
+
+    radar_angle_bins = np.genfromtxt('../../data/1642_azimuth_bins.csv', delimiter=',')
+
+    ## simulated 'true' platform velocity range
     min_vel = -2.5      # [m/s]
     max_vel = 2.5       # [m/s]
-    # velocity = (max_vel-min_vel).*rand(2,1) + min_vel
 
-    # create noisy simulated radar measurements
-    radar_azimuth_bins = np.genfromtxt('../../data/1642_azimuth_bins.csv', delimiter=',')
-    true_azimuth, true_doppler, radar_azimuth, radar_doppler = \
-        odr.model.getSimulatedRadarMeasurements(Ntargets, velocity, \
-            radar_azimuth_bins, odr.sigma_vr, debug=odr.debug)
+    ## number of simulated targets
+    Ninliers = 125
+    Noutliers = 35
 
-    target_nums = np.linspace(0,Ntargets-1,Ntargets)
-    target_nums = np.array(target_nums)[np.newaxis]
-    radar_data = np.column_stack((target_nums.T, true_azimuth, radar_azimuth, \
-        true_doppler, radar_doppler))
-    # print('Radar Data:\n')
-    # print("\t" + str(radar_data))
+    ## generate truth velocity vector
+    velocity = (max_vel-min_vel)*np.random.random((base_estimator.sample_size,)) + min_vel
 
-    ## Implement Estimation Schemes
-    # get 'brute force' estimate of forward/lateral body-frame vel.
-    model_bruteforce, _ = odr.model.getBruteForceEstimate(radar_doppler, radar_azimuth)
-    print("Brute-Force Velocity Profile Estimation:")
-    print("\t" + str(model_bruteforce))
+    ## create noisy INLIER  simulated radar measurements
+    _, inlier_data = model.getSimulatedRadarMeasurements(Ninliers, \
+        velocity,radar_angle_bins,model.sigma_vr)
 
-    # get MLESAC (M-estimator RANSAC) model and inlier set
-    # [ model_mlesac, inlier_idx ] = MLESAC( radar_doppler', ...
-    #     radar_angle', sampleSize, maxDistance, conditionNum_thres );
-    # fprintf('MLESAC Velocity Profile Estimation\n');
-    # disp(model_mlesac)
-    # fprintf('MLESAC Number of Inliers\n');
-    # disp(sum(inlier_idx));
+    ## create noisy OUTLIER simulated radar measurements
+    _, outlier_data = model.getSimulatedRadarMeasurements(Noutliers, \
+        velocity,radar_angle_bins,sigma_vr_outlier)
 
-    # get Orthogonal Distance Regression (ODR) estimate - MLESAC seed
+    ## combine inlier and outlier data sets
+    Ntargets = Ninliers + Noutliers
+    radar_doppler = np.concatenate((inlier_data[:,0],outlier_data[:,0]),axis=0)
+    radar_azimuth = np.concatenate((inlier_data[:,1],outlier_data[:,1]),axis=0)
+    radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
-    # get Orthogonal Distance Regression (ODR) estimate - brute-force seed
-    weights = (1/odr.sigma_vr)*np.ones((Ntargets,), dtype=np.float32)
-    if odr.debug:
-        delta = np.ones((Ntargets,), dtype=np.float32)*odr.sigma_theta
-    else:
-        delta = np.random.normal(0,odr.sigma_theta,(Ntargets,))
-    model_odr = odr.odr( radar_doppler, radar_azimuth, odr.d, \
-        model_bruteforce, delta, weights )
-    print("ODR Velocity Profile Estimation - brute-force seed:");
-    print("\t" + str(model_odr))
+    ## concatrnate radar data
+    radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
 
-    # RMSE calculation is wrong.. is returning a 2x2
-    RMSE_bruteforce     = np.sqrt(np.square(velocity - model_bruteforce))
-    RMSE_odr_bruteforce = np.sqrt(np.square(velocity - model_odr))
+    ## get MLSESAC solution
+    start_time = time.time()
+    mlesac.mlesac(radar_data)
+    model_mlesac = mlesac.estimator_.param_vec_mlesac_
+    mlesac_inliers = mlesac.inliers_
+    time_mlesac = time.time() - start_time
 
-    print("\nRMSE_brute_force = " + str(RMSE_bruteforce))
-    print("RMSE_brute_force = " + str(RMSE_odr_bruteforce))
+    ## get MLSESAC + OLS solution
+    start_time = time.time()
+    mlesac_ols.mlesac(radar_data)
+    model_mlesac_ols = mlesac.estimator_.param_vec_ols_
+    time_mlesac_ols = time.time() - start_time
+
+    ## get MLESAC + ODR solution
+    # start_time = time.time()
+    # weights = (1/model.sigma_vr)*np.ones((Ntargets,), dtype=np.float32)
+    # model_odr, _, odr_iter = odr.odr(radar_data, model_mlesac, weights, s, get_covar)
+    # time_odr = time.time() - start_time
+
+    print("\nMLESAC + ODR Velocity Profile Estimation:\n")
+    print("Truth\t MLESAC\t\tMLESAC+OLS\tMLESAC+ODR")
+    for i in range(base_estimator.sample_size):
+        print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
+              + " \t" + str.format('{0:.4f}',model_mlesac[i]) \
+              + " \t" + str.format('{0:.4f}',model_mlesac_ols[i]))
+
+    rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
+    rmse_mlesac_ols = np.sqrt(np.mean(np.square(velocity - model_mlesac_ols)))
+    # rmse_mlesac = np.sqrt(np.square(velocity - model_mlesac))
+    # rmse_mlesac_ols = np.sqrt(np.square(velocity - model_mlesac_ols))
+
+    print("\n\t\tRMSE [m/s]\tExec. Time [ms]")
+    print("MLESAC\t\t" + str.format('{0:.4f}',rmse_mlesac) + "\t\t" + \
+          str.format('{0:.2f}',1000*time_mlesac))
+    print("MLESAC + OLS\t" + str.format('{0:.4f}',rmse_mlesac_ols) + "\t\t" + \
+          str.format('{0:.2f}',1000*time_mlesac_ols))
 
 
 if __name__=='__main__':
-    test_odr()
+    ## define Radar Doppler model to be used
+    model = RadarDopplerModel3D()
+
+    test_odr(model)

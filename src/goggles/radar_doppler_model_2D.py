@@ -16,9 +16,13 @@ class RadarDopplerModel2D:
     def __init__(self):
         self.utils = RadarUtilities()
 
-        ## define radar parameters
+        ## define radar uncertainty parameters
         self.sigma_vr = 0.044               # [m/s]
         self.sigma_theta = 0.0426           # [rad]
+        self.sigma = self.sigma_theta
+
+        ## define ODR error variance ratio
+        self.d = self.sigma_vr / self.sigma_theta
 
         self.min_pts = 2    # minimum number of data points to fit the model of close data values required to assert that a model fits well to data
 

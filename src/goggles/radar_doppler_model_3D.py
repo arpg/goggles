@@ -16,10 +16,15 @@ class RadarDopplerModel3D:
     def __init__(self):
         self.utils = RadarUtilities()
 
-        ## define radar parameters
+        ## define radar uncertainty parameters
         self.sigma_vr = 0.044               # [m/s]
         self.sigma_theta = 0.0426           # [rad]
         self.sigma_phi = self.sigma_theta   # [rad]
+        self.sigma = np.array((self.sigma_theta,self.sigma_phi))
+
+        ## define ODR error variance ratio
+        self.d = np.array((self.sigma_vr / self.sigma_theta, \
+                           self.sigma_vr / self.sigma_phi))
 
         self.min_pts = 3    # minimum number of data points to fit the model
 

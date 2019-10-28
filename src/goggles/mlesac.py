@@ -18,17 +18,17 @@ from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
 from goggles.base_estimator_mlesac import dopplerMLESAC
 
-class MLESAC():
+class MLESAC:
 
-    def __init__(self, base_estimator):
+    def __init__(self, base_estimator, ols_flag=False, report_scores=False):
         self.estimator_ = base_estimator
 
         self.inliers_    = None     # inlier data points
         self.scores_     = None     # data log likelihood associated with each iteration
         self.iter_       = None     # number of iterations until convergence
 
-        self.report_scores = False  # report data log likelihood of each iteration
-        self.ols_flag      = True   # enable OLS solution on inlier set
+        self.report_scores = report_scores  # report data log likelihood of each iteration
+        self.ols_flag      = ols_flag       # enable OLS solution on inlier set
 
     def mlesac(self, data):
 
@@ -121,9 +121,13 @@ class MLESAC():
 
 
 def test(model):
+    ## define MLESAC parameters
+    ols_flag = True
+    report_scores = False
+
     # init instance of base estimator dopplerMLESAC class
     base_estimator = dopplerMLESAC(model)
-    mlesac = MLESAC(base_estimator)
+    mlesac = MLESAC(base_estimator, ols_flag, report_scores)
 
     ## outlier std deviation
     sigma_vr_outlier = 1.5
@@ -135,8 +139,8 @@ def test(model):
     max_vel = 2.5       # [m/s]
 
     ## number of simulated targets
-    Ninliers = 150
-    Noutliers = 75
+    Ninliers = 125
+    Noutliers = 35
 
     ## generate truth velocity vector
     velocity = (max_vel-min_vel)*np.random.random((base_estimator.sample_size,)) + min_vel
@@ -155,13 +159,13 @@ def test(model):
     radar_azimuth = np.concatenate((inlier_data[:,1],outlier_data[:,1]),axis=0)
     radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
-    radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
     start_time = time.time()
+    radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
     mlesac.mlesac(radar_data)
-    end_time = time.time()
     model_mlesac = mlesac.estimator_.param_vec_mlesac_
     model_ols = mlesac.estimator_.param_vec_ols_
     inliers = mlesac.inliers_
+    end_time = time.time()
 
     print("\nMLESAC Velocity Profile Estimation:\n")
     print("Truth\t MLESAC\t\tOLS")
@@ -182,6 +186,6 @@ def test_montecarlo(model):
     pass
 
 if __name__=='__main__':
-    model = RadarDopplerModel2D()
-    # model = RadarDopplerModel3D()
+    # model = RadarDopplerModel2D()
+    model = RadarDopplerModel3D()
     test(model)

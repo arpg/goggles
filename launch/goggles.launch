@@ -1,8 +1,8 @@
 <launch>
-    <arg name="vrpn" default="False" doc="Using vrpn system?"/>
-    <arg name="type" default="2D" doc="2D or 3D radar data"/>
-    <arg name="odr_flag" default="False" doc="True:=publish ODR estimate, False:=publish mlesac estimate"/>
-    <arg name="mmwave_topic" default="/radar_fwd/mmWaveDataHdl/RScan" doc=""/>
+    <arg name="vrpn" default="false" doc="Using vrpn system?"/>
+    <arg name="type" default="3D" doc="2D or 3D radar data"/>
+    <arg name="odr_flag" default="false" doc="true:=publish ODR estimate, false:=publish mlesac estimate"/>
+    <arg name="mmwave_topic" default="/mmWaveDataHdl/RScan" doc=""/>
 
     <arg name="azimuth_thres" default="80" doc="Azimuth threshold value"/>
     <arg name="elevation_thres" default="80" doc="Elevation threshold value"/>
