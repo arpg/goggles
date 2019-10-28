@@ -102,8 +102,8 @@ public:
     window_size_ = 15;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::CauchyLoss(1.0);
-    imu_loss_ = new ceres::CauchyLoss(1.0);
+    doppler_loss_ = new ceres::HuberLoss(1.0);
+    imu_loss_ = new ceres::HuberLoss(1.0);
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
@@ -112,7 +112,7 @@ public:
     prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
     prob_options.enable_fast_removal = true;
     solver_options_.num_threads = 8;
-    solver_options_.max_solver_time_in_seconds = 7.0e-2;
+    solver_options_.max_solver_time_in_seconds = 5.0e-2;
     solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
     problem_.reset(new ceres::Problem(prob_options));
   }
@@ -344,7 +344,7 @@ private:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
     
-    double weight = 1.0 / cloud->size();
+    double weight = 1.4 / cloud->size();
     
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)

@@ -16,11 +16,9 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   Eigen::Vector3d radar_frame_ray = radar_to_imu_mat.transpose() * target_ray_;
 
   // reweight cost function based on x, y, and z components
-  // (lower weight if target is more in z or y direction,
-  // higher weight for x)
-  radar_frame_ray[0] *= 1.2;
-  radar_frame_ray[1] *= 0.30;
-  radar_frame_ray[2] *= 0.075;
+  radar_frame_ray[0] *= 1.3;
+  radar_frame_ray[1] *= 1.0;
+  radar_frame_ray[2] *= 0.3;
   weight_ = weight * radar_frame_ray.lpNorm<1>();
 }
 
