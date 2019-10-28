@@ -20,13 +20,14 @@ class dopplerMLESAC():
 
         ## define MLESAC parameters
         self.sample_size    = self.model.min_pts     # the minimum number of data values required to fit the model
-        self.max_iterations = 20    # the maximum number of iterations allowed in the algorithm
+        self.max_iterations = 25    # the maximum number of iterations allowed in the algorithm
         self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
         self.converge_thres = 10    # change in data log likelihood fcn required to indicate convergence
 
-        self.param_vec_        = None  # body-frame velocity vector - to be estimated by MLESAC
-        self.param_vec_mlesac_ = None  # array_like param_vec_ with shape (n,)
-        self.param_vec_ols_    = None  # array_like param_vec_ with shape (n,)
+        self.param_vec_        = None   # body-frame velocity vector - to be estimated by MLESAC
+        self.param_vec_mlesac_ = None   # array_like param_vec_ with shape (n,)
+        self.param_vec_ols_    = None   # array_like param_vec_ with shape (n,)
+        self.covariance        = None   # covariance of parameter estimate, shape (p,p)
 
     ## model fit fcn
     def fit(self, data):

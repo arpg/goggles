@@ -56,14 +56,19 @@ class RadarDopplerModel3D:
     # measurement generative (forward) model: model->measurements
     def simulateRadarDoppler(self, model, data, eps, delta):
         Ntargets = data.shape[0]
-        radar_doppler = np.zeros((Ntargets,), dtype=np.float32)
+        m = delta.shape[0] / Ntargets
 
         # unpack radar data
         radar_azimuth = data[:,0]
         radar_elevation = data[:,1]
 
-        delta_theta = delta[:Ntargets]
-        delta_phi = delta[-Ntargets:]
+        ## "un-interleave" delta vector into (Ntargets x m) matrix
+        delta = delta.reshape((Ntargets,m))
+        delta_theta = delta[:,0]
+        delta_phi   = delta[:,1]
+
+        ## init radar Doppler vector
+        radar_doppler = np.zeros((Ntargets,), dtype=np.float32)
 
         for i in range(Ntargets):
             ## add measurement noise distributed as N(0,sigma_theta)

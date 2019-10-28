@@ -36,7 +36,7 @@ class OrthogonalDistanceRegression:
         radar_elevation = data[:,2]
 
         ## dimensionality of data
-        Ntargets = delta0.shape[0]
+        Ntargets = data.shape[0]
         p = beta0.shape[0]
         m = self.model.d.shape[0]
 
@@ -79,18 +79,21 @@ class OrthogonalDistanceRegression:
         # s = np.ones((p,), dtype=np.float32)
 
         iter = 1
-        while np.linalg.norm(s) > converge_thres:
+        while np.linalg.norm(s) > self.converge_thres:
 
             if p == 2:
                 G, V, M = self.getJacobian2D(data[:,1], delta, beta, weights, E)
 
             elif p ==3:
-                G, V, M = self.getJacobian3D(data[:,1:2], delta, beta, weights, E)
+                # G, V, M = self.getJacobian3D(data[:,1:2], delta, beta, weights, E)
+                G, V, M = self.getJacobian3D(np.column_stack((data[:,1],data[:,2])), \
+                                             delta, beta, weights, E)
             else:
                 rospy.logerr("odr: initial guess must be a 2D or 3D vector")
 
             doppler_predicted = self.model.simulateRadarDoppler(beta, \
-                    radar_azimuth, np.zeros((Ntargets,), dtype=np.float32), delta)
+                    np.column_stack((data[:,1],data[:,2])), \
+                    np.zeros((Ntargets,), dtype=np.float32), delta)
 
             ## re-calculate epsilon
             eps = np.subtract(doppler_predicted, radar_doppler)
@@ -103,8 +106,14 @@ class OrthogonalDistanceRegression:
             ## Compute s via QR factorization of Gbar
             Q,R = np.linalg.qr(Gbar,mode='reduced')
             s = np.squeeze(np.linalg.solve(R,np.matmul(Q.T,y)))
-            ### STOPPED HERE ###################################################
             # t = -Einv*(V'*M^2*(eps + G*s - V*Einv*D*delta) + D*delta)
+
+            ## TODO: clean this up
+            t0 = np.matmul(D,delta)
+            t1 = np.matmul(G,s)
+            t2 = np.matmul(V,np.matmul(Einv,t0))
+            t3 = np.matmul(V.conj().T,np.matmul(M,M))
+            t = -np.matmul(Einv,np.matmul(t3,(eps + t1 - t2)) + t0)
 
             # use s and t to iteratively update beta and delta, respectively
             beta = beta + np.matmul(S,s)
@@ -153,7 +162,7 @@ class OrthogonalDistanceRegression:
 
         return G, V, M
 
-    def getJacobian3D(self, X, delta, beta, weights, e):
+    def getJacobian3D(self, X, delta, beta, weights, E):
         pass
         ## NOTE: We will use ODRPACK95 notation where the total Jacobian J has
         ## block components G, V and D:
@@ -169,15 +178,18 @@ class OrthogonalDistanceRegression:
         p = beta.shape[0]
         m = delta.shape[0] / Ntargets
 
+        theta = X[:,0]
+        phi   = X[:,1]
+
         ## "un-interleave" delta vector into (Ntargets x m) matrix
-        # delta = reshape(delta,[m,Ntargets])';
-        # delta_theta = delta(:,1);
-        # delta_phi   = delta(:,2);
+        delta = delta.reshape((Ntargets,m))
+        delta_theta = delta[:,0]
+        delta_phi   = delta[:,1]
 
         ## defined to simplify the following calculations
         ### STOPPED HERE #######################################################
-        # x1 = theta + delta_theta;
-        # x2 = phi + delta_phi;
+        x1 = theta + delta_theta
+        x2 = phi + delta_phi
 
         # initialize
         G = np.zeros((Ntargets,p), dtype=np.float32)
@@ -185,11 +197,23 @@ class OrthogonalDistanceRegression:
         M = np.zeros((Ntargets,Ntargets), dtype=np.float32)
 
         for i in range(Ntargets):
-            G[i,:] = weights[i]*np.array([np.cos(X[i] + delta[i]), np.sin(X[i] + delta[i])])
-            V[i,i] = weights[i]*(-beta[0]*np.sin(X[i] + delta[i]) + beta[1]*np.cos(X[i] + delta[i]))
+            G[i,:] = weights[i] * np.array([np.cos(x1[i])*np.cos(x2[i]), \
+                                            np.sin(x1[i])*np.cos(x2[i]), \
+                                            np.sin(x2[i])])
+            # V[i,2*i-1:2*i] = weights[i] * np.array([
+            #     -beta[0]*np.sin(x1[i])*np.cos(x2[i]) + beta[1]*np.cos(x1[i])*np.cos(x2[i]), \
+            #     -beta[0]*np.cos(x1[i])*np.sin(x2[i]) - beta[1]*np.sin(x1[i])*np.sin(x2[i]) + \
+            #      beta[2]*np.cos(x2[i])])
+
+            V[i,2*1-1] = weights[i]*(-beta[0]*np.sin(x1[i])*np.cos(x2[i]) + \
+                                      beta[1]*np.cos(x1[i])*np.cos(x2[i]))
+
+            V[i,2*i] = weights[i]*(-beta[0]*np.cos(x1[i])*np.sin(x2[i]) - \
+                                    beta[1]*np.sin(x1[i])*np.sin(x2[i]) + \
+                                    beta[2]*np.cos(x2[i]))
 
             ## (ODR-1987 Prop. 2.1)
-            w =  V[i,i]**2 / E[i,i]
+            w =  (V[i,2*i-1]**2 / E[2*i-1,2*i-1]) + (V[i,2*i]**2 / E[2*i,2*i])
             M[i,i] = np.sqrt(1/(1+w));
 
         return G, V, M
@@ -206,16 +230,17 @@ def test_odr(model):
     ## define MLESAC parameters
     report_scores = False
 
+
     ## define ODR parameters
     s = np.ones((model.min_pts,), dtype=np.float32)
     converge_thres = 0.0005
     max_iter = 50
-    get_covar = True
+    get_covar = False
 
     ## init instances of MLESAC class
     base_estimator = dopplerMLESAC(model)
-    mlesac = MLESAC(base_estimator,False,report_scores)
-    mlesac_ols = MLESAC(base_estimator,True,report_scores)
+    mlesac = MLESAC(base_estimator,report_scores,False)
+    mlesac_ols = MLESAC(base_estimator,report_scores,True,True)
 
     ## init instance of ODR class
     odr = OrthogonalDistanceRegression(model,converge_thres,max_iter,debug=False)
@@ -260,27 +285,35 @@ def test_odr(model):
     mlesac_inliers = mlesac.inliers_
     time_mlesac = time.time() - start_time
 
+    print("Ninliers = " + str(mlesac.inliers_.shape[0]))
+
     ## get MLSESAC + OLS solution
     start_time = time.time()
     mlesac_ols.mlesac(radar_data)
     model_mlesac_ols = mlesac.estimator_.param_vec_ols_
     time_mlesac_ols = time.time() - start_time
 
+    ## concatenate inlier data for ODR regression
+    odr_data = np.column_stack((radar_doppler[mlesac.inliers_], \
+                                radar_azimuth[mlesac.inliers_], \
+                                radar_elevation[mlesac.inliers_]))
+
     ## get MLESAC + ODR solution
-    # start_time = time.time()
-    # weights = (1/model.sigma_vr)*np.ones((Ntargets,), dtype=np.float32)
-    # model_odr, _, odr_iter = odr.odr(radar_data, model_mlesac, weights, s, get_covar)
-    # time_odr = time.time() - start_time
+    start_time = time.time()
+    weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
+    model_odr, _, odr_iter = odr.odr(odr_data, model_mlesac, weights, s, get_covar)
+    time_odr = time.time() - start_time
 
     print("\nMLESAC + ODR Velocity Profile Estimation:\n")
-    print("Truth\t MLESAC\t\tMLESAC+OLS\tMLESAC+ODR")
+    print("Truth\t MLESAC\t\t MLESAC+OLS\t MLESAC+ODR")
     for i in range(base_estimator.sample_size):
         print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
-              + " \t" + str.format('{0:.4f}',model_mlesac[i]) \
-              + " \t" + str.format('{0:.4f}',model_mlesac_ols[i]))
+              + " \t " + str.format('{0:.4f}',model_mlesac_ols[i]) \
+              + " \t " + str.format('{0:.4f}',model_odr[i]))
 
     rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
     rmse_mlesac_ols = np.sqrt(np.mean(np.square(velocity - model_mlesac_ols)))
+    rmse_odr = np.sqrt(np.mean(np.square(velocity - model_odr)))
     # rmse_mlesac = np.sqrt(np.square(velocity - model_mlesac))
     # rmse_mlesac_ols = np.sqrt(np.square(velocity - model_mlesac_ols))
 
@@ -289,6 +322,8 @@ def test_odr(model):
           str.format('{0:.2f}',1000*time_mlesac))
     print("MLESAC + OLS\t" + str.format('{0:.4f}',rmse_mlesac_ols) + "\t\t" + \
           str.format('{0:.2f}',1000*time_mlesac_ols))
+    print("MLESAC + ODR\t" + str.format('{0:.4f}',rmse_odr) + "\t\t" + \
+          str.format('{0:.2f}',1000*time_odr))
 
 
 if __name__=='__main__':

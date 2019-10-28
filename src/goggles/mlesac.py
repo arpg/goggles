@@ -20,7 +20,7 @@ from goggles.base_estimator_mlesac import dopplerMLESAC
 
 class MLESAC:
 
-    def __init__(self, base_estimator, ols_flag=False, report_scores=False):
+    def __init__(self, base_estimator, report_scores=False, ols_flag=False, get_covar=False):
         self.estimator_ = base_estimator
 
         self.inliers_    = None     # inlier data points
@@ -29,6 +29,7 @@ class MLESAC:
 
         self.report_scores = report_scores  # report data log likelihood of each iteration
         self.ols_flag      = ols_flag       # enable OLS solution on inlier set
+        self.get_covar     = get_covar      # return estimate covariance?
 
     def mlesac(self, data):
 
@@ -113,6 +114,14 @@ class MLESAC:
             else:
                 ## do nothing - MLESAC solution is better than OLS solution
                 pass
+
+            if self.get_covar:
+                eps = ols_soln.fun      # residual vector as solution
+                jac = ols_soln.jac      # modified Jacobian matrix at solution
+
+                self.estimator_.covariance = np.matmul(eps.T,eps) * \
+                    np.linalg.inv(np.matmul(jac.T,jac))
+
         else:
             self.estimator_.param_vec_ols_ = \
                 float('nan')*np.ones((self.estimator_.sample_size,))
@@ -122,12 +131,13 @@ class MLESAC:
 
 def test(model):
     ## define MLESAC parameters
-    ols_flag = True
     report_scores = False
+    ols_flag = True
+    get_covar = True
 
     # init instance of base estimator dopplerMLESAC class
     base_estimator = dopplerMLESAC(model)
-    mlesac = MLESAC(base_estimator, ols_flag, report_scores)
+    mlesac = MLESAC(base_estimator, report_scores, ols_flag, get_covar)
 
     ## outlier std deviation
     sigma_vr_outlier = 1.5
