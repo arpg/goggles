@@ -27,7 +27,7 @@ class dopplerMLESAC():
         self.param_vec_        = None   # body-frame velocity vector - to be estimated by MLESAC
         self.param_vec_mlesac_ = None   # array_like param_vec_ with shape (n,)
         self.param_vec_ols_    = None   # array_like param_vec_ with shape (n,)
-        self.covariance        = None   # covariance of parameter estimate, shape (p,p)
+        self.covariance_        = None   # covariance of parameter estimate, shape (p,p)
 
     ## model fit fcn
     def fit(self, data):

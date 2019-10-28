@@ -116,10 +116,10 @@ class MLESAC:
                 pass
 
             if self.get_covar:
-                eps = ols_soln.fun      # residual vector as solution
+                eps = ols_soln.fun      # residual vector at solution
                 jac = ols_soln.jac      # modified Jacobian matrix at solution
 
-                self.estimator_.covariance = np.matmul(eps.T,eps) * \
+                self.estimator_.covariance_ = np.matmul(eps.T,eps) * \
                     np.linalg.inv(np.matmul(jac.T,jac))
 
         else:
@@ -135,9 +135,18 @@ def test(model):
     ols_flag = True
     get_covar = True
 
-    # init instance of base estimator dopplerMLESAC class
-    base_estimator = dopplerMLESAC(model)
-    mlesac = MLESAC(base_estimator, report_scores, ols_flag, get_covar)
+    # init instance of MLESAC class
+    base_estimator_mlesac = dopplerMLESAC(model)
+    mlesac = MLESAC(base_estimator_mlesac, report_scores, ols_flag, get_covar)
+
+    # instantiate scikit-learn RANSAC object with base_estimator class object
+    base_estimator_ransac = dopplerRANSAC(model=model)
+    ransac = RANSACRegressor(base_estimator=base_estimator_ransac, \
+        min_samples=base_estimator_ransac.sampleSize, \
+        residual_threshold=base_estimator_ransac.max_distance, \
+        is_data_valid=self.base_estimator.is_data_valid, \
+        max_trials=base_estimator_ransac.max_iterations, \
+        loss=self.base_estimator.loss)
 
     ## outlier std deviation
     sigma_vr_outlier = 1.5
@@ -169,13 +178,22 @@ def test(model):
     radar_azimuth = np.concatenate((inlier_data[:,1],outlier_data[:,1]),axis=0)
     radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
+    ## get MLESAC estimate + inlier set
     start_time = time.time()
     radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
     mlesac.mlesac(radar_data)
     model_mlesac = mlesac.estimator_.param_vec_mlesac_
     model_ols = mlesac.estimator_.param_vec_ols_
     inliers = mlesac.inliers_
-    end_time = time.time()
+    time_mlesac = time.time() - start_time
+
+    ## get scikit-learn RANSAC estimate + inlier set
+    start_time = time.time()
+    self.ransac.fit(radar_data)
+    model_ransac = np.squeeze(self.ransac.estimator_.param_vec_)
+    inlier_mask = self.ransac.inlier_mask_
+    outlier_mask = np.logical_not(inlier_mask)
+    time_ransac = time.time() - start_time
 
     print("\nMLESAC Velocity Profile Estimation:\n")
     print("Truth\t MLESAC\t\tOLS")

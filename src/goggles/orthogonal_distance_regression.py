@@ -20,7 +20,7 @@ from goggles.mlesac import MLESAC
 
 class OrthogonalDistanceRegression:
 
-    def __init__(self, model, converge_thres, max_iter, debug=False):
+    def __init__(self, model, converge_thres=0.0005, max_iter=50, debug=False):
         self.model = model                      # radar Doppler model (2D or 3D)
         self.converge_thres = converge_thres    # ODR convergence threshold on step size s
         self.maxIterations = max_iter           # max number of ODR iterations
