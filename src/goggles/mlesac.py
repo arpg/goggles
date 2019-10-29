@@ -25,9 +25,9 @@ class MLESAC:
     def __init__(self, base_estimator, report_scores=False, ols_flag=False, get_covar=False):
         self.estimator_ = base_estimator
 
-        self.inliers_    = None     # inlier data points
-        self.scores_     = None     # data log likelihood associated with each iteration
-        self.iter_       = None     # number of iterations until convergence
+        self.inliers_  = None     # inlier data points
+        self.scores_   = None     # data log likelihood associated with each iteration
+        self.iter_     = None     # number of iterations until convergence
 
         self.report_scores = report_scores  # report data log likelihood of each iteration
         self.ols_flag      = ols_flag       # enable OLS solution on inlier set
@@ -35,7 +35,7 @@ class MLESAC:
 
     def mlesac(self, data):
 
-        Ntargets = data.shape[0]    # data.shape = (Ntargets,3)
+        Ntargets = data.shape[0]    # data.shape = (Ntargets,p)
 
         bestScore = -np.inf
         bestInliers = []
@@ -83,7 +83,7 @@ class MLESAC:
                 iter+=1
                 # print("iter = " + str(iter) + "\tscore = " + str(score))
             else:
-                ## do nothing - cannot derive a valid model fromtargets in
+                ## do nothing - cannot derive a valid model from targets in
                 ## the same azimuth/elevation bins
 
                 # print("mlesac: INVALID DATA SAMPLE")
@@ -199,7 +199,7 @@ def test(model):
     # time_ransac = time.time() - start_time
 
     print("\nMLESAC Velocity Profile Estimation:\n")
-    print("Truth\t MLESAC\t\tOLS")
+    print("Truth\t MLESAC\t\tMLESAC+OLS")
     for i in range(base_estimator_mlesac.sample_size):
         print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
               + " \t" + str.format('{0:.4f}',model_ols[i]))

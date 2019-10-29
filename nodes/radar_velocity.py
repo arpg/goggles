@@ -141,7 +141,7 @@ class VelocityEstimator():
         # else:
         #     rospy.logerr("velocity_estimator_node main(): ESTIMATOR TYPE IMPROPERLY SPECIFIED")
 
-        ## apply AIR thresholding to remove near-field targets
+        ## apply AIRE thresholding to remove near-field targets
         data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
         idx_AIRE = self.utils.AIRE_filtering(data_AIRE, self.thresholds)
         Ntargets_valid = idx_AIRE.shape[0]
