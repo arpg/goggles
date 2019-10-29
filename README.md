@@ -13,6 +13,10 @@ The following dependencies need to be installed independently:
 ## 2.1 Dependencies
  - [Ceres Solver](http://ceres-solver.org/installation.html)
 
+## 2.2 GTest
+ - Do NOT use the package manager to install `libgtest-dev`
+ - Install The GTest librairies by following the instructions [here](https://stackoverflow.com/questions/13513905/how-to-set-up-googletest-as-a-shared-library-on-linux)
+
 If using TI millimeter wave sensors the [ti\_mmwave\_rospkg](https://github.com/arpg/ti_mmwave_rospkg) is also required.
 
 ## 2.2 Building
