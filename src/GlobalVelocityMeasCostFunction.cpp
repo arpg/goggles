@@ -1,8 +1,8 @@
 #include <GlobalVelocityMeasCostFunction.h>
 
 GlobalVelocityMeasCostFunction::GlobalVelocityMeasCostFunction(
-  Eigen::Vector3d &radar_v,
-  Eigen::Vector3d &vicon_v) 
+  Eigen::Vector3d &vicon_v,
+  Eigen::Vector3d &radar_v) 
   : radar_v_(radar_v), 
     vicon_v_(vicon_v) 
 {

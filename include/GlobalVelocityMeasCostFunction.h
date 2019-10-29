@@ -13,8 +13,8 @@
 class GlobalVelocityMeasCostFunction : public ceres::CostFunction, public ErrorInterface
 {
 public:
-  GlobalVelocityMeasCostFunction(Eigen::Vector3d &radar_v,
-                                 Eigen::Vector3d &vicon_v);
+  GlobalVelocityMeasCostFunction(Eigen::Vector3d &vicon_v,
+                                 Eigen::Vector3d &radar_v);
 
   ~GlobalVelocityMeasCostFunction();
 
