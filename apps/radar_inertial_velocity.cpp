@@ -103,7 +103,7 @@ public:
 
     // set up ceres problem
     doppler_loss_ = new ceres::HuberLoss(1.0);
-    imu_loss_ = new ceres::HuberLoss(1.0);
+    imu_loss_ = new ceres::CauchyLoss(1.0);
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
@@ -344,7 +344,7 @@ private:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
     
-    double weight = 1.4 / cloud->size();
+    double weight = 1.25 / cloud->size();
     
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
