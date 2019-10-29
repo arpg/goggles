@@ -91,8 +91,9 @@ class VelocityEstimator():
         self.pc_pub = rospy.Publisher(ns + self.mmwave_topic + '/filtered', PointCloud2, queue_size=10)
 
         ## init publisher
-        twist_topic = 'goggles'
-        self.twist_pub = rospy.Publisher(ns + twist_topic + '/velocity', TwistWithCovarianceStamped, queue_size=10)
+        twist_topic = '/' + self.mmwave_topic.split('/')[1] + '/velocity'
+        self.twist_pub = rospy.Publisher(ns + twist_topic, TwistWithCovarianceStamped, queue_size=10)
+        rospy.loginfo("INIT: VelocityEstimator Node publishing on: " + ns + twist_topic)
 
         ## define filtering threshold parameters - taken from velocity_estimation.m
         self.azimuth_thres   = rospy.get_param('~azimuth_thres')
