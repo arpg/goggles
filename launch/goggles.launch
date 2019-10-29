@@ -5,13 +5,14 @@
 <launch>
 
   <!-- set default for ti_mmwave_rospkg args -->
-  <arg name="launch_radar" default="true" doc="launch radar in addition to velocity estimator?"/>
   <arg name="config" default="rangeRes_0-12_velRes_0-04_velMax_2-56_3d_10Hz" doc="3d best velocity resolution - Doppler peak grouping enabled"/>
   <arg name="sdk" default="03_02_00_04"/>
   <arg name="command_port" default="/dev/ttyACM0"/>
   <arg name="data_port" default="/dev/ttyACM1"/>
   <arg name="mmwave_topic" default="/mmWaveDataHdl/RScan"/>
 
+  <arg name="launch_radar" default="true" doc="launch radar in addition to velocity estimator?"/>
+  <arg name="publish_inliers" default="true"/>
   <arg name="rviz" default="false"/>
 
   <!-- Call mmWave sensor launch file -->
@@ -28,6 +29,7 @@
   <!-- launch goggles velocity estimation node -->
   <node pkg="goggles" type="radar_velocity" name="goggles">
       <param name="radar_topic" value="$(arg mmwave_topic)"/>
+      <param name="publish_inliers" value="$(arg publish_inliers)"/>
   </node>
 
   <!-- Launch Rviz with pre-defined configuration to view mmWave sensor detected object data (color by elevation) -->
