@@ -16,10 +16,17 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   Eigen::Vector3d radar_frame_ray = radar_to_imu_mat.transpose() * target_ray_;
 
   // reweight cost function based on x, y, and z components
-  radar_frame_ray[0] *= 1.3;
-  radar_frame_ray[1] *= 1.0;
-  radar_frame_ray[2] *= 0.3;
-  weight_ = weight * radar_frame_ray.lpNorm<1>();
+  //Eigen::Vector3d weights(1.0, 0.8, 0.0);
+  //weights.normalize();
+  //weight_ = weight * radar_frame_ray.dot(weights);
+
+  // reweight based on elevation and azimuth cosines
+  Eigen::Vector2d el_vec(radar_frame_ray[0], radar_frame_ray[2]);
+  el_vec.normalize();
+  Eigen::Vector2d az_vec(radar_frame_ray[0], radar_frame_ray[1]);
+  az_vec.normalize();
+  weight_ = weight * el_vec[0] * az_vec[0];
+  
 }
 
 GlobalDopplerCostFunction::~GlobalDopplerCostFunction(){}
