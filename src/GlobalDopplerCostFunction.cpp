@@ -78,8 +78,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
         J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
 
-      //LOG(ERROR) << "J0: " << J0_mapped;
-
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
@@ -98,8 +96,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
         J1_mapped(jacobians[1]);
       J1_mapped = (C_WS * target_ray_).transpose() * weight_;
 
-      //LOG(ERROR) << "J1: " << J1_mapped;
-
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
@@ -112,7 +108,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       }
     }
   }
-  //LOG(ERROR) << "residual: " << residuals[0];
   return true;
 }
 
