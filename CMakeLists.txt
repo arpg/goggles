@@ -5,8 +5,6 @@ set(CMAKE_CXX_STANDARD 11)
 ## Add support for C++11, supported in ROS Kinetic and newer
 add_definitions(-std=c++11)
 
-#set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/)
-
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -66,6 +64,7 @@ set( HEADERS
   ${INC_DIR}/GlobalDopplerCostFunction.h
   ${INC_DIR}/VelocityChangeCostFunction.h
   ${INC_DIR}/VelocityMeasCostFunction.h
+  ${INC_DIR}/GlobalVelocityMeasCostFunction.h
   ${INC_DIR}/ImuVelocityCostFunction.h
   ${INC_DIR}/GlobalImuVelocityCostFunction.h
   ${INC_DIR}/AHRSOrientationCostFunction.h
@@ -82,6 +81,7 @@ set( SOURCES
   ${SRC_DIR}/GlobalDopplerCostFunction.cpp
   ${SRC_DIR}/VelocityChangeCostFunction.cpp
   ${SRC_DIR}/VelocityMeasCostFunction.cpp
+  ${SRC_DIR}/GlobalVelocityMeasCostFunction.cpp
   ${SRC_DIR}/ImuVelocityCostFunction.cpp
   ${SRC_DIR}/GlobalImuVelocityCostFunction.cpp
   ${SRC_DIR}/AHRSOrientationCostFunction.cpp
@@ -119,22 +119,22 @@ link_directories( ${PCL_LIBRARY_DIRS} )
 
 add_definitions(${PCL_DEFINITIONS})
 
-#add_subdirectory(test)
-
 #catkin_add_gtest(testImuIntegration test/testImuIntegration.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testImuIntegration ${LINK_LIBS})
 #catkin_add_gtest(testMarginalization test/testMarginalization.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testMarginalization ${LINK_LIBS})
 #catkin_add_gtest(testGlobalImuCostFunction test/testGlobalImuCostFunction.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testGlobalImuCostFunction ${LINK_LIBS})
-catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
-target_link_libraries(testGlobalDoppler ${LINK_LIBS})
+#catkin_add_gtest(testGlobalDoppler test/testGlobalDoppler.cpp ${SOURCES} ${HEADERS})
+#target_link_libraries(testGlobalDoppler ${LINK_LIBS})
 #catkin_add_gtest(testAHRSOrientationCostFunction test/testAHRSOrientationCostFunction ${SOURCES} ${HEADERS})
 #target_link_libraries(testAHRSOrientationCostFunction ${LINK_LIBS})
 #catkin_add_gtest(testAHRSYawCostFunction test/testAHRSYawCostFunction ${SOURCES} ${HEADERS})
 #target_link_libraries(testAHRSYawCostFunction ${LINK_LIBS})
 #catkin_add_gtest(testBodyDopplerSacProblem test/testBodyDopplerSacProblem.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testBodyDopplerSacProblem ${LINK_LIBS})
+catkin_add_gtest(testGlobalVelocityMeas test/testGlobalVelocityMeas.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testGlobalVelocityMeas ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity
