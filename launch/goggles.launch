@@ -5,7 +5,7 @@
 <launch>
   <!-- set default for ti_mmwave_rospkg args -->
   <arg name="launch_radar" default="true" doc="launch radar in addition to velocity estimator?"/>
-  <arg name="config" default="rangeRes_0-12_velRes_0-04_rangeMax_12-79_3d_10Hz" doc="3d best velocity resolution - Doppler peak grouping enabled"/>
+  <arg name="config" default="rangeRes_0-12_velRes_0-04_velMax_2-56_3d_10Hz" doc="3d best velocity resolution - Doppler peak grouping enabled"/>
   <arg name="sdk" default="03_02_00_04"/>
   <arg name="command_port" default="/dev/ttyACM0"/>
   <arg name="data_port" default="/dev/ttyACM1"/>
