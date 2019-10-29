@@ -29,7 +29,7 @@ void getMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &measurement
       i++;
     }
 
-    if (i != 4)
+    if (i < 4)
       LOG(FATAL) << "wrong number of tokens in line";
 
     Eigen::Vector3d vel;
@@ -44,30 +44,55 @@ void getMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &measurement
 std::vector<std::pair<double,Eigen::Vector3d>> 
 smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> meas)
 {
+  std::vector<std::pair<double,Eigen::Vector3d>> result;
+  int width = 20;
+  int back = width / 2;
+  int forward = width - back;
 
+  if (meas.size() <= width)
+    LOG(FATAL) << "given vector does not contain enough measurements to smooth";
+
+  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it;
+  it = meas.begin() + back;
+
+  while (it != (meas.end() - forward))
+  {
+    Eigen::Vector3d sum_meas = Eigen::Vector3d::Zero();
+
+    for (int i = 0; i < width; i++)
+      sum_meas += (it + i)->second;
+
+    Eigen::Vector3d mean_meas = sum_meas / double(width);
+    result.push_back(std::make_pair(it->first,mean_meas));
+    it++;
+  }
+
+  return result;
 }
 
-// resamples the measurements in meas2 to temporally align with those in meas1
-// returns resampled meas2 vector
+// resamples the measurements in meas1 to temporally align with those in meas0
+// returns resampled meas1 vector
 std::vector<std::pair<double,Eigen::Vector3d>> 
 temporalAlign(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
                    std::vector<std::pair<double,Eigen::Vector3d>> &meas1)
 {
   std::vector<std::pair<double,Eigen::Vector3d>> result;
 
+  // first ensure the timestamp of it1 occurs before it0
+  while (meas0.size() > 0 && meas1.front().first > meas0.front().first)
+    meas0.erase(meas0.begin());
+
+  // then ensure first two measurements in meas1 bracket first measurement in meas0
+  while (meas1.size() > 1 && meas1[1].first < meas0.front().first)
+    meas1.erase(meas1.begin());
+
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0 = meas0.begin();
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas1.begin();
 
-  // first ensure the timestamp of it2_pre occurs before it1
-  while (it0 != meas0.end() && it0->first < it1->first)
-  {
-    meas0.erase(it0);
-    it0 = meas0.begin();
-  }
-
+  
   // finally iterate through both vectors, creating resampled measurements
   // by interpolating those in meas2 to match the timestamps in meas1
-  for ( ; it0 != meas1.end(); it0++)
+  for ( ; it0 != meas0.end(); it0++)
   {
     // get timestamp to interpolate to
     double ts0 = it0->first;
@@ -75,10 +100,11 @@ temporalAlign(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
     // find measurements in meas1 bracketing current measurement in meas0
     while ((it1 + 1) != meas1.end() && (it1 + 1)->first < ts0)
       it1++;
+
     if (it1->first > ts0)
-      LOG(ERROR) << "timestamp from meas0 is greater than the timestamp from meas1";
+      LOG(FATAL) << "timestamp from meas0 is greater than the timestamp from meas1";
     if ((it1 + 1)->first < ts0)
-      LOG(ERROR) << "timestamp from meas0+1 is less than the timestamp from meas1";
+      LOG(FATAL) << "timestamp from meas0+1 is less than the timestamp from meas1";
 
     // interpolate measurement
     double ts1_pre = it1->first;
@@ -92,7 +118,7 @@ temporalAlign(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
 
   if (result.size() != meas0.size())
     LOG(ERROR) << "size of resampled vector not equal to size of source vector";
-
+  
   return result;
 }
 
@@ -106,18 +132,22 @@ void findRotation(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
   ceres::Solver::Options options;
 
   // create single parameter block
-  Eigen::Quaterniond q_vr = Eigen::Quaterniond::Identity();
+  Eigen::Quaterniond q_vr = Eigen::Quaterniond::UnitRandom();
+  QuaternionParameterization* qp = new QuaternionParameterization();
   problem.AddParameterBlock(q_vr.coeffs().data(),4);
+  problem.SetParameterization(q_vr.coeffs().data(), qp);
+
+  ceres::LossFunction* loss = new ceres::CauchyLoss(1.0);
 
   // add all residual blocks
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0 = meas0.begin();
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas1.begin();
   while (it0 != meas0.end() && it1 != meas1.end())
   {
-    ceres::CostFunction *cost_func = 
+    ceres::CostFunction* cost_func = 
       new GlobalVelocityMeasCostFunction(it0->second, it1->second);
 
-    problem.AddResidualBlock(cost_func, NULL, q_vr.coeffs().data());
+    problem.AddResidualBlock(cost_func, loss, q_vr.coeffs().data());
 
     it0++;
     it1++;
@@ -133,6 +163,7 @@ void findRotation(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
 
 int main(int argc, char* argv[])
 {
+  google::InitGoogleLogging(argv[0]);
   if (argc != 3)
   {
     LOG(FATAL) << "wrong number of arguments\n" 
@@ -147,12 +178,14 @@ int main(int argc, char* argv[])
 
   getMeasurements(vicon_measurements, vicon_filename);
   getMeasurements(radar_measurements, radar_filename);
-
+  
   std::vector<std::pair<double,Eigen::Vector3d>> smooth_vicon;
   smooth_vicon = smoothMeasurements(vicon_measurements);
-
+  
   std::vector<std::pair<double,Eigen::Vector3d>> interp_radar;
   interp_radar = temporalAlign(smooth_vicon, radar_measurements);
-
+  
   findRotation(smooth_vicon, interp_radar);
+  
+  return 0;
 }

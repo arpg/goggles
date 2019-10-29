@@ -50,8 +50,6 @@ bool GlobalVelocityMeasCostFunction::EvaluateWithMinimalJacobians(
                        vicon_v_[2],          0.0, -vicon_v_[0],
                       -vicon_v_[1],  vicon_v_[0],          0.0;
 
-      LOG(ERROR) << "q_vr: " << q_vr.coeffs().transpose();
-
       Eigen::Matrix<double,3,3,Eigen::RowMajor> J_min = C_vr * radar_v_cross * C_rv;
       Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
       qp.ComputeLiftJacobian(parameters[0],J_lift.data());
