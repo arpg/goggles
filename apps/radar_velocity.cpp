@@ -79,7 +79,7 @@ public:
     prob_options.enable_fast_removal = true;
     //solver_options_.check_gradients = true;
     //solver_options_.gradient_check_relative_precision = 1.0e-6;
-    solver_options_.num_threads = 4;
+    solver_options_.num_threads = 8;
     solver_options_.max_num_iterations = 300;
     solver_options_.update_state_every_iteration = true;
     solver_options_.function_tolerance = 1e-10;
@@ -118,22 +118,20 @@ public:
 		{
 			LOG(ERROR) << "no doppler reading in current cloud";
 		}
-		else
-		{
-    	geometry_msgs::TwistWithCovarianceStamped vel_out;
-    	vel_out.header.stamp = msg->header.stamp;
 
-    	// Get velocity measurements
-    	auto start = std::chrono::high_resolution_clock::now();
-    	GetVelocityCeres(cloud, timestamp, vel_out);
-    	//GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
-    	auto finish = std::chrono::high_resolution_clock::now();
-    	std::chrono::duration<double> elapsed = finish - start;
-    	sum_time_ += elapsed.count();
-    	num_iter_++;
-    	LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
-    	vel_est_publisher_.publish(vel_out);
-		}
+    geometry_msgs::TwistWithCovarianceStamped vel_out;
+    vel_out.header.stamp = msg->header.stamp;
+
+    // Get velocity measurements
+    auto start = std::chrono::high_resolution_clock::now();
+    GetVelocityCeres(cloud, timestamp, vel_out);
+    //GetVelocityIRLS(cloud, coeffs, 100, 1.0e-10, vel_out);
+    auto finish = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = finish - start;
+    sum_time_ += elapsed.count();
+    num_iter_++;
+    LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
+    vel_est_publisher_.publish(vel_out);
   }
 
 private:
@@ -146,6 +144,7 @@ private:
   ceres::CauchyLoss *accel_loss_;
   //std::deque<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> velocities_;
   std::deque<Eigen::Vector3d*> velocities_;
+  std::deque<std::vector<Eigen::Vector3d*>> ray_errors_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<ceres::Problem> problem_;
@@ -324,12 +323,32 @@ private:
 		{
 			velocities_.push_front(new Eigen::Vector3d(*velocities_.front()));
 		}
+    std::vector<Eigen::Vector3d*> ray_err;
+    ray_errors_.push_front(ray_err);
 		std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
     problem_->AddParameterBlock(velocities_.front()->data(),3);
+    auto start = std::chrono::high_resolution_clock::now(); 
     if (velocities_.size() > window_size_)
     {
+      for (int i = 0; i < ray_errors_.back().size(); i++)
+      {
+        problem_->RemoveParameterBlock(ray_errors_.back()[i]->data());
+      }
+      /*
+      for (int i = 0; i < residual_blks_.back().size(); i++)
+      {
+        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
+      }
+      */
+      problem_->RemoveParameterBlock(velocities_.back()->data());
+
+      timestamps_.pop_back();
+      residual_blks_.pop_back();
+      velocities_.pop_back();
+      ray_errors_.pop_back();
+      /*
       // remove marginalization error from problem if it's
       // already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
@@ -352,15 +371,22 @@ private:
       LOG(INFO) << "adding states and residuals to marginalization";
       if (!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
         LOG(ERROR) << "failed to add residuals";
-      std::vector<double*> state_to_marginalize;
-      state_to_marginalize.push_back(velocities_.back()->data());
-      if (!marginalization_error_ptr_->MarginalizeOut(state_to_marginalize))
+
+      std::vector<double*> states_to_marginalize;
+      states_to_marginalize.push_back(velocities_.back()->data());
+
+      for (int i = 0; i < ray_errors_.back().size(); i++)
+        states_to_marginalize.push_back(ray_errors_.back()[i]->data());
+
+      if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
         LOG(ERROR) << "failed to marginalize state";
+
       marginalization_error_ptr_->UpdateErrorComputation();
 
       LOG(INFO) << "deleting old bookkeeping";
 
       velocities_.pop_back();
+      ray_errors_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
 
@@ -384,26 +410,37 @@ private:
           parameter_block_ptrs);
       }
       LOG(INFO) << "done with marginalization";
+      */
     }
+    auto finish = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = finish - start;
+    LOG(ERROR) << "marginalization time: " << elapsed.count();
 
     // calculate uniform weighting for doppler measurements
     double weight = 100.0 / cloud->size();
+    double d = 1.0;
 
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
+      // create parameter for ray error
+      ray_errors_.front().push_back(new Eigen::Vector3d(0.0,0.0,0.0));
+      problem_->AddParameterBlock(ray_errors_.front().back()->data(),3);
+
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
       ceres::CostFunction* doppler_cost_function =
         new BodyVelocityCostFunction(cloud->at(i).doppler,
                                       target,
-                                      weight);
+                                      weight,
+                                      d);
       // add residual block to ceres problem
       ceres::ResidualBlockId res_id =
 					problem_->AddResidualBlock(doppler_cost_function,
                                      doppler_loss_,
-                                     velocities_.front()->data());
+                                     velocities_.front()->data(),
+                                     ray_errors_.front().back()->data());
 
       residual_blks_.front().push_back(res_id);
     }
