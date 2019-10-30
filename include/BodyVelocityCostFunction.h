@@ -14,7 +14,8 @@ class BodyVelocityCostFunction : public ceres::CostFunction, public ErrorInterfa
   public:
     BodyVelocityCostFunction(double doppler,
                               Eigen::Vector3d & target,
-                              double weight);
+                              double weight,
+                              double d);
 
     ~BodyVelocityCostFunction();
 
@@ -33,6 +34,7 @@ class BodyVelocityCostFunction : public ceres::CostFunction, public ErrorInterfa
   protected:
     double doppler_;
     double weight_;
+    double d_;
     Eigen::Vector3d target_ray_;
 };
 
