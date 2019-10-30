@@ -74,6 +74,12 @@ set( HEADERS
 	${INC_DIR}/QuaternionParameterization.h
 	${INC_DIR}/DataTypes.h
   ${INC_DIR}/BodyDopplerSacModel.h
+  ${INC_DIR}/ParameterBlock.h
+  ${INC_DIR}/ParameterBlockSized.h
+  ${INC_DIR}/VelocityParameterBlock.h
+  ${INC_DIR}/BiasParameterBlock.h
+  ${INC_DIR}/DeltaParameterBlock.h
+  ${INC_DIR}/OrientationParameterBlock.h
 )
 
 set( SOURCES 
@@ -89,6 +95,10 @@ set( SOURCES
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
+  ${SRC_DIR}/VelocityParameterBlock.cpp
+  ${SRC_DIR}/BiasParameterBlock.cpp
+  ${SRC_DIR}/DeltaParameterBlock.cpp
+  ${SRC_DIR}/OrientationParameterBlock.cpp
   )
 
 set( RAD_VEL_SRCS
