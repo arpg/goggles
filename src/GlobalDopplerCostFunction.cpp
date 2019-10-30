@@ -16,12 +16,17 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   Eigen::Vector3d radar_frame_ray = radar_to_imu_mat.transpose() * target_ray_;
 
   // reweight cost function based on x, y, and z components
-  // (lower weight if target is more in z or y direction,
-  // higher weight for x)
-  radar_frame_ray[0] *= 1.2;
-  radar_frame_ray[1] *= 0.25;
-  radar_frame_ray[2] *= 0.005;
-  weight_ = weight * radar_frame_ray.lpNorm<1>();
+  //Eigen::Vector3d weights(1.0, 0.8, 0.0);
+  //weights.normalize();
+  //weight_ = weight * radar_frame_ray.dot(weights);
+
+  // reweight based on elevation and azimuth cosines
+  Eigen::Vector2d el_vec(radar_frame_ray[0], radar_frame_ray[2]);
+  el_vec.normalize();
+  Eigen::Vector2d az_vec(radar_frame_ray[0], radar_frame_ray[1]);
+  az_vec.normalize();
+  weight_ = weight * el_vec[0] * az_vec[0];
+  
 }
 
 GlobalDopplerCostFunction::~GlobalDopplerCostFunction(){}
@@ -80,8 +85,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
         J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
 
-      //LOG(ERROR) << "J0: " << J0_mapped;
-
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
@@ -100,8 +103,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
         J1_mapped(jacobians[1]);
       J1_mapped = (C_WS * target_ray_).transpose() * weight_;
 
-      //LOG(ERROR) << "J1: " << J1_mapped;
-
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
@@ -114,7 +115,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       }
     }
   }
-  //LOG(ERROR) << "residual: " << residuals[0];
   return true;
 }
 

@@ -10,6 +10,7 @@
   <arg name="imu_ref_frame" default="imu_frame"/>
   <arg name="radar_ref_frame" default="radar_frame"/>
   <arg name="config_file" default="/home/akramer/code/radar_ws/src/goggles/config/microstrain.yaml"/>
+  <arg name="publish_imu_state" default="false"/>
 
   <arg name="rviz" default="false"/>
   <arg name="launch_radar" default="true"/>
@@ -32,7 +33,7 @@
 	<!-- -1.57 yaw for CU handheld -->
 	<!-- 0 yaw for JPL handheld -->
 	<node pkg="tf" type="static_transform_publisher" name="radar_to_imu"
-    args="0 0 0 0 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
+    args="0 0 0 3.14 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
 
 
   <!-- launch goggles velocity estimation node -->
@@ -42,6 +43,7 @@
       <param name="radar_frame" value="$(arg radar_ref_frame)"/>
       <param name="imu_frame" value="$(arg imu_ref_frame)"/>
       <param name="config" value="$(arg config_file)"/>
+      <param name="publish_imu_state" value="$(arg publish_imu_state)"/>
   </node>
 
   <!-- Launch Rviz with pre-defined configuration to view mmWave sensor detected object data (color by elevation) -->

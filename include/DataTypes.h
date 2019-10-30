@@ -38,6 +38,11 @@ struct ImuParams
 class ImuBuffer
 {
 	public:
+		size_t size()
+		{
+			return measurements_.size();
+		}
+
 		void SetTimeout(double imu_freq)
 		{
 			timeout_ = std::chrono::milliseconds(50 * int((1.0 / imu_freq) * 1000.0));
@@ -98,10 +103,11 @@ class ImuBuffer
 			std::vector<ImuMeasurement> meas_range;
 			
 			if (t0 < GetStartTime())
-				LOG(ERROR) << "start time of requested range ("
-										 << t0 << ") is less than the timestamp"
-										 << " of the first measurement (" 
-										 << measurements_.front().t_ << ")";
+				LOG(ERROR) << std::fixed << std::setprecision(3)
+									 << "start time of requested range ("
+									 << t0 << ") is less than the timestamp"
+									 << " of the first measurement (" 
+									 << measurements_.front().t_ << ")";
 			
 			// block execution until up-to-date imu measurements are available
 			std::unique_lock<std::mutex> lk(mtx_);
@@ -109,7 +115,7 @@ class ImuBuffer
 											  timeout_,
 											  [&t1,this]{return t1 <= GetEndTime();}))
 			{
-				LOG(ERROR) << std::fixed << std::setprecision(5)
+				LOG(ERROR) << std::fixed << std::setprecision(3)
 									 << "waiting for up to date imu measurements has failed\n"
 									 << "             requested t1: " << t1 << '\n'
 									 << "most recent imu timestamp: " << GetEndTime();

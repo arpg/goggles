@@ -113,8 +113,8 @@ int GlobalImuVelocityCostFunction::Propagation(
   double time = t0;
   double end = t1;
 
-  if (imu_measurements.front().t_ >= time 
-      || imu_measurements.back().t_ <= end)
+  if (imu_measurements.front().t_ > time 
+      || imu_measurements.back().t_ < end)
   {
     LOG(ERROR) << "given imu measurements do not cover given timespan";
     return -1;
@@ -128,11 +128,7 @@ int GlobalImuVelocityCostFunction::Propagation(
   // increments
   Eigen::Quaterniond Delta_q(1,0,0,0);
   Eigen::Matrix3d C_integral = Eigen::Matrix3d::Zero();
-  //Eigen::Matrix3d C_double_integral = Eigen::Matrix3d::Zero();
-  Eigen::Vector3d acc_integral = Eigen::Vector3d::Zero();
-
-  // may not be required if not estimating position
-  //Eigen::Vector3d acc_double_integral = Eigen::Vector3d::Zero(); 
+  Eigen::Vector3d acc_integral = Eigen::Vector3d::Zero(); 
 
   // cross matrix accumulation
   Eigen::Matrix3d cross = Eigen::Matrix3d::Zero();
@@ -140,9 +136,6 @@ int GlobalImuVelocityCostFunction::Propagation(
   // sub-Jacobians
   Eigen::Matrix3d dalpha_db_g = Eigen::Matrix3d::Zero();
   Eigen::Matrix3d dv_db_g = Eigen::Matrix3d::Zero();
-
-  // may not be required if not estimating position
-  //Eigen::Matrix3d dp_db_g = Eigen::Matrix3d::Zero();
 
   // Covariance of the increment without biases
   covariance_t P_delta = covariance_t::Zero();
@@ -177,9 +170,9 @@ int GlobalImuVelocityCostFunction::Propagation(
       double interval = next_time - time;
       time = t0;
       dt = next_time - time;
-      const double r = 1.0 - dt / interval;
-      omega_S_0 = ((1.0 - r) * omega_S_0 + r * omega_S_1).eval();
-      acc_S_0 = ((1.0 - r) * acc_S_0 + r * acc_S_1).eval();
+      const double r = dt / interval;
+      omega_S_0 = (r * omega_S_0 + (1.0 - r) * omega_S_1).eval();
+      acc_S_0 = (r * acc_S_0 + (1.0 - r) * acc_S_1).eval();
     }
     // if second measurement is out of time range but first is within,
     // interpolate second measurement at t1
@@ -232,11 +225,6 @@ int GlobalImuVelocityCostFunction::Propagation(
     const Eigen::Matrix3d C_integral_1 = C_integral + 0.5 * (C + C_1) * dt;
     const Eigen::Vector3d acc_integral_1 = acc_integral + 0.5 * (C + C_1)*acc_S_true*dt;
 
-    // rotation matrix double integrals
-    // may not be needed if not estimating position
-    //C_double_integral += C_integral * dt + 0.25 * (C + C_1) * dt * dt;
-    //acc_double_integral += acc_integral * dt + 0.25*(C+C_1)*acc_S_true*dt*dt;
-
     // Jacobian parts
     dalpha_db_g += dt * C_1;
     const Eigen::Matrix3d cross_1 = dq.inverse().toRotationMatrix()*cross
@@ -244,16 +232,13 @@ int GlobalImuVelocityCostFunction::Propagation(
     const Eigen::Matrix3d acc_S_x = CrossMatrix(acc_S_true);
     Eigen::Matrix3d dv_db_g_1 = dv_db_g + 0.5*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
 
-    // this component may not be required if we're not estimating position
-    //dp_db_g += dt * dv_db_g + 0.25*dt*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
-
     // covariance propagation
     if (covariance)
     {
       jacobian_t F_delta = jacobian_t::Identity();
 
       F_delta.block<3,3>(0,6) = -dt * C_1;
-      F_delta.block<3,3>(3,0) = CrossMatrix(0.5*(C+C_1)*acc_S_true*dt);
+      F_delta.block<3,3>(3,0) = -CrossMatrix(0.5*(C+C_1)*acc_S_true*dt);
       F_delta.block<3,3>(3,6) = 0.5*dt*(C*acc_S_x*cross + C_1*acc_S_x*cross_1);
       F_delta.block<3,3>(3,9) = -0.5*(C+C_1)*dt;
 
