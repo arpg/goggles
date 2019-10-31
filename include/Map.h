@@ -155,7 +155,7 @@ public:
     */
   bool SetParameterBlockConstant(std::shared_ptr<ParameterBlock> parameter_block) 
   {
-    return SetParameterBlockConstant(parameter_block->Id());
+    return SetParameterBlockConstant(parameter_block->GetId());
   }
 
   /** @brief Optimise a certain parameter block (this is the default).
@@ -164,25 +164,32 @@ public:
     */
   bool SetParameterBlockVariable(std::shared_ptr<ParameterBlock> parameter_block)
   {
-    return SetParameterBlockVariable(parameter_block->Id());
+    return SetParameterBlockVariable(parameter_block->GetId());
   }
 
   /** @brief Set the local parameterization of a parameter block
     * @param[in] parameter_block_id The ID of the parameter block
     * @param[in] local_parameterization Pointer to the parameterization
     */
-  bool SetParameterization(uint64_t parameter_block_id,
+  bool ResetParameterization(uint64_t parameter_block_id,
     ceres::LocalParameterization* local_parameterization);
+
+  /** @brief Set the local parameterization of a parameter block
+    * @param[in] parameter_block_id The ID of the parameter block
+    * @param[in] parameterization int indicating the parameterization
+    */
+  bool ResetParameterization(uint64_t parameter_block_id,
+    int parameterization);
 
   /** @brief Set the local parameterization of a parameter block
     * @param[in] parameter_block Pointer to the parameter block
     * @param[in] local_parameterization Pointer to the parameterization
     * @return True on success
     */
-  bool SetParameterization(std::shared_ptr<ParameterBlock> parameter_block,
+  bool ResetParameterization(std::shared_ptr<ParameterBlock> parameter_block,
     ceres::LocalParameterization* local_parameterization)
   {
-    return SetParameterization(parameter_block->Id() local_parameterization);
+    return ResetParameterization(parameter_block->GetId(), local_parameterization);
   }
 
   /// @brief Get a pointer to the parameter block container
@@ -190,15 +197,15 @@ public:
     uint64_t parameter_block_id);
 
   /// @brief Get a pointer to the parameter block container
-  std::shared_ptr<ParameterBlock> GetParameterBlockPtr(
+  std::shared_ptr<const ParameterBlock> GetParameterBlockPtr(
     uint64_t parameter_block_id) const;
 
   /// @brief Get a pointer to a residual
-  std::shared_ptr<ErrorInterface> GetCostFunctionPtr(
+  std::shared_ptr<ErrorInterface> GetErrorInterfacePtr(
     ceres::ResidualBlockId residual_block_id);
 
   /// @brief Get a pointer to a residual
-  std::shared_ptr<ErrorInterface> GetCostFunctionPtr(
+  std::shared_ptr<const ErrorInterface> GetErrorInterfacePtr(
     ceres::ResidualBlockId residual_block_id) const;
 
   /// @brief Get the residual blocks associated to a parameter block
@@ -267,3 +274,5 @@ protected:
   /// \brief Store parameterization locally
   QuaternionParameterization quaternion_parameterization_;
 };
+
+#endif

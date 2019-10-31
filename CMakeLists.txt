@@ -80,6 +80,7 @@ set( HEADERS
   ${INC_DIR}/BiasParameterBlock.h
   ${INC_DIR}/DeltaParameterBlock.h
   ${INC_DIR}/OrientationParameterBlock.h
+  ${INC_DIR}/Map.h
 )
 
 set( SOURCES 
@@ -99,6 +100,7 @@ set( SOURCES
   ${SRC_DIR}/BiasParameterBlock.cpp
   ${SRC_DIR}/DeltaParameterBlock.cpp
   ${SRC_DIR}/OrientationParameterBlock.cpp
+  ${SRC_DIR}/Map.cpp
   )
 
 set( RAD_VEL_SRCS
