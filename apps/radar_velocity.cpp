@@ -17,6 +17,10 @@
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
 #include <MarginalizationError.h>
+#include <IdProvider.h>
+#include <Map.h>
+#include <VelocityParameterBlock.h>
+#include <DeltaParameterBlock.h>
 #include <pcl/sample_consensus/impl/mlesac.hpp>
 #include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
@@ -47,7 +51,7 @@ class RadarVelocityReader
 {
 public:
 
-  RadarVelocityReader(ros::NodeHandle nh)
+  RadarVelocityReader(ros::NodeHandle nh) : problem_(new Map())
   {
     nh_ = nh;
     std::string radar_topic;
@@ -72,19 +76,6 @@ public:
     doppler_loss_ = new ceres::CauchyLoss(1.0);
     //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
-
-    ceres::Problem::Options prob_options;
-
-    prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
-    prob_options.enable_fast_removal = true;
-    //solver_options_.check_gradients = true;
-    //solver_options_.gradient_check_relative_precision = 1.0e-6;
-    solver_options_.num_threads = 8;
-    solver_options_.max_num_iterations = 300;
-    solver_options_.update_state_every_iteration = true;
-    solver_options_.function_tolerance = 1e-10;
-    solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-    problem_.reset(new ceres::Problem(prob_options));
   }
 
   void callback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -140,18 +131,17 @@ private:
   ros::Publisher inlier_set_publisher_;
   bool publish_inliers_;
   ros::Subscriber sub_;
-  ceres::CauchyLoss *doppler_loss_;
-  ceres::CauchyLoss *accel_loss_;
+  ceres::LossFunction *doppler_loss_;
+  ceres::LossFunction *accel_loss_;
   //std::deque<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> velocities_;
-  std::deque<Eigen::Vector3d*> velocities_;
-  std::deque<std::vector<Eigen::Vector3d*>> ray_errors_;
+  std::deque<std::shared_ptr<VelocityParameterBlock>> velocities_;
+  std::deque<std::vector<std::shared_ptr<DeltaParameterBlock>>> ray_errors_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
-  std::shared_ptr<ceres::Problem> problem_;
+  std::shared_ptr<Map> problem_;
   //ceres::ScaledLoss *marginalization_scaling_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
   ceres::ResidualBlockId marginalization_id_;
-  ceres::Solver::Options solver_options_;
   int window_size_;
   double min_range_;
   int num_iter_;
@@ -183,11 +173,33 @@ private:
     * \note this function is currently not used, it was written to demonstrate
     * this process could be done with linear least squares
     */
-  void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr cloud,
+  void GetVelocityIRLS(pcl::PointCloud<RadarPoint>::Ptr raw_cloud,
                        Eigen::Vector3d &velocity,
                        int max_iter, double func_tol,
                        geometry_msgs::TwistWithCovarianceStamped &vel_out)
   {
+
+    // remove outliers with mlesac
+    pcl::BodyDopplerSacModel<RadarPoint>::Ptr model(
+      new pcl::BodyDopplerSacModel<RadarPoint>(raw_cloud));
+    std::vector<int> inliers;
+    pcl::MaximumLikelihoodSampleConsensus<RadarPoint> mlesac(model,0.10);
+    mlesac.computeModel();
+    mlesac.getInliers(inliers);
+
+    // copy inlier points to new data structure;
+    pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
+    pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
+
+    // publish inlier set if requested
+    if (publish_inliers_)
+    {
+      sensor_msgs::PointCloud2 inliers_out;
+      pcl::PCLPointCloud2 cloud2;
+      pcl::toPCLPointCloud2(*cloud, cloud2);
+      pcl_conversions::fromPCL(cloud2, inliers_out);
+      inlier_set_publisher_.publish(inliers_out);
+    }
 
     // assemble model, measurement, and weight matrices
     int N = cloud->size();
@@ -195,10 +207,6 @@ private:
     Eigen::MatrixXd y(N,1);
     Eigen::MatrixXd W(N,N);
     W.setZero();
-
-    // get min and max intensity for calculating weights
-    double min_intensity, max_intensity;
-    getIntensityBounds(min_intensity,max_intensity,cloud);
 
     for (int i = 0; i < N; i++)
     {
@@ -213,8 +221,7 @@ private:
       X.block<1,3>(i,0) = ray_st.normalized();
 
       // set weight as normalized intensity
-      W(i,i) = (cloud->at(i).intensity - min_intensity)
-              / (max_intensity - min_intensity);
+      W(i,i) = 1.0 / double(N);
     }
 
     // initialize weights as normalized intensities
@@ -314,27 +321,31 @@ private:
     }
     
     // add latest parameter block and remove old one if necessary
+    uint64_t vel_id = IdProvider::instance().NewId();
     if (velocities_.size() == 0)
 		{
-			velocities_.push_front(new Eigen::Vector3d());
-			velocities_.front()->setZero();
+			velocities_.push_front(std::make_shared<VelocityParameterBlock>(
+        Eigen::Vector3d::Zero(), vel_id, timestamp));
 		}
 		else
 		{
-			velocities_.push_front(new Eigen::Vector3d(*velocities_.front()));
+			velocities_.push_front(std::make_shared<VelocityParameterBlock>(
+        velocities_.front()->GetEstimate(), vel_id, timestamp));
 		}
-    std::vector<Eigen::Vector3d*> ray_err;
+    std::vector<std::shared_ptr<DeltaParameterBlock>> ray_err;
     ray_errors_.push_front(ray_err);
 		std::vector<ceres::ResidualBlockId> residuals;
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
-    problem_->AddParameterBlock(velocities_.front()->data(),3);
+
+    problem_->AddParameterBlock(velocities_.front());
+
     auto start = std::chrono::high_resolution_clock::now(); 
     if (velocities_.size() > window_size_)
     {
       for (int i = 0; i < ray_errors_.back().size(); i++)
       {
-        problem_->RemoveParameterBlock(ray_errors_.back()[i]->data());
+        problem_->RemoveParameterBlock(ray_errors_.back()[i]);
       }
       /*
       for (int i = 0; i < residual_blks_.back().size(); i++)
@@ -342,7 +353,7 @@ private:
         problem_->RemoveResidualBlock(residual_blks_.back()[i]);
       }
       */
-      problem_->RemoveParameterBlock(velocities_.back()->data());
+      problem_->RemoveParameterBlock(velocities_.back());
 
       timestamps_.pop_back();
       residual_blks_.pop_back();
@@ -424,23 +435,25 @@ private:
     for (int i = 0; i < cloud->size(); i++)
     {
       // create parameter for ray error
-      ray_errors_.front().push_back(new Eigen::Vector3d(0.0,0.0,0.0));
-      problem_->AddParameterBlock(ray_errors_.front().back()->data(),3);
+      uint64_t ray_id = IdProvider::instance().NewId();
+      ray_errors_.front().push_back(std::make_shared<DeltaParameterBlock>(
+        Eigen::Vector3d::Zero(), ray_id, timestamp));
+      problem_->AddParameterBlock(ray_errors_.front().back());
 
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
-      ceres::CostFunction* doppler_cost_function =
-        new BodyVelocityCostFunction(cloud->at(i).doppler,
-                                      target,
-                                      weight,
-                                      d);
+      std::shared_ptr<BodyVelocityCostFunction> doppler_cost_function =
+        std::make_shared<BodyVelocityCostFunction>(cloud->at(i).doppler,
+                                                   target,
+                                                   weight,
+                                                   d);
       // add residual block to ceres problem
       ceres::ResidualBlockId res_id =
 					problem_->AddResidualBlock(doppler_cost_function,
                                      doppler_loss_,
-                                     velocities_.front()->data(),
-                                     ray_errors_.front().back()->data());
+                                     velocities_.front(),
+                                     ray_errors_.front().back());
 
       residual_blks_.front().push_back(res_id);
     }
@@ -449,22 +462,21 @@ private:
     if (timestamps_.size() >= 2)
     {
       double delta_t = timestamps_[0] - timestamps_[1];
-      ceres::CostFunction* vel_change_cost_func =
-        new VelocityChangeCostFunction(delta_t);
+      std::shared_ptr<VelocityChangeCostFunction> vel_change_cost_func =
+        std::make_shared<VelocityChangeCostFunction>(delta_t);
 
       ceres::ResidualBlockId res_id =
 						problem_->AddResidualBlock(vel_change_cost_func,
                                        accel_loss_,
-                                       velocities_[1]->data(),
-                                       velocities_[0]->data());
+                                       velocities_[1],
+                                       velocities_[0]);
 
       residual_blks_[1].push_back(res_id);
     }
     // solve the ceres problem and get result
-    ceres::Solver::Summary summary;
-    ceres::Solve(solver_options_, problem_.get(), &summary);
-    LOG(INFO) << summary.FullReport();
-    LOG(INFO) << "velocity from ceres: " << velocities_.front()->transpose();
+    problem_->Solve();
+    LOG(INFO) << problem_->summary.FullReport();
+    LOG(INFO) << "velocity from ceres: " << velocities_.front()->GetEstimate().transpose();
 
     // get estimate covariance
     /*
@@ -490,7 +502,7 @@ private:
 		// Eigen::DiagonalMatrix<double, 3> covariance_matrix;
 		covariance_matrix.diagonal() << 0.01, 0.015, 0.05;
 
-    populateMessage(vel_out,*(velocities_.front()),covariance_matrix);
+    populateMessage(vel_out,velocities_.front()->GetEstimate(),covariance_matrix);
   }
 
   /** \brief populate ros message with velocity and covariance
@@ -499,8 +511,8 @@ private:
     * \param[in] covariance the estimate covariance
     */
   void populateMessage(geometry_msgs::TwistWithCovarianceStamped &vel,
-                        Eigen::Vector3d &velocity,
-                        Eigen::Matrix3d &covariance)
+                        const Eigen::Vector3d &velocity,
+                        const Eigen::Matrix3d &covariance)
   {
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
@@ -529,25 +541,6 @@ private:
     // }
   }
 
-  /** \brief get the maximum and minimum intensity in the input cloud
-    * \param[out] min_intensity the minimum intensity found in the cloud
-    * \param[out] max_intensity the maximum intensity found in the cloud
-    * \param[in] the input point cloud
-    */
-  void getIntensityBounds(double &min_intensity,
-                          double &max_intensity,
-                          pcl::PointCloud<RadarPoint>::Ptr cloud)
-  {
-    min_intensity = 1.0e4;
-    max_intensity = 0.0;
-    for (int i = 0; i < cloud->size(); i++)
-    {
-      if (cloud->at(i).intensity > max_intensity)
-        max_intensity = cloud->at(i).intensity;
-      if (cloud->at(i).intensity < min_intensity)
-        min_intensity = cloud->at(i).intensity;
-    }
-  }
 };
 
 int main(int argc, char** argv)
