@@ -81,6 +81,7 @@ set( HEADERS
   ${INC_DIR}/DeltaParameterBlock.h
   ${INC_DIR}/OrientationParameterBlock.h
   ${INC_DIR}/Map.h
+  ${INC_DIR}/IdProvider.h
 )
 
 set( SOURCES 
@@ -101,6 +102,7 @@ set( SOURCES
   ${SRC_DIR}/DeltaParameterBlock.cpp
   ${SRC_DIR}/OrientationParameterBlock.cpp
   ${SRC_DIR}/Map.cpp
+  ${SRC_DIR}/IdProvider.cpp
   )
 
 set( RAD_VEL_SRCS

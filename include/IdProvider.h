@@ -19,20 +19,21 @@
         this software without specific prior written permission.
   */
 
-#include <IdProvider.h>
+#pragma once
+#ifndef IDPROVIDER_H_
+#define IDPROVIDER_H_
 
-namespace IdProvider
+#include <stdint.h>
+#include <iostream>
+#include <atomic>
+
+namespace IdProvider 
 {
-  std::atomic<uint64_t> _id(0);
-
-  uint64_t instance::NewId()
+  struct instance
   {
-    const uint64_t new_id = ++id;
-    return new_id;
-  }
-
-  uint64_t instance::CurrentId()
-  {
-    return _id;
-  }
+    static uint64_t NewId();
+    static uint64_t CurrentId();
+  };
 }
+
+#endif
