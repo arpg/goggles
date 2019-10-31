@@ -76,7 +76,6 @@ bool MarginalizationError::AddResidualBlock(
     // if parameter block is not connected, add it
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
-
       // is this block a ray delta?
       bool is_delta = false;
       if (std::dynamic_pointer_cast<DeltaParameterBlock>(
@@ -84,9 +83,6 @@ bool MarginalizationError::AddResidualBlock(
       {
         is_delta = true;
       }
-
-      ParameterBlockInfo info;
-
 
       // resize equation system
       const size_t orig_size = H_.cols();
@@ -106,22 +102,20 @@ bool MarginalizationError::AddResidualBlock(
 
       // update bookkeeping
       // not adding delta parameter blocks for now
-
-      info = ParameterBlockInfo(parameter_block_spec.second,
-                                parameter_block_spec.first,
-                                param_block_info_.back().ordering_idx
-                                + param_block_info_.back().minimal_dimension,
-                                is_delta);
+      ParameterBlockInfo info(parameter_block_spec.second,
+                              parameter_block_spec.first,
+                              orig_size,
+                              is_delta);
       param_block_info_.push_back(info);
       parameter_block_id_2_block_info_idx_.insert(
         std::pair<uint64_t, size_t>(parameter_block_spec.first,
                                     param_block_info_.size() - 1.0));
 
       // update base type bookkeeping
-      if (additional_size > 0)
-        base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
+      base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
     }
   }
+  
   base_t::set_num_residuals(H_.cols());
   double** parameters_raw = new double*[param_blks.size()];
   Eigen::VectorXd residuals_eigen(err_interface_ptr->ResidualDim());
@@ -161,7 +155,7 @@ bool MarginalizationError::AddResidualBlock(
                                                   residuals_raw, 
                                                   jacobians_raw,
                                                   jacobians_minimal_raw);
-
+  
   // apply loss function
   const ceres::LossFunction* loss_func = 
     map_ptr_->GetResidualBlockIdToInfoMap().find(
@@ -254,7 +248,6 @@ bool MarginalizationError::AddResidualBlock(
           * jacobians_minimal_eigen.at(i);
     }
   }
-
   map_ptr_->RemoveResidualBlock(residual_block_id);
 
   delete[] parameters_raw;
@@ -262,7 +255,6 @@ bool MarginalizationError::AddResidualBlock(
   delete[] jacobians_minimal_raw;
 
   Check();
-
   return true;
 }
 
@@ -487,11 +479,8 @@ bool MarginalizationError::MarginalizeOut(
     parameter_block_id_2_block_info_idx_.erase(parameter_block_ids_copy[i]);
 
     // update internal bookkeeping
-    if (margSize > 0)
-    {
-      base_t::mutable_parameter_block_sizes()->erase(
-        mutable_parameter_block_sizes()->begin() + idx);
-    }
+    base_t::mutable_parameter_block_sizes()->erase(
+      mutable_parameter_block_sizes()->begin() + idx);
   }
 
   // check if any residuals are still connected to these parameter blocks

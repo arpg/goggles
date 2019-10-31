@@ -51,7 +51,7 @@ class RadarVelocityReader
 {
 public:
 
-  RadarVelocityReader(ros::NodeHandle nh) : problem_(new Map())
+  RadarVelocityReader(ros::NodeHandle nh) : map_ptr_(new Map())
   {
     nh_ = nh;
     std::string radar_topic;
@@ -138,7 +138,7 @@ private:
   std::deque<std::vector<std::shared_ptr<DeltaParameterBlock>>> ray_errors_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
-  std::shared_ptr<Map> problem_;
+  std::shared_ptr<Map> map_ptr_;
   //ceres::ScaledLoss *marginalization_scaling_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
   ceres::ResidualBlockId marginalization_id_;
@@ -338,34 +338,16 @@ private:
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 
-    problem_->AddParameterBlock(velocities_.front());
+    map_ptr_->AddParameterBlock(velocities_.front());
 
     auto start = std::chrono::high_resolution_clock::now(); 
     if (velocities_.size() > window_size_)
     {
-      for (int i = 0; i < ray_errors_.back().size(); i++)
-      {
-        problem_->RemoveParameterBlock(ray_errors_.back()[i]);
-      }
-      /*
-      for (int i = 0; i < residual_blks_.back().size(); i++)
-      {
-        problem_->RemoveResidualBlock(residual_blks_.back()[i]);
-      }
-      */
-      problem_->RemoveParameterBlock(velocities_.back());
-
-      timestamps_.pop_back();
-      residual_blks_.pop_back();
-      velocities_.pop_back();
-      ray_errors_.pop_back();
-      /*
       // remove marginalization error from problem if it's
       // already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        LOG(INFO) << "removing marginalization residual";
-        problem_->RemoveResidualBlock(marginalization_id_);
+        map_ptr_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
 
@@ -373,28 +355,24 @@ private:
       // initialize it
       if (!marginalization_error_ptr_)
       {
-        LOG(INFO) << "resetting marginalization error";
         marginalization_error_ptr_.reset(
-          new MarginalizationError(problem_));
+          new MarginalizationError(map_ptr_));
       }
 
       // add last state and associated residuals to marginalization error
-      LOG(INFO) << "adding states and residuals to marginalization";
       if (!marginalization_error_ptr_->AddResidualBlocks(residual_blks_.back()))
         LOG(ERROR) << "failed to add residuals";
 
-      std::vector<double*> states_to_marginalize;
-      states_to_marginalize.push_back(velocities_.back()->data());
+      std::vector<uint64_t> states_to_marginalize;
+      states_to_marginalize.push_back(velocities_.back()->GetId());
 
       for (int i = 0; i < ray_errors_.back().size(); i++)
-        states_to_marginalize.push_back(ray_errors_.back()[i]->data());
+        states_to_marginalize.push_back(ray_errors_.back()[i]->GetId());
 
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
         LOG(ERROR) << "failed to marginalize state";
 
       marginalization_error_ptr_->UpdateErrorComputation();
-
-      LOG(INFO) << "deleting old bookkeeping";
 
       velocities_.pop_back();
       ray_errors_.pop_back();
@@ -404,28 +382,26 @@ private:
       // discard marginalization error if it has no residuals
       if (marginalization_error_ptr_->num_residuals() == 0)
       {
-        LOG(INFO) << "no residuals associated to marginalization";
+        LOG(ERROR) << "no residuals associated to marginalization";
         marginalization_error_ptr_.reset();
       }
 
       // add marginalization term back to the problem
       if (marginalization_error_ptr_)
       {
-        LOG(INFO) << "adding marginalization error to problem";
-        std::vector<double*> parameter_block_ptrs;
+        std::vector<std::shared_ptr<ParameterBlock>> parameter_block_ptrs;
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
-        marginalization_id_ = problem_->AddResidualBlock(
-          marginalization_error_ptr_.get(),
+        marginalization_id_ = map_ptr_->AddResidualBlock(
+          marginalization_error_ptr_,
           NULL,
           parameter_block_ptrs);
       }
-      LOG(INFO) << "done with marginalization";
-      */
+      
     }
     auto finish = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = finish - start;
-    LOG(ERROR) << "marginalization time: " << elapsed.count();
+    LOG(INFO) << "marginalization time: " << elapsed.count();
 
     // calculate uniform weighting for doppler measurements
     double weight = 100.0 / cloud->size();
@@ -438,7 +414,7 @@ private:
       uint64_t ray_id = IdProvider::instance().NewId();
       ray_errors_.front().push_back(std::make_shared<DeltaParameterBlock>(
         Eigen::Vector3d::Zero(), ray_id, timestamp));
-      problem_->AddParameterBlock(ray_errors_.front().back());
+      map_ptr_->AddParameterBlock(ray_errors_.front().back());
 
       Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
@@ -450,7 +426,7 @@ private:
                                                    d);
       // add residual block to ceres problem
       ceres::ResidualBlockId res_id =
-					problem_->AddResidualBlock(doppler_cost_function,
+					map_ptr_->AddResidualBlock(doppler_cost_function,
                                      doppler_loss_,
                                      velocities_.front(),
                                      ray_errors_.front().back());
@@ -466,7 +442,7 @@ private:
         std::make_shared<VelocityChangeCostFunction>(delta_t);
 
       ceres::ResidualBlockId res_id =
-						problem_->AddResidualBlock(vel_change_cost_func,
+						map_ptr_->AddResidualBlock(vel_change_cost_func,
                                        accel_loss_,
                                        velocities_[1],
                                        velocities_[0]);
@@ -474,8 +450,8 @@ private:
       residual_blks_[1].push_back(res_id);
     }
     // solve the ceres problem and get result
-    problem_->Solve();
-    LOG(INFO) << problem_->summary.FullReport();
+    map_ptr_->Solve();
+    LOG(INFO) << map_ptr_->summary.FullReport();
     LOG(INFO) << "velocity from ceres: " << velocities_.front()->GetEstimate().transpose();
 
     // get estimate covariance

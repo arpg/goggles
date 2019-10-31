@@ -151,15 +151,21 @@ protected:
       LOG(ERROR) << "info deleted";
     }
     */
-    ParameterBlockInfo(std::shared_ptr<ParameterBlock> parameter_block_ptr,
-                       uint64_t parameter_block_id,
-                       size_t ordering_idx,
-                       bool is_delta)
-      : parameter_block_ptr(parameter_block_ptr),
-        parameter_block_id(parameter_block_id),
-        ordering_idx(ordering_idx),
-        is_delta(is_delta)
+
+    ParameterBlockInfo(std::shared_ptr<ParameterBlock> param_block_ptr,
+                       uint64_t param_block_id,
+                       size_t idx,
+                       bool delta)
+    : parameter_block_ptr(param_block_ptr),
+        parameter_block_id(param_block_id),
+        ordering_idx(idx),
+        is_delta(delta)
     {
+      parameter_block_ptr = param_block_ptr;
+      parameter_block_id = param_block_id;
+      ordering_idx = idx;
+      is_delta = delta;
+
       dimension = parameter_block_ptr->GetDimension();
       minimal_dimension = parameter_block_ptr->GetMinimalDimension();
 
@@ -167,6 +173,7 @@ protected:
       {
         minimal_dimension = 0;
       }
+
       linearization_point.reset(new double[dimension],
                                std::default_delete<double[]>());
       ResetLinearizationPoint(parameter_block_ptr);
