@@ -126,6 +126,7 @@ protected:
   struct ParameterBlockInfo
   {
     std::shared_ptr<ParameterBlock> parameter_block_ptr;
+    uint64_t parameter_block_id;
     size_t ordering_idx;
     size_t dimension;
     size_t minimal_dimension;
@@ -133,7 +134,8 @@ protected:
     bool is_delta;
 
     ParameterBlockInfo()
-      : parameter_block_ptr(std::shared_ptr<double>()),
+      : parameter_block_ptr(std::shared_ptr<ParameterBlock>()),
+        parameter_block_id(0),
         ordering_idx(0),
         dimension(0),
         minimal_dimension(0)
@@ -150,9 +152,11 @@ protected:
     }
     */
     ParameterBlockInfo(std::shared_ptr<ParameterBlock> parameter_block_ptr,
+                       uint64_t parameter_block_id,
                        size_t ordering_idx,
                        bool is_delta)
       : parameter_block_ptr(parameter_block_ptr),
+        parameter_block_id(parameter_block_id),
         ordering_idx(ordering_idx),
         is_delta(is_delta)
     {
@@ -170,12 +174,12 @@ protected:
 
     void ResetLinearizationPoint(std::shared_ptr<ParameterBlock> param_ptr)
     {
-      memcpy(linearization_point.get(), param_ptr->Parameters(), 
+      memcpy(linearization_point.get(), param_ptr->GetParameters(), 
         dimension * sizeof(double));
     }
   };
 
-  std::vector<std::shared_ptr<ParameterBlockInfo>> param_block_info_;
+  std::vector<ParameterBlockInfo> param_block_info_;
   std::map<uint64_t, size_t> parameter_block_id_2_block_info_idx_;
 };
 

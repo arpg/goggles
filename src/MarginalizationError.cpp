@@ -55,14 +55,14 @@ bool MarginalizationError::AddResidualBlock(
   std::shared_ptr<ErrorInterface> err_interface_ptr = 
     map_ptr_->GetErrorInterfacePtr(residual_block_id);
 
-  if (!error_interface_ptr)
+  if (!err_interface_ptr)
     return false;
 
   error_computation_valid_ = false;
 
   // get associated parameter blocks
   Map::ParameterBlockCollection param_blks = map_ptr_->GetParameterBlocks(
-    residual_block_id)
+    residual_block_id);
 
   // go through all the associated parameter blocks
   for (size_t i = 0; i < param_blks.size(); i++)
@@ -92,7 +92,7 @@ bool MarginalizationError::AddResidualBlock(
       const size_t orig_size = H_.cols();
       size_t additional_size = 0;
       if (!parameter_block_spec.second->IsFixed() && !is_delta)
-        additional_size = parameter_block_spec.second->MinimalDimension();
+        additional_size = parameter_block_spec.second->GetMinimalDimension();
 
       if (additional_size > 0) // will be zero for fixed parameter blocks
       {
@@ -107,10 +107,10 @@ bool MarginalizationError::AddResidualBlock(
       // update bookkeeping
       // not adding delta parameter blocks for now
 
-      info = ParameterBlockInfo(parameter_block_spec.first,
-                                parameter_block_spec.second,
-                                parameter_block_info_.back().ordering_idx
-                                + parameter_block_info_.back().minimal_dimension,
+      info = ParameterBlockInfo(parameter_block_spec.second,
+                                parameter_block_spec.first,
+                                param_block_info_.back().ordering_idx
+                                + param_block_info_.back().minimal_dimension,
                                 is_delta);
       param_block_info_.push_back(info);
       parameter_block_id_2_block_info_idx_.insert(
@@ -119,7 +119,7 @@ bool MarginalizationError::AddResidualBlock(
 
       // update base type bookkeeping
       if (additional_size > 0)
-        base_t::mutable_parameter_block_sizes()->push_back(info->dimension);
+        base_t::mutable_parameter_block_sizes()->push_back(info.dimension);
     }
   }
   base_t::set_num_residuals(H_.cols());
@@ -145,14 +145,14 @@ bool MarginalizationError::AddResidualBlock(
   {
     size_t idx = parameter_block_id_2_block_info_idx_.[param_blks[i].first];
     
-    parameters_raw[i] = param_block_info_[idx]->linearization_point.get();
+    parameters_raw[i] = param_block_info_[idx].linearization_point.get();
 
     jacobians_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                              param_blks[i].second->Dimension());
+                              param_blks[i].second->GetDimension());
     jacobians_raw[i] = jacobians_eigen[i].data();
 
     jacobians_minimal_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                                      param_blks[i].second->MinimalDimension());
+                                      param_blks[i].second->GetMinimalDimension());
     jacobians_minimal_raw[i] = jacobians_minimal_eigen[i].data();
   }
 
@@ -164,7 +164,7 @@ bool MarginalizationError::AddResidualBlock(
 
   // apply loss function
   const ceres::LossFunction* loss_func = 
-    map_ptr_->ResidualBlockIdToInfoMap.find(
+    map_ptr_->ResidualBlockIdToInfoMap().find(
       residual_block_id)->second.loss_function_ptr;
 
   if (loss_func)
@@ -210,8 +210,8 @@ bool MarginalizationError::AddResidualBlock(
   {
     Map::ParameterBlockInfo parameter_block_spec = param_blks[i];
 
-    ParameterBlockInfo prameter_block_info_i = parameter_block_info_.at(
-      parameter_block_id_2_parameter_block_info_idx_[parameter_block_spec.first]);
+    ParameterBlockInfo parameter_block_info_i = param_block_info_.at(
+      parameter_block_id_2_block_info_idx_[parameter_block_spec.first]);
 
     if (parameter_block_info_i.minimal_dimension == 0)
       continue;
@@ -233,8 +233,8 @@ bool MarginalizationError::AddResidualBlock(
 
     for (size_t j = 0; j < i; j++)
     {
-      ParameterBlockInfo parameter_block_info_j = *param_block_info_.at(
-        parameter_block_id_2_block_info_idx_[param_blks[j]]);
+      ParameterBlockInfo parameter_block_info_j = param_block_info_.at(
+        parameter_block_id_2_block_info_idx_[param_blks[j].first]);
 
       if (parameter_block_info_j.minimal_dimension == 0)
         continue;
@@ -273,7 +273,7 @@ void MarginalizationError::GetParameterBlockPtrs(
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
     parameter_block_ptrs.push_back(
-      param_block_info_[i]->parameter_block_ptr);
+      param_block_info_[i].parameter_block_ptr);
   }
 }
 
@@ -291,21 +291,21 @@ void MarginalizationError::Check()
   int total_size = 0;
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    total_size += param_block_info_[i]->minimal_dimension;
+    total_size += param_block_info_[i].minimal_dimension;
 
     // check parameter block size
-    if (param_block_info_[i]->dimension != 
+    if (param_block_info_[i].dimension != 
       size_t(base_t::parameter_block_sizes()[i]))
     {
       LOG(FATAL) << "check failed: size of parameter block " << i 
-                 << " (" << param_block_info_[i]->dimension 
+                 << " (" << param_block_info_[i].dimension 
                  << ") does not match size in base type ("
                  << parameter_block_sizes()[i] << ")";
     }
 
     // check parameter block existence
-    if (!problem_->HasParameterBlock(
-      param_block_info_[i]->parameter_block_ptr.get()))
+    if (!map_ptr_->ParameterBlockExists(
+      param_block_info_[i].parameter_block_id))
     {
       LOG(FATAL) << "check failed: parameter block " << i 
                  << " does not exist in the ceres problem";
@@ -313,7 +313,7 @@ void MarginalizationError::Check()
 
     // check for proper bookkeeping
     if (parameter_block_id_2_block_info_idx_[
-      param_block_info_[i]->parameter_block_ptr.get()] != i)
+      param_block_info_[i].parameter_block_id] != i)
     {
       LOG(FATAL) << "check failed: index of parameter block " << i 
                  << " is incorrect in internal bookkeeping";
@@ -323,9 +323,9 @@ void MarginalizationError::Check()
   // check that parameters are contiguous
   for (size_t i = 1; i < param_block_info_.size(); i++)
   {
-    if (param_block_info_[i-1]->ordering_idx 
-      + param_block_info_[i-1]->minimal_dimension
-      != param_block_info_[i]->ordering_idx)
+    if (param_block_info_[i-1].ordering_idx 
+      + param_block_info_[i-1].minimal_dimension
+      != param_block_info_[i].ordering_idx)
     {
       LOG(FATAL) << "check failed: parameter block " << i-1 
                  << " is not contiguous with parameter block " << i;
@@ -370,7 +370,7 @@ bool MarginalizationError::MarginalizeOut(
   // find start idx and dimension of param blocks in H matrix
   for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
-    std::map<double*, size_t>::iterator it = 
+    std::map<uint64_t, size_t>::iterator it = 
       parameter_block_id_2_block_info_idx_.find(parameter_block_ids_copy[i]);
 
     if (it == parameter_block_id_2_block_info_idx_.end())
@@ -379,8 +379,8 @@ bool MarginalizationError::MarginalizeOut(
       return false;
     }
 
-    size_t start_idx = param_block_info_.at(it->second)->ordering_idx;
-    size_t min_dim = param_block_info_.at(it->second)->minimal_dimension;
+    size_t start_idx = param_block_info_.at(it->second).ordering_idx;
+    size_t min_dim = param_block_info_.at(it->second).minimal_dimension;
 
     marginalization_start_idx_and_length_pairs.push_back(
       std::pair<int,int>(start_idx, min_dim));
@@ -470,7 +470,7 @@ bool MarginalizationError::MarginalizeOut(
   {
     // get parameter block index
     size_t idx = parameter_block_id_2_block_info_idx_[parameter_block_ids_copy[i]];
-    int margSize = param_block_info_.at(idx)->minimal_dimension;
+    int margSize = param_block_info_.at(idx).minimal_dimension;
 
     // erase parameter block from info vector
     param_block_info_.erase(param_block_info_.begin() + idx);
@@ -478,9 +478,9 @@ bool MarginalizationError::MarginalizeOut(
     // update subsequent entries in info vector and indices map
     for (size_t j = idx; j < param_block_info_.size(); j++)
     {
-      param_block_info_.at(j)->ordering_idx -= margSize;
+      param_block_info_.at(j).ordering_idx -= margSize;
       parameter_block_id_2_block_info_idx_.at(
-        param_block_info_.at(j)->parameter_block_ptr.get()) -= 1;
+        param_block_info_.at(j).parameter_block_id) -= 1;
     }
 
     // erase entry in indices map
@@ -497,7 +497,7 @@ bool MarginalizationError::MarginalizeOut(
   // check if any residuals are still connected to these parameter blocks
   for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
-    Map::ResidualBlockCollection residuals = map_ptr_->GetResiduals(
+    Map::ResidualBlockCollection residuals = map_ptr_->GetResidualBlocks(
       parameter_block_ids_copy[i]);
     if (residuals.size() != 0)
     {
@@ -758,32 +758,16 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i]->parameter_block_ptr.get())))
+    if (!param_block_info_[i].parameter_block_ptr->IsFixed())
     {
-      Eigen::VectorXd Delta_chi_i(param_block_info_[i]->minimal_dimension);
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 
-      // get local parameterization
-      const ceres::LocalParameterization* local_param = 
-        problem_->GetParameterization(param_block_info_[i]->parameter_block_ptr.get());
-
-      if (local_param) // only quaternions will have a local parameterization
-      {
-        QuaternionParameterization qp;
-        qp.Minus(param_block_info_[i]->linearization_point.get(),
-                 param_block_info_[i]->parameter_block_ptr.get(),
-                 Delta_chi_i.data());
-      }
-      else
-      {
-        for (size_t j = 0; j < param_block_info_[i]->minimal_dimension; j++)
-        {
-          Delta_chi_i[j] = param_block_info_[i]->parameter_block_ptr.get()[j] 
-            - param_block_info_[i]->linearization_point.get()[j];
-        }
-      }
-      Delta_chi.segment(param_block_info_[i]->ordering_idx,
-                        param_block_info_[i]->minimal_dimension) = Delta_chi_i;
+      param_block_info_[i].parameter_block_ptr->Minus(
+        param_block_info_[i].linearization_point.get(),
+        param_block_info_[i].parameter_block_ptr->GetParameters(),
+        Delta_chi_i.data());
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
     }
   }
   return true;
@@ -796,33 +780,18 @@ bool MarginalizationError::ComputeDeltaChi(
   Delta_chi.resize(H_.rows());
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
-    if (!(problem_->IsParameterBlockConstant(
-      param_block_info_[i]->parameter_block_ptr.get())))
+    if (!param_block_info_[i].parameter_block_ptr->IsFixed())
     {
 
-      Eigen::VectorXd Delta_chi_i(param_block_info_[i]->minimal_dimension);
+      Eigen::VectorXd Delta_chi_i(param_block_info_[i].minimal_dimension);
 
-      // get local parameterization
-      const ceres::LocalParameterization* local_param =
-        problem_->GetParameterization(param_block_info_[i]->parameter_block_ptr.get());
+       param_block_info_[i].parameter_block_ptr->Minus(
+        param_block_info_[i].linearization_point.get(),
+        parameters[i],
+        Delta_chi_i.data());
 
-      if (local_param) // only quaternions will have a local parameterization
-      {
-        QuaternionParameterization qp;
-        qp.Minus(param_block_info_[i]->linearization_point.get(),
-                 parameters[i],
-                 Delta_chi_i.data());
-      }
-      else
-      {
-        for (size_t j = 0; j < param_block_info_[i]->minimal_dimension; j++)
-        {
-          Delta_chi_i[j] = parameters[i][j] 
-            - param_block_info_[i]->linearization_point.get()[j];
-        }
-      }
-      Delta_chi.segment(param_block_info_[i]->ordering_idx,
-                        param_block_info_[i]->minimal_dimension) = Delta_chi_i;
+      Delta_chi.segment(param_block_info_[i].ordering_idx,
+                        param_block_info_[i].minimal_dimension) = Delta_chi_i;
     }
   }
   return true;
@@ -858,16 +827,9 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,
             Eigen::RowMajor>> Jmin_i(
               jacobians_minimal[i], e0_.rows(),
-              param_block_info_[i]->minimal_dimension);
-          Jmin_i = J_.block(0, param_block_info_[i]->ordering_idx, e0_.rows(),
-            param_block_info_[i]->minimal_dimension);
-          /*
-          if (param_block_info_[i].dimension 
-                == param_block_info_[i].minimal_dimension)
-          {
-            Jmin_i *= -1.0;
-          }
-          */
+              param_block_info_[i].minimal_dimension);
+          Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+            param_block_info_[i].minimal_dimension);
         }
       }
       if (jacobians[i] != NULL)
@@ -875,31 +837,22 @@ bool MarginalizationError::EvaluateWithMinimalJacobians(double const* const* par
         // get minimal jacobian
         Eigen::Matrix<
             double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> Jmin_i;
-        Jmin_i = J_.block(0, param_block_info_[i]->ordering_idx, e0_.rows(),
-                          param_block_info_[i]->minimal_dimension);
+        Jmin_i = J_.block(0, param_block_info_[i].ordering_idx, e0_.rows(),
+                          param_block_info_[i].minimal_dimension);
 
         Eigen::Map<
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, 
             Eigen::RowMajor>> J_i(jacobians[i], e0_.rows(),
-                                  param_block_info_[i]->dimension);
+                                  param_block_info_[i].dimension);
 
-        // if current paremeter block represents a quaternion,
-        // get overparameterized jacobion
-        if (param_block_info_[i]->dimension 
-              != param_block_info_[i]->minimal_dimension)
-        {
-          Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> J_lift(
-              param_block_info_[i]->minimal_dimension,
-              param_block_info_[i]->dimension);
-          QuaternionParameterization qp; 
-          qp.liftJacobian(parameters[i], J_lift.data());
-              //param_block_info_[i]->linearization_point.get(), J_lift.data());
-          J_i = Jmin_i * J_lift;
-        }
-        else
-        {
-          J_i = Jmin_i;
-        }
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> J_lift(
+          param_block_info_[i].parameter_block_ptr->GetMinimalDimension(),
+          param_block_info_[i].parameter_block_ptr->GetDimension());
+
+        param_block_info_[i].parameter_block_ptr->LiftJacobian(
+          param_block_info_[i].linearization_point.get(), J_lift.data());
+
+        J_i = Jmin_i * J_lift;
       }
     }
   }
