@@ -33,9 +33,10 @@ public:
   bool AddResidualBlock(
     ceres::ResidualBlockId residual_block_id);
 
-  void GetParameterBlockPtrs(std::vector<double*> &parameter_block_ptrs);
+  void GetParameterBlockPtrs(std::vector<std::shared_ptr<ParameterBlock>> 
+    &parameter_block_ptrs);
 
-  bool MarginalizeOut(const std::vector<double*> & parameter_blocks);
+  bool MarginalizeOut(const std::vector<uint64_t>& parameter_block_ids);
 
   bool Evaluate(double const* const* parameters,
                 double* residuals,

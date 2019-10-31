@@ -118,7 +118,8 @@ bool MarginalizationError::AddResidualBlock(
                                     param_block_info_.size() - 1.0));
 
       // update base type bookkeeping
-      base_t::mutable_parameter_block_sizes()->push_back(info->dimension);
+      if (additional_size > 0)
+        base_t::mutable_parameter_block_sizes()->push_back(info->dimension);
     }
   }
   base_t::set_num_residuals(H_.cols());
@@ -266,13 +267,13 @@ bool MarginalizationError::AddResidualBlock(
 }
 
 void MarginalizationError::GetParameterBlockPtrs(
-  std::vector<double*> &parameter_block_ptrs)
+  std::vector<std::shared_ptr<ParameterBlock>> &parameter_block_ptrs)
 {
   parameter_block_ptrs.clear();
   for (size_t i = 0; i < param_block_info_.size(); i++)
   {
     parameter_block_ptrs.push_back(
-      param_block_info_[i]->parameter_block_ptr.get());
+      param_block_info_[i]->parameter_block_ptr);
   }
 }
 
@@ -341,36 +342,36 @@ void MarginalizationError::Check()
 }
 
 bool MarginalizationError::MarginalizeOut(
-  const std::vector<double*> & parameter_blocks)
+  const std::vector<uint64_t> & parameter_block_ids)
 {
-  if (parameter_blocks.size() == 0)
+  if (parameter_block_ids.size() == 0)
   {
     return false;
   }
 
   // make copy so we can manipulate
-  std::vector<double*> parameter_blocks_copy = parameter_blocks;
+  std::vector<uint64_t> parameter_block_ids_copy = parameter_block_ids;
 
   // decide which blocks need to be marginalized
   std::vector<std::pair<int, int>> marginalization_start_idx_and_length_pairs;
   size_t marginalization_parameters = 0;
 
   // make sure there are no duplicates
-  std::sort(parameter_blocks_copy.begin(), parameter_blocks_copy.end());
-  for (size_t i = 1; i < parameter_blocks_copy.size(); i++)
+  std::sort(parameter_block_ids_copy.begin(), parameter_block_ids_copy.end());
+  for (size_t i = 1; i < parameter_block_ids_copy.size(); i++)
   {
-    if (parameter_blocks_copy[i] == parameter_blocks_copy[i-1])
+    if (parameter_block_ids_copy[i] == parameter_block_ids_copy[i-1])
     {
-      parameter_blocks_copy.erase(parameter_blocks_copy.begin() + i);
+      parameter_block_ids_copy.erase(parameter_block_ids_copy.begin() + i);
       i--;
     }
   }
 
   // find start idx and dimension of param blocks in H matrix
-  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
     std::map<double*, size_t>::iterator it = 
-      parameter_block_id_2_block_info_idx_.find(parameter_blocks_copy[i]);
+      parameter_block_id_2_block_info_idx_.find(parameter_block_ids_copy[i]);
 
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
@@ -465,10 +466,10 @@ bool MarginalizationError::MarginalizeOut(
   base_t::set_num_residuals(base_t::num_residuals() - marginalization_parameters);
 
   // delete bookkeeping
-  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
     // get parameter block index
-    size_t idx = parameter_block_id_2_block_info_idx_[parameter_blocks_copy[i]];
+    size_t idx = parameter_block_id_2_block_info_idx_[parameter_block_ids_copy[i]];
     int margSize = param_block_info_.at(idx)->minimal_dimension;
 
     // erase parameter block from info vector
@@ -483,19 +484,22 @@ bool MarginalizationError::MarginalizeOut(
     }
 
     // erase entry in indices map
-    parameter_block_id_2_block_info_idx_.erase(parameter_blocks_copy[i]);
+    parameter_block_id_2_block_info_idx_.erase(parameter_block_ids_copy[i]);
 
     // update internal bookkeeping
-    base_t::mutable_parameter_block_sizes()->erase(
-      mutable_parameter_block_sizes()->begin() + idx);
+    if (margSize > 0)
+    {
+      base_t::mutable_parameter_block_sizes()->erase(
+        mutable_parameter_block_sizes()->begin() + idx);
+    }
   }
 
   // check if any residuals are still connected to these parameter blocks
-  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
-    std::vector<ceres::ResidualBlockId> res_blks;
-    problem_->GetResidualBlocksForParameterBlock(parameter_blocks_copy[i], &res_blks);
-    if (res_blks.size() != 0)
+    Map::ResidualBlockCollection residuals = map_ptr_->GetResiduals(
+      parameter_block_ids_copy[i]);
+    if (residuals.size() != 0)
     {
       LOG(FATAL) << "trying to marginalize out a parameter block that is still"
                  << " connected to error terms.";
@@ -503,9 +507,9 @@ bool MarginalizationError::MarginalizeOut(
   }
 
   // actually remove the parameter blocks
-  for (size_t i = 0; i < parameter_blocks_copy.size(); i++)
+  for (size_t i = 0; i < parameter_block_ids_copy.size(); i++)
   {
-    problem_->RemoveParameterBlock(parameter_blocks_copy[i]);
+    map_ptr_->RemoveParameterBlock(parameter_block_ids_copy[i]);
   }
 
   Check();
