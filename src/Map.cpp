@@ -27,12 +27,12 @@ bool Map::ParameterBlockExists(uint64_t parameter_block_id) const
 bool Map::AddParameterBlock(std::shared_ptr<ParameterBlock> parameter_block, 
   int prameterization)
 {
-  if (ParameterBlockExists(parameter_block->Id()))
+  if (ParameterBlockExists(parameter_block->GetId()))
     return false;
 
   id_to_parameter_block_map_.insert(
     std::pair<uint64_t, std::shared_ptr<ParameterBlock>> (
-      parameter_block->Id(), parameter_block));
+      parameter_block->GetId(), parameter_block));
 
   switch (parameterization)
   {
@@ -71,5 +71,24 @@ bool Map::RemoveParameterBlock(uint64_t parameter_block_id)
 
 bool Map::RemoveParameterBlock(std::shared_ptr<ParameterBlock> parameter_block)
 {
-  return RemoveParameterBlock(parameter_block->Id());
+  return RemoveParameterBlock(parameter_block->GetId());
+}
+
+ceres::ResidualBlockId Map::AddResidualBlock(
+  std::shared_ptr<ceres::CostFunction> cost_function,
+  ceres::LossFunction* loss_function,
+  std::vector<std::shared_ptr<ParameterBlock>>& parameter_block_ptrs)
+{
+  ceres::ResidualBlockId return_id;
+  std::vector<double*> parameter_blocks;
+  ParameterBlockCollection parameter_block_collection;
+
+  // find parameter blocks and ids for all parameter blocks
+  for (size_t i = 0; i < parameter_block_ptrs.size(); i++)
+  {
+    parameter_blocks.push_back(parameter_block_ptrs[i]->GetParameters());
+    parameter_block_collection.push_back(
+      ParameterBlockInfo(parameter_block_ptrs[i]->GetId(),
+        parameter_block_ptrs[i]));
+  }
 }
