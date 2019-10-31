@@ -143,7 +143,7 @@ bool MarginalizationError::AddResidualBlock(
 
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    size_t idx = parameter_block_id_2_block_info_idx_.[param_blks[i].first];
+    size_t idx = parameter_block_id_2_block_info_idx_[param_blks[i].first];
     
     parameters_raw[i] = param_block_info_[idx].linearization_point.get();
 
@@ -164,7 +164,7 @@ bool MarginalizationError::AddResidualBlock(
 
   // apply loss function
   const ceres::LossFunction* loss_func = 
-    map_ptr_->ResidualBlockIdToInfoMap().find(
+    map_ptr_->GetResidualBlockIdToInfoMap().find(
       residual_block_id)->second.loss_function_ptr;
 
   if (loss_func)
