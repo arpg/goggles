@@ -28,9 +28,9 @@ inline void Resize(Eigen::VectorXd& vec, int size)
   }
 }
 
-MarginalizationError::MarginalizationError(std::shared_ptr<ceres::Problem> problem)
+MarginalizationError::MarginalizationError(std::shared_ptr<Map> map)
 {
-  problem_ = problem;
+  map_ptr_ = map;
 }
 
 MarginalizationError::~MarginalizationError(){}
@@ -52,47 +52,47 @@ bool MarginalizationError::AddResidualBlocks(
 bool MarginalizationError::AddResidualBlock(
   ceres::ResidualBlockId residual_block_id)
 {
-  // verify residual block exists
-  const ceres::CostFunction* const_cost_func 
-    = problem_->GetCostFunctionForResidualBlock(residual_block_id);
-  if (!const_cost_func)
+  std::shared_ptr<ErrorInterface> err_interface_ptr = 
+    map_ptr_->GetErrorInterfacePtr(residual_block_id);
+
+  if (!error_interface_ptr)
     return false;
 
-  ceres::CostFunction* cost_func = const_cast<ceres::CostFunction*>(const_cost_func);
-  ErrorInterface* err_interface_ptr = dynamic_cast<ErrorInterface*>(cost_func);
+  error_computation_valid_ = false;
 
   // get associated parameter blocks
-  // should just be one parameter block unless it's an IMU error
-  std::vector<double*> param_blks;
-  problem_->GetParameterBlocksForResidualBlock(residual_block_id, &param_blks);
+  Map::ParameterBlockCollection param_blks = map_ptr_->GetParameterBlocks(
+    residual_block_id)
 
   // go through all the associated parameter blocks
   for (size_t i = 0; i < param_blks.size(); i++)
   {
+    Map::ParameterBlockInfo parameter_block_spec = param_blks[i];
+
     // check if parameter block is already connected to the marginalization error
-    std::map<double*, size_t>::iterator it = 
-      parameter_block_id_2_block_info_idx_.find(param_blks[i]);
+    std::map<uint64_t, size_t>::iterator it = 
+      parameter_block_id_2_block_info_idx_.find(parameter_block_spec.first);
     
     // if parameter block is not connected, add it
     if (it == parameter_block_id_2_block_info_idx_.end())
     {
-      std::shared_ptr<ParameterBlockInfo> info;
 
-      // get current parameter block info
-      size_t minimal_dimension = problem_->ParameterBlockLocalSize(param_blks[i]);
-      size_t dimension = problem_->ParameterBlockSize(param_blks[i]);
-      if (problem_->IsParameterBlockConstant(param_blks[i]))
+      // is this block a ray delta?
+      bool is_delta = false;
+      if (std::dynamic_pointer_cast<DeltaParameterBlock>(
+        parameter_block_spec.second))
       {
-        minimal_dimension = 0;
-        dimension = 0;
+        is_delta = true;
       }
-      std::shared_ptr<double> param_ptr;
-      param_ptr.reset(param_blks[i], std::default_delete<double[]>());
-      info.reset(new ParameterBlockInfo(param_ptr, 0, dimension, minimal_dimension));
+
+      ParameterBlockInfo info;
+
 
       // resize equation system
       const size_t orig_size = H_.cols();
-      size_t additional_size = info->minimal_dimension;
+      size_t additional_size = 0;
+      if (!parameter_block_spec.second->IsFixed() && !is_delta)
+        additional_size = parameter_block_spec.second->MinimalDimension();
 
       if (additional_size > 0) // will be zero for fixed parameter blocks
       {
@@ -105,11 +105,17 @@ bool MarginalizationError::AddResidualBlock(
       } 
 
       // update bookkeeping
-      info->ordering_idx = orig_size;
+      // not adding delta parameter blocks for now
+
+      info = ParameterBlockInfo(parameter_block_spec.first,
+                                parameter_block_spec.second,
+                                parameter_block_info_.back().ordering_idx
+                                + parameter_block_info_.back().minimal_dimension,
+                                is_delta);
       param_block_info_.push_back(info);
       parameter_block_id_2_block_info_idx_.insert(
-        std::pair<double*, size_t>(param_blks[i],
-                                   param_block_info_.size() - 1.0));
+        std::pair<uint64_t, size_t>(parameter_block_spec.first,
+                                    param_block_info_.size() - 1.0));
 
       // update base type bookkeeping
       base_t::mutable_parameter_block_sizes()->push_back(info->dimension);
@@ -136,16 +142,16 @@ bool MarginalizationError::AddResidualBlock(
 
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    size_t idx = parameter_block_id_2_block_info_idx_.find(param_blks[i])->second;
+    size_t idx = parameter_block_id_2_block_info_idx_.[param_blks[i].first];
     
     parameters_raw[i] = param_block_info_[idx]->linearization_point.get();
 
     jacobians_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                              param_block_info_[idx]->dimension);
+                              param_blks[i].second->Dimension());
     jacobians_raw[i] = jacobians_eigen[i].data();
 
     jacobians_minimal_eigen[i].resize(err_interface_ptr->ResidualDim(),
-                                      param_block_info_[idx]->minimal_dimension);
+                                      param_blks[i].second->MinimalDimension());
     jacobians_minimal_raw[i] = jacobians_minimal_eigen[i].data();
   }
 
@@ -157,7 +163,9 @@ bool MarginalizationError::AddResidualBlock(
 
   // apply loss function
   const ceres::LossFunction* loss_func = 
-    problem_->GetLossFunctionForResidualBlock(residual_block_id);
+    map_ptr_->ResidualBlockIdToInfoMap.find(
+      residual_block_id)->second.loss_function_ptr;
+
   if (loss_func)
   {
     const double sq_norm = residuals_eigen.transpose() * residuals_eigen;
@@ -199,8 +207,10 @@ bool MarginalizationError::AddResidualBlock(
   // actually add blocks to lhs and rhs
   for (size_t i = 0; i < param_blks.size(); i++)
   {
-    ParameterBlockInfo parameter_block_info_i = *param_block_info_.at(
-      parameter_block_id_2_block_info_idx_[param_blks[i]]);
+    Map::ParameterBlockInfo parameter_block_spec = param_blks[i];
+
+    ParameterBlockInfo prameter_block_info_i = parameter_block_info_.at(
+      parameter_block_id_2_parameter_block_info_idx_[parameter_block_spec.first]);
 
     if (parameter_block_info_i.minimal_dimension == 0)
       continue;
@@ -244,7 +254,7 @@ bool MarginalizationError::AddResidualBlock(
     }
   }
 
-  problem_->RemoveResidualBlock(residual_block_id);
+  map_ptr_->RemoveResidualBlock(residual_block_id);
 
   delete[] parameters_raw;
   delete[] jacobians_raw;

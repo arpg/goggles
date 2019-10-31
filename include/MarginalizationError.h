@@ -6,6 +6,11 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <QuaternionParameterization.h>
 #include <ErrorInterface.h>
+#include <Map.h>
+#include <VelocityParameterBlock.h>
+#include <DeltaParameterBlock.h>
+#include <OrientationParameterBlock.h>
+#include <BiasParameterBlock.h>
 #include "DataTypes.h"
 #include "ceres/ceres.h"
 #include <algorithm>
@@ -18,7 +23,7 @@ public:
 
   typedef ceres::CostFunction base_t;
 
-  MarginalizationError(std::shared_ptr<ceres::Problem> problem);
+  MarginalizationError(std::shared_ptr<Map> map);
 
   ~MarginalizationError();
 
@@ -115,15 +120,16 @@ protected:
   Eigen::VectorXd p_inv_;
   volatile bool error_computation_valid_;  ///<  adding residual blocks will invalidate this. before optimizing, call updateErrorComputation()
   
-  std::shared_ptr<ceres::Problem> problem_; ///< pointer to the underlying ceres problem
+  std::shared_ptr<Map> map_ptr_; ///< pointer to the underlying ceres problem
 
   struct ParameterBlockInfo
   {
-    std::shared_ptr<double> parameter_block_ptr;
+    std::shared_ptr<ParameterBlock> parameter_block_ptr;
     size_t ordering_idx;
     size_t dimension;
     size_t minimal_dimension;
     std::shared_ptr<double> linearization_point;
+    bool is_delta;
 
     ParameterBlockInfo()
       : parameter_block_ptr(std::shared_ptr<double>()),
@@ -142,29 +148,34 @@ protected:
       LOG(ERROR) << "info deleted";
     }
     */
-    ParameterBlockInfo(std::shared_ptr<double> parameter_block_ptr,
+    ParameterBlockInfo(std::shared_ptr<ParameterBlock> parameter_block_ptr,
                        size_t ordering_idx,
-                       size_t dimension,
-                       size_t minimal_dimension)
+                       bool is_delta)
       : parameter_block_ptr(parameter_block_ptr),
         ordering_idx(ordering_idx),
-        dimension(dimension),
-        minimal_dimension(minimal_dimension)
+        is_delta(is_delta)
     {
+      dimension = parameter_block_ptr->GetDimension();
+      minimal_dimension = parameter_block_ptr->GetMinimalDimension();
+
+      if (parameter_block_ptr->IsFixed() || is_delta)
+      {
+        minimal_dimension = 0;
+      }
       linearization_point.reset(new double[dimension],
                                std::default_delete<double[]>());
       ResetLinearizationPoint(parameter_block_ptr);
     }
 
-    void ResetLinearizationPoint(std::shared_ptr<double> param_ptr)
+    void ResetLinearizationPoint(std::shared_ptr<ParameterBlock> param_ptr)
     {
-      memcpy(linearization_point.get(), param_ptr.get(), 
+      memcpy(linearization_point.get(), param_ptr->Parameters(), 
         dimension * sizeof(double));
     }
   };
 
   std::vector<std::shared_ptr<ParameterBlockInfo>> param_block_info_;
-  std::map<double*, size_t> parameter_block_id_2_block_info_idx_;
+  std::map<uint64_t, size_t> parameter_block_id_2_block_info_idx_;
 };
 
 #endif
