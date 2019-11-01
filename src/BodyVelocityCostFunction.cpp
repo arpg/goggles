@@ -11,7 +11,6 @@ BodyVelocityCostFunction::BodyVelocityCostFunction(double doppler,
   set_num_residuals(4);
   mutable_parameter_block_sizes()->push_back(3); // body velocity
   mutable_parameter_block_sizes()->push_back(3); // target ray error
-  target_ray_.normalize();
 }
 
 BodyVelocityCostFunction::~BodyVelocityCostFunction(){}
@@ -39,8 +38,9 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
 
   // get projection of body velocity onto ray from target to sensor
   Eigen::Vector3d target_ray_corrected = target_ray_ + delta;
-  target_ray_corrected.normalize();
-  double v_r = v_target.dot((target_ray_corrected));
+  Eigen::Vector3d unit_ray = target_ray_corrected.normalized();
+  double ray_norm = target_ray_corrected.norm();
+  double v_r = v_target.dot((unit_ray));
   // get residual as difference between v_r and doppler reading
   residuals[0] = (doppler_ - v_r) * weight_;
   residuals[1] = delta[0] * d_ * weight_;
@@ -68,6 +68,7 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
     }
     if (jacobians[1] != NULL)
     {
+      // NEED TO RECHECK THIS JACOBIAN
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J1(jacobians[1]);
       J1.block<1,3>(0,0).setZero();// = delta * weight_ * d_;
       J1.block<3,3>(1,0).setIdentity();
