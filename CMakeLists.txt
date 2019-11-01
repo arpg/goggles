@@ -155,7 +155,7 @@ target_link_libraries(radar_velocity
    ${LINK_LIBS}
 )
 
-#add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${SOURCES} ${HEADERS})
-#target_link_libraries(radar_inertial_velocity
-#   ${LINK_LIBS}
-#)
+add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${SOURCES} ${HEADERS})
+target_link_libraries(radar_inertial_velocity
+   ${LINK_LIBS}
+)

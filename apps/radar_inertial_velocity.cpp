@@ -23,6 +23,11 @@
 #include <GlobalDopplerCostFunction.h>
 #include <AHRSYawCostFunction.h>
 #include <MarginalizationError.h>
+#include <OrientationParameterBlock.h>
+#include <VelocityParameterBlock.h>
+#include <BiasParameterBlock.h>
+#include <Map.h>
+#include <IdProvider.h>
 #include "DataTypes.h"
 #include "yaml-cpp/yaml.h"
 #include <pcl/sample_consensus/impl/mlesac.hpp>
@@ -55,7 +60,7 @@ class RadarInertialVelocityReader
 {
 public:
 
-  RadarInertialVelocityReader(ros::NodeHandle nh)
+  RadarInertialVelocityReader(ros::NodeHandle nh) : map_ptr_(new Map())
   {
     nh_ = nh;
 		std::string radar_topic;
@@ -99,7 +104,7 @@ public:
 		initialized_ = false;
     first_state_optimized_ = false;
 
-    window_size_ = 15;
+    window_size_ = 5;
 
     // set up ceres problem
     doppler_loss_ = new ceres::HuberLoss(1.0);
@@ -107,14 +112,7 @@ public:
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
-    ceres::Problem::Options prob_options;
-
-    prob_options.cost_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
-    prob_options.enable_fast_removal = true;
-    solver_options_.num_threads = 8;
-    solver_options_.max_solver_time_in_seconds = 5.0e-2;
-    solver_options_.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;
-    problem_.reset(new ceres::Problem(prob_options));
+    map_ptr_->options.num_threads = 8;
   }
 
 	void LoadParams(std::string config_filename)
@@ -225,7 +223,7 @@ public:
       geometry_msgs::TwistWithCovarianceStamped vel_out;
       vel_out.header.stamp = msg->header.stamp;
       Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-      populateMessage(*(speeds_.front()),vel_out,covariance_matrix);
+      populateMessage(speeds_.front()->GetEstimate(),vel_out,covariance_matrix);
       pub_.publish(vel_out);
     }
 	}
@@ -240,8 +238,7 @@ private:
   Eigen::Matrix3d radar_to_imu_mat_;
 
   // ceres objects
-  std::shared_ptr<ceres::Problem> problem_;
-  ceres::Solver::Options solver_options_;
+  std::shared_ptr<Map> map_ptr_;
   ceres::LossFunction *doppler_loss_;
   ceres::LossFunction *imu_loss_;
   ceres::LossFunction *yaw_loss_;
@@ -249,10 +246,10 @@ private:
 
   // optimized state and residual containers
 	QuaternionParameterization* quat_param_;
-	std::deque<Eigen::Quaterniond*> orientations_;
-  std::deque<Eigen::Vector3d*> speeds_;
-  std::deque<Eigen::Vector3d*> gyro_biases_;
-  std::deque<Eigen::Vector3d*> accel_biases_;
+	std::deque<std::shared_ptr<OrientationParameterBlock>> orientations_;
+  std::deque<std::shared_ptr<VelocityParameterBlock>> speeds_;
+  std::deque<std::shared_ptr<BiasParameterBlock>> gyro_biases_;
+  std::deque<std::shared_ptr<BiasParameterBlock>> accel_biases_;
   Eigen::Matrix3d initial_orientation_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
@@ -307,21 +304,32 @@ private:
 		// if imu is not initialized, run initialization
 		if (!initialized_)
 		{
-			InitializeImu();
+			InitializeImu(timestamp);
 		}
 		// else add new params copied from previous values
 		else
 		{
-  		speeds_.push_front(new Eigen::Vector3d(*speeds_.front()));
-      gyro_biases_.push_front(new Eigen::Vector3d(*gyro_biases_.front()));
-      accel_biases_.push_front(new Eigen::Vector3d(*accel_biases_.front()));
-  		orientations_.push_front(new Eigen::Quaterniond(*orientations_.front()));
+      uint64_t id = IdProvider::instance().NewId();
+  		speeds_.push_front(std::make_shared<VelocityParameterBlock>(
+        speeds_.front()->GetEstimate(),id,timestamp));
 
-			problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
-			problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
-    	problem_->AddParameterBlock(speeds_.front()->data(),3);
-			problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
-			problem_->AddParameterBlock(accel_biases_.front()->data(),3);
+      id = IdProvider::instance().NewId();
+      gyro_biases_.push_front(std::make_shared<BiasParameterBlock>(
+        gyro_biases_.front()->GetEstimate(),id,timestamp));
+
+      id = IdProvider::instance().NewId();
+      accel_biases_.push_front(std::make_shared<BiasParameterBlock>(
+        accel_biases_.front()->GetEstimate(),id,timestamp));
+
+      id = IdProvider::instance().NewId();
+  		orientations_.push_front(std::make_shared<OrientationParameterBlock>(
+        orientations_.front()->GetEstimate(),id,timestamp));
+
+			map_ptr_->AddParameterBlock(orientations_.front(),
+        Map::Parameterization::Orientation);
+    	map_ptr_->AddParameterBlock(speeds_.front());
+			map_ptr_->AddParameterBlock(gyro_biases_.front());
+			map_ptr_->AddParameterBlock(accel_biases_.front());
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
@@ -352,18 +360,18 @@ private:
 			Eigen::Vector3d target(cloud->at(i).x,
                              cloud->at(i).y,
                              cloud->at(i).z);
-      ceres::CostFunction* doppler_cost_function =
-        new GlobalDopplerCostFunction(cloud->at(i).doppler,
-                                      target,
-                                      radar_to_imu_mat_,
-                                      weight);
+      std::shared_ptr<ceres::CostFunction> doppler_cost_function =
+        std::make_shared<GlobalDopplerCostFunction>(cloud->at(i).doppler,
+                                                    target,
+                                                    radar_to_imu_mat_,
+                                                    weight);
 
 			// add residual block to ceres problem
       ceres::ResidualBlockId res_id =
-				problem_->AddResidualBlock(doppler_cost_function,
+				map_ptr_->AddResidualBlock(doppler_cost_function,
                                    doppler_loss_,
-                                   orientations_.front()->coeffs().data(),
-                                	 speeds_.front()->data());
+                                   orientations_.front(),
+                                	 speeds_.front());
       residual_blks_.front().push_back(res_id);
       
     }
@@ -371,8 +379,10 @@ private:
     // find imu measurements bracketing current timestep
     std::vector<ImuMeasurement> imu_measurements = 
       imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
+
     if (imu_measurements.size() < 2)
       LOG(FATAL) << "not enough measurements returned";
+
     std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
     ImuMeasurement before, after;
     while ((it + 1) != imu_measurements.end())
@@ -392,13 +402,13 @@ private:
     Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
 
     // add constraint on yaw at current timestep
-    ceres::CostFunction* yaw_cost_func = 
-      new AHRSYawCostFunction(q_WS_t0,params_.invert_yaw_);
+    std::shared_ptr<ceres::CostFunction> yaw_cost_func = 
+      std::make_shared<AHRSYawCostFunction>(q_WS_t0,params_.invert_yaw_);
 
     ceres::ResidualBlockId orientation_res_id =
-      problem_->AddResidualBlock(yaw_cost_func,
+      map_ptr_->AddResidualBlock(yaw_cost_func,
                                  yaw_loss_,
-                                 orientations_.front()->coeffs().data());
+                                 orientations_.front());
 
     residual_blks_.front().push_back(orientation_res_id);
     
@@ -408,45 +418,47 @@ private:
       bool delete_measurements = timestamps_[0] < propagated_state_timestamp_;
 
       std::vector<ImuMeasurement> imu_measurements = 
-					imu_buffer_.GetRange(timestamps_[1], timestamps_[0], delete_measurements);
+					imu_buffer_.GetRange(timestamps_[1], 
+                               timestamps_[0], 
+                               delete_measurements);
 
-			ceres::CostFunction* imu_cost_func =
-        	new GlobalImuVelocityCostFunction(timestamps_[1],
-																			      timestamps_[0],
-																			      imu_measurements,
-																			      params_);
+			std::shared_ptr<ceres::CostFunction> imu_cost_func =
+        	std::make_shared<GlobalImuVelocityCostFunction>(timestamps_[1],
+																			                    timestamps_[0],
+																			                    imu_measurements,
+																			                    params_);
 
 			ceres::ResidualBlockId imu_res_id
-				= problem_->AddResidualBlock(imu_cost_func,
+				= map_ptr_->AddResidualBlock(imu_cost_func,
                                      imu_loss_,
-                                     orientations_[1]->coeffs().data(),
-																		 speeds_[1]->data(),
-																		 gyro_biases_[1]->data(),
-																		 accel_biases_[1]->data(),
-                                     orientations_[0]->coeffs().data(),
-																		 speeds_[0]->data(),
-																		 gyro_biases_[0]->data(),
-																		 accel_biases_[0]->data());
+                                     orientations_[1],
+																		 speeds_[1],
+																		 gyro_biases_[1],
+																		 accel_biases_[1],
+                                     orientations_[0],
+																		 speeds_[0],
+																		 gyro_biases_[0],
+																		 accel_biases_[0]);
 			residual_blks_[1].push_back(imu_res_id);
     }
 		// solve the ceres problem and get result
-    ceres::Solver::Summary summary;
-    ceres::Solve(solver_options_, problem_.get(), &summary);
+    map_ptr_->Solve();
+    LOG(INFO) << map_ptr_->summary.FullReport();
+
 
     if (publish_imu_propagated_state_)
     {
       std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
       propagated_state_timestamp_ = timestamps_[0];
       last_optimized_state_timestamp_ = timestamps_[0];
-      imu_propagated_orientation_ = *(orientations_.front());
-      imu_propagated_speed_ = *(speeds_.front());
-      imu_propagated_g_bias_ = *(gyro_biases_.front());
-      imu_propagated_a_bias_ = *(accel_biases_.front());
+      imu_propagated_orientation_ = orientations_.front()->GetEstimate();
+      imu_propagated_speed_ = speeds_.front()->GetEstimate();
+      imu_propagated_g_bias_ = gyro_biases_.front()->GetEstimate();
+      imu_propagated_a_bias_ = accel_biases_.front()->GetEstimate();
       first_state_optimized_ = true;
     }
     
     /*
-    LOG(INFO) << summary.FullReport();
     std::ofstream orientation_log;
     std::string filename = "/home/akramer/logs/radar/ICRA_2020/orientations.csv";
     orientation_log.open(filename,std::ofstream::app);
@@ -482,7 +494,7 @@ private:
   /** \brief uses initial IMU measurements to determine the magnitude of the
     * gravity vector and the initial attitude
     */
-  void InitializeImu()
+  void InitializeImu(double timestamp)
   {
     LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
@@ -508,9 +520,18 @@ private:
     Eigen::Vector3d b_g_initial = Eigen::Vector3d::Zero();
     Eigen::Vector3d b_a_initial = Eigen::Vector3d::Zero();
     b_g_initial = sum_g / measurements.size();
-    speeds_.push_front(new Eigen::Vector3d(speed_initial));
-    gyro_biases_.push_front(new Eigen::Vector3d(b_g_initial));
-    accel_biases_.push_front(new Eigen::Vector3d(b_a_initial));
+
+    uint64_t id = IdProvider::instance().NewId();
+    speeds_.push_front(std::make_shared<VelocityParameterBlock>(
+      speed_initial,id,timestamp));
+
+    id = IdProvider::instance().NewId();
+    gyro_biases_.push_front(std::make_shared<BiasParameterBlock>(
+      b_g_initial,id,timestamp));
+
+    id = IdProvider::instance().NewId();
+    accel_biases_.push_front(std::make_shared<BiasParameterBlock>(
+      b_a_initial,id,timestamp));
 
     // set initial orientation
     // assuming IMU is set close to Z-down
@@ -537,19 +558,20 @@ private:
     initial_orientation = (dq * initial_orientation);
     initial_orientation.normalize();
 
-    orientations_.push_front(
-        new Eigen::Quaterniond(initial_orientation));
+    id = IdProvider::instance().NewId();
+    orientations_.push_front(std::make_shared<OrientationParameterBlock>(
+      initial_orientation,id,timestamp));
     initial_orientation_ = (params_.ahrs_to_imu_ * 
       measurements.front().q_.toRotationMatrix()).inverse() * 
       initial_orientation.toRotationMatrix();
 
-    problem_->AddParameterBlock(orientations_.front()->coeffs().data(),4);
-    problem_->SetParameterization(orientations_.front()->coeffs().data(), quat_param_);
-    problem_->AddParameterBlock(speeds_.front()->data(),3);
-    problem_->AddParameterBlock(gyro_biases_.front()->data(),3);
-    problem_->AddParameterBlock(accel_biases_.front()->data(),3);
-    problem_->SetParameterBlockConstant(gyro_biases_.front()->data());
-    problem_->SetParameterBlockConstant(accel_biases_.front()->data());
+    map_ptr_->AddParameterBlock(orientations_.front(),
+      Map::Parameterization::Orientation);
+    map_ptr_->AddParameterBlock(speeds_.front());
+    map_ptr_->AddParameterBlock(gyro_biases_.front());
+    map_ptr_->AddParameterBlock(accel_biases_.front());
+    map_ptr_->SetParameterBlockConstant(gyro_biases_.front());
+    map_ptr_->SetParameterBlockConstant(accel_biases_.front());
 
     initialized_ = true;
     LOG(ERROR) << "initialized!";
@@ -568,7 +590,7 @@ private:
       // if it's already initialized
       if (marginalization_error_ptr_ && marginalization_id_)
       {
-        problem_->RemoveResidualBlock(marginalization_id_);
+        map_ptr_->RemoveResidualBlock(marginalization_id_);
         marginalization_id_ = 0;
       }
 
@@ -576,7 +598,7 @@ private:
       if (!marginalization_error_ptr_)
       {
         marginalization_error_ptr_.reset(
-          new MarginalizationError(problem_));
+          new MarginalizationError(map_ptr_));
       }
 
       // add oldest residuals
@@ -587,15 +609,15 @@ private:
       }
 
       // get oldest states to marginalize
-      std::vector<double*> states_to_marginalize;
+      std::vector<uint64_t> states_to_marginalize;
       states_to_marginalize.push_back(
-        orientations_.back()->coeffs().data()); // attitude
+        orientations_.back()->GetId()); // attitude
       states_to_marginalize.push_back(
-        speeds_.back()->data()); // speed
+        speeds_.back()->GetId()); // speed
       states_to_marginalize.push_back(
-        gyro_biases_.back()->data()); // gyro bias
+        gyro_biases_.back()->GetId()); // gyro bias
       states_to_marginalize.push_back(
-        accel_biases_.back()->data()); // accel bias
+        accel_biases_.back()->GetId()); // accel bias
 
       // actually marginalize states
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
@@ -623,11 +645,11 @@ private:
       // add marginalization error term back to the problem
       if (marginalization_error_ptr_)
       {
-        std::vector<double*> parameter_block_ptrs;
+        std::vector<std::shared_ptr<ParameterBlock>> parameter_block_ptrs;
         marginalization_error_ptr_->GetParameterBlockPtrs(
           parameter_block_ptrs);
-        marginalization_id_ = problem_->AddResidualBlock(
-          marginalization_error_ptr_.get(),
+        marginalization_id_ = map_ptr_->AddResidualBlock(
+          marginalization_error_ptr_,
           NULL,
           parameter_block_ptrs);
       }
