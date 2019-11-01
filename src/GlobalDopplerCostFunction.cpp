@@ -3,12 +3,15 @@
 GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
       Eigen::Vector3d &target,
       Eigen::Matrix3d &radar_to_imu_mat,
-      double weight) 
+      double weight,
+      double d) 
       : doppler_(doppler),
-      target_ray_(target)
+      target_ray_(target),
+      d_(d)
 {
-  set_num_residuals(1);
+  set_num_residuals(4);
   mutable_parameter_block_sizes()->push_back(4);
+  mutable_parameter_block_sizes()->push_back(3);
   mutable_parameter_block_sizes()->push_back(3);
   target_ray_.normalize();
 
@@ -52,6 +55,10 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
                             parameters[1][1],
                             parameters[1][2]);
 
+  const Eigen::Vector3d delta(parameters[2][0],
+                              parameters[2][1],
+                              parameters[2][2]);
+
   // get rotation matrices
   const Eigen::Matrix3d C_WS = q_WS.toRotationMatrix();
   const Eigen::Matrix3d C_SW = C_WS.transpose();
@@ -63,10 +70,15 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
   Eigen::Vector3d v_target = -1.0 * v_S;
 
   // get projection of body velocity onto ray from target to sensor
-  double v_projected = v_target.dot(target_ray_);
+  Eigen::Vector3d target_ray_corrected = target_ray_ + delta;
+  target_ray_corrected.normalize();
+  double v_projected = v_target.dot(target_ray_corrected);
 
   // get residual as difference between v_r and doppler reading
   residuals[0] = (doppler_ - v_projected) * weight_;
+  residuals[1] = delta[0] * d_ * weight_;
+  residuals[2] = delta[1] * d_ * weight_;
+  residuals[3] = delta[2] * d_ * weight_;
 
   // calculate jacobian if required
   if (jacobians != NULL)
@@ -75,7 +87,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[0] != NULL)
     {
       Eigen::Matrix<double,1,3> J0_minimal;
-      J0_minimal = -v_W.cross(C_WS * target_ray_).transpose() * weight_;
+      J0_minimal = -v_W.cross(C_WS * target_ray_corrected).transpose() * weight_;
 
       QuaternionParameterization qp;
       Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
@@ -101,7 +113,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     {
       Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
         J1_mapped(jacobians[1]);
-      J1_mapped = (C_WS * target_ray_).transpose() * weight_;
+      J1_mapped = (C_WS * target_ray_corrected).transpose() * weight_;
 
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
@@ -111,6 +123,18 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
           Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
             J1_min_mapped(jacobians_minimal[1]);
           J1_min_mapped = J1_mapped;
+        }
+      }
+    }
+    // jacobian w.r.t. the target ray delta
+    if (jacobians[2] != NULL)
+    {
+
+      if (jacobians_minimal != NULL)
+      {
+        if (jacobians_minimal[2] != NULL)
+        {
+
         }
       }
     }

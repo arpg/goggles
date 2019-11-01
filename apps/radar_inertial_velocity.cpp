@@ -353,6 +353,7 @@ private:
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);
     
     double weight = 1.25 / cloud->size();
+    double d = 1.0;
     
 		// add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
@@ -364,7 +365,8 @@ private:
         std::make_shared<GlobalDopplerCostFunction>(cloud->at(i).doppler,
                                                     target,
                                                     radar_to_imu_mat_,
-                                                    weight);
+                                                    weight,
+                                                    d);
 
 			// add residual block to ceres problem
       ceres::ResidualBlockId res_id =

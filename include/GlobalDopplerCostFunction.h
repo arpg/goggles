@@ -17,7 +17,8 @@ class GlobalDopplerCostFunction : public ceres::CostFunction, public ErrorInterf
     GlobalDopplerCostFunction(double doppler,
                               Eigen::Vector3d &target,
                               Eigen::Matrix3d &radar_to_imu_mat,
-                              double weight);
+                              double weight,
+                              double d);
 
     ~GlobalDopplerCostFunction();
 
@@ -36,6 +37,7 @@ class GlobalDopplerCostFunction : public ceres::CostFunction, public ErrorInterf
   protected:
     double doppler_;
     double weight_;
+    double d_;
     Eigen::Vector3d target_ray_;
 };
 
