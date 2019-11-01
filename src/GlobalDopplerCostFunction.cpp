@@ -1,4 +1,5 @@
 #include <GlobalDopplerCostFunction.h>
+#include <math.h>
 
 GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
       Eigen::Vector3d &target,
@@ -13,7 +14,7 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   mutable_parameter_block_sizes()->push_back(4);
   mutable_parameter_block_sizes()->push_back(3);
   mutable_parameter_block_sizes()->push_back(3);
-  target_ray_.normalize();
+  //target_ray_.normalize();
 
   // transform target ray from imu to radar board frame of reference
   Eigen::Vector3d radar_frame_ray = radar_to_imu_mat.transpose() * target_ray_;
@@ -71,8 +72,9 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
 
   // get projection of body velocity onto ray from target to sensor
   Eigen::Vector3d target_ray_corrected = target_ray_ + delta;
-  target_ray_corrected.normalize();
-  double v_projected = v_target.dot(target_ray_corrected);
+  Eigen::Vector3d unit_ray = target_ray_corrected.normalized();
+  double ray_norm = target_ray_corrected.norm();
+  double v_projected = v_target.dot(unit_ray);
 
   // get residual as difference between v_r and doppler reading
   residuals[0] = (doppler_ - v_projected) * weight_;
@@ -86,14 +88,16 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     // jacobian w.r.t. orientation
     if (jacobians[0] != NULL)
     {
-      Eigen::Matrix<double,1,3> J0_minimal;
-      J0_minimal = -v_W.cross(C_WS * target_ray_corrected).transpose() * weight_;
+      Eigen::Matrix<double,4,3> J0_minimal;
+      J0_minimal.setZero();
+      J0_minimal.topLeftCorner(1,3) = 
+        -v_W.cross(C_WS * unit_ray).transpose() * weight_;
 
       QuaternionParameterization qp;
       Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
       qp.ComputeLiftJacobian(parameters[0],J_lift.data());
 
-      Eigen::Map<Eigen::Matrix<double,1,4,Eigen::RowMajor>> 
+      Eigen::Map<Eigen::Matrix<double,4,4,Eigen::RowMajor>> 
         J0_mapped(jacobians[0]);
       J0_mapped = J0_minimal * J_lift;
 
@@ -102,7 +106,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       {
         if (jacobians_minimal[0] != NULL)
         {
-          Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+          Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> 
             J0_min_mapped(jacobians_minimal[0]);
           J0_min_mapped = J0_minimal;
         }
@@ -111,16 +115,18 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     // jacobian w.r.t. world frame velocity
     if (jacobians[1] != NULL)
     {
-      Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+      Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> 
         J1_mapped(jacobians[1]);
-      J1_mapped = (C_WS * target_ray_corrected).transpose() * weight_;
+      J1_mapped.setZero();
+      J1_mapped.topLeftCorner(1,3) = 
+        (C_WS * unit_ray).transpose() * weight_;
 
       // assign minimal jacobian if requested
       if (jacobians_minimal != NULL)
       {
         if (jacobians_minimal[1] != NULL)
         {
-          Eigen::Map<Eigen::Matrix<double,1,3,Eigen::RowMajor>> 
+          Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> 
             J1_min_mapped(jacobians_minimal[1]);
           J1_min_mapped = J1_mapped;
         }
@@ -129,12 +135,35 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
     // jacobian w.r.t. the target ray delta
     if (jacobians[2] != NULL)
     {
+      Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>>
+        J2_mapped(jacobians[2]);
+
+      double ray_norm_cube = pow(target_ray_corrected.squaredNorm(),1.5);
+      J2_mapped(0,0) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(0)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(0)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(0)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(0)/ray_norm);
+      J2_mapped(0,1) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(1)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(1)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(1)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(1)/ray_norm);
+      J2_mapped(0,2) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(2)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(2)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(2)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(2)/ray_norm);
+      J2_mapped.block<3,3>(1,0) = Eigen::Matrix3d::Identity();
+      J2_mapped.block<3,3>(1,0) *= weight_ * d_;
 
       if (jacobians_minimal != NULL)
       {
         if (jacobians_minimal[2] != NULL)
         {
-
+          Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>>
+            J2_min_mapped(jacobians_minimal[2]);
+          J2_min_mapped = J2_mapped;
         }
       }
     }

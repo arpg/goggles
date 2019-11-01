@@ -56,6 +56,7 @@ TEST(googleTests, testGlobalDoppler)
   // create ceres problem
   std::shared_ptr<Map> map_ptr 
     = std::shared_ptr<Map>(new Map());
+  //map_ptr->options.check_gradients = true;
 
   // add (fixed) initial state parameter blocks
   map_ptr->AddParameterBlock(v_w_est);
@@ -64,7 +65,7 @@ TEST(googleTests, testGlobalDoppler)
   
   // create and add residuals and record their ids
   double weight = 1.0 / double(targets.size());
-  double sigma_ratio = 1.0;
+  double sigma_ratio = 0.5;
   for (size_t i = 0; i < targets.size(); i++)
   {
     std::shared_ptr<ceres::CostFunction> v_cost_func = 
@@ -93,7 +94,7 @@ TEST(googleTests, testGlobalDoppler)
                                   sigma_ratio);
   id = IdProvider::instance().NewId();
   std::shared_ptr<DeltaParameterBlock> delta = 
-    std::make_shared<DeltaParameterBlock>(Eigen::Vector3d(0.0,0.0,0.0),id,0.0);
+    std::make_shared<DeltaParameterBlock>(Eigen::Vector3d(0.01,0.01,0.01),id,0.0);
     
   // check jacobians by manual inspection
   // automatic checking is not reliable because the information
@@ -167,11 +168,10 @@ TEST(googleTests, testGlobalDoppler)
     v_w_est->Plus(parameters[1],dp_1.data(),parameters[1]);
     v_cost_func->Evaluate(parameters,residuals_p.data(),NULL);
     v_w_est->SetEstimate(v_w_temp); // reset
+    dp_1[i] = -dx;
     v_w_est->Plus(parameters[1],dp_1.data(),parameters[1]);
     v_cost_func->Evaluate(parameters,residuals_m.data(),NULL);
     v_w_est->SetEstimate(v_w_temp);
-    LOG(ERROR) << "residuals p: " << residuals_p.transpose();
-    LOG(ERROR) << "residuals m: " << residuals_m.transpose();
     J1_numDiff.col(i) = (residuals_p - residuals_m) / (2.0*dx);
   }
   
@@ -194,6 +194,7 @@ TEST(googleTests, testGlobalDoppler)
     delta->Plus(parameters[2],dp_2.data(),parameters[2]);
     v_cost_func->Evaluate(parameters,residuals_p.data(),NULL);
     delta->SetEstimate(delta_temp); // reset
+    dp_2[i] = -dx;
     delta->Plus(parameters[2],dp_2.data(),parameters[2]);
     v_cost_func->Evaluate(parameters,residuals_m.data(),NULL);
     delta->SetEstimate(delta_temp);
@@ -203,8 +204,8 @@ TEST(googleTests, testGlobalDoppler)
   if ((J2 - J2_numDiff).norm() > jacobianTolerance)
   {
     LOG(ERROR) << "User provided jacobian 2 does not agree with num diff: "
-      << "\nuser provided J1: \n" << J2 
-      << "\n\nnum diff J1:\n" << J2_numDiff << "\n\n";
+      << "\nuser provided J2: \n" << J2 
+      << "\n\nnum diff J2:\n" << J2_numDiff << "\n\n";
   }
  
   // solve the problem and save the state estimates
