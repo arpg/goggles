@@ -138,7 +138,7 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>>
         J2_mapped(jacobians[2]);
 
-      double ray_norm_cube = pow(target_ray_corrected.squaredNorm(),1.5);
+      double ray_norm_cube = pow(ray_norm,3);
       J2_mapped(0,0) = -weight_ * (
         v_target(0)*(-target_ray_corrected(0)*target_ray_corrected(0))/ray_norm_cube 
         + v_target(1)*(-target_ray_corrected(0)*target_ray_corrected(1))/ray_norm_cube
