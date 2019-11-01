@@ -38,12 +38,14 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
   Eigen::Vector3d v_target = -1.0 * v_body;
 
   // get projection of body velocity onto ray from target to sensor
-  double v_r = v_target.dot(target_ray_ + delta);
+  Eigen::Vector3d target_ray_corrected = target_ray_ + delta;
+  target_ray_corrected.normalize();
+  double v_r = v_target.dot((target_ray_corrected));
   // get residual as difference between v_r and doppler reading
   residuals[0] = (doppler_ - v_r) * weight_;
-  residuals[1] = delta[0] * d_;
-  residuals[2] = delta[1] * d_;
-  residuals[3] = delta[2] * d_;
+  residuals[1] = delta[0] * d_ * weight_;
+  residuals[2] = delta[1] * d_ * weight_;
+  residuals[3] = delta[2] * d_ * weight_;
 
   // calculate jacobian if required
   if (jacobians != NULL)
@@ -53,7 +55,7 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
       // aren't linear functions just the best?
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J0(jacobians[0]);
       J0.setZero();
-      J0.block<1,3>(0,0) = (target_ray_ + delta) * weight_;
+      J0.block<1,3>(0,0) = target_ray_corrected * weight_;
 
       if (jacobians_minimal != NULL)
       {
@@ -69,7 +71,7 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J1(jacobians[1]);
       J1.block<1,3>(0,0).setZero();// = delta * weight_ * d_;
       J1.block<3,3>(1,0).setIdentity();
-      J1.block<3,3>(1,0) *= d_;
+      J1.block<3,3>(1,0) *= d_ * weight_;
 
       if (jacobians_minimal != NULL)
       {

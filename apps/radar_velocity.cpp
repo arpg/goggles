@@ -73,6 +73,7 @@ public:
     window_size_ = 4;
 
     // set up ceres problem
+    //map_ptr_->options.check_gradients = true;
     doppler_loss_ = new ceres::CauchyLoss(1.0);
     //marginalization_scaling_ = new ceres::ScaledLoss(NULL, 0.01, ceres::DO_NOT_TAKE_OWNERSHIP);
     accel_loss_ = NULL;//new ceres::CauchyLoss(0.1);
@@ -133,13 +134,13 @@ private:
   ros::Subscriber sub_;
   ceres::LossFunction *doppler_loss_;
   ceres::LossFunction *accel_loss_;
-  //std::deque<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> velocities_;
+
   std::deque<std::shared_ptr<VelocityParameterBlock>> velocities_;
   std::deque<std::vector<std::shared_ptr<DeltaParameterBlock>>> ray_errors_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<Map> map_ptr_;
-  //ceres::ScaledLoss *marginalization_scaling_;
+
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
   ceres::ResidualBlockId marginalization_id_;
   int window_size_;
