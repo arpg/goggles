@@ -71,7 +71,7 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J1(jacobians[1]);
       J1.block<1,3>(0,0).setZero();// = delta * weight_ * d_;
       J1.block<3,3>(1,0).setIdentity();
-      J1.block<3,3>(1,0) *= d_ * weight_;
+      J1 *= d_ * weight_;
 
       if (jacobians_minimal != NULL)
       {
