@@ -59,8 +59,9 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> meas)
   {
     Eigen::Vector3d sum_meas = Eigen::Vector3d::Zero();
 
-    for (int i = 0; i < width; i++)
-      sum_meas += (it + i)->second;
+    for (std::vector<std::pair<double,Eigen::Vector3d>>::iterator it2 = it - back;
+      it2 < it + forward; it2++)
+      sum_meas += it2->second;
 
     Eigen::Vector3d mean_meas = sum_meas / double(width);
     result.push_back(std::make_pair(it->first,mean_meas));
@@ -125,14 +126,14 @@ temporalAlign(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
 // uses full batch optimization to find rotation that best aligns the measurements
 // in meas1 with those in meas2
 void findRotation(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
-                  std::vector<std::pair<double,Eigen::Vector3d>> &meas1)
+  std::vector<std::pair<double,Eigen::Vector3d>> &meas1,
+  Eigen::Quaterniond& q_vr)
 {
   // create ceres problem
   ceres::Problem problem;
   ceres::Solver::Options options;
 
   // create single parameter block
-  Eigen::Quaterniond q_vr = Eigen::Quaterniond::UnitRandom();
   QuaternionParameterization* qp = new QuaternionParameterization();
   problem.AddParameterBlock(q_vr.coeffs().data(),4);
   problem.SetParameterization(q_vr.coeffs().data(), qp);
@@ -158,7 +159,28 @@ void findRotation(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
 
   LOG(ERROR) << summary.FullReport();
 
-  LOG(ERROR) << "found rotation: \n" << q_vr.toRotationMatrix();
+  LOG(ERROR) << "found rotation: \n\n" << q_vr.toRotationMatrix() << "\n\n";
+}
+
+void printErrors(std::vector<std::pair<double,Eigen::Vector3d>> vicon,
+  std::vector<std::pair<double,Eigen::Vector3d>> radar,
+  Eigen::Quaterniond& q_vr)
+{
+  Eigen::Vector3d sum_sq_errs = Eigen::Vector3d::Zero();
+
+  for (int i = 0; i < vicon.size(); i++)
+  {
+    Eigen::Vector3d tf_radar = q_vr.toRotationMatrix() * radar[i].second;
+    //LOG(ERROR) << "radar: " << tf_radar.transpose();
+    //LOG(ERROR) << "vicon: " << vicon[i].second.transpose();
+    Eigen::Vector3d err = vicon[i].second - tf_radar;
+    sum_sq_errs += err.cwiseProduct(err);
+  }
+  //LOG(ERROR) << "sum_sq_err: " << sum_sq_errs.transpose();
+
+  Eigen::Vector3d rms_err = (sum_sq_errs / vicon.size()).cwiseSqrt();
+
+  LOG(ERROR) << "RMS err: " << rms_err.transpose();
 }
 
 int main(int argc, char* argv[])
@@ -181,11 +203,19 @@ int main(int argc, char* argv[])
   
   std::vector<std::pair<double,Eigen::Vector3d>> smooth_vicon;
   smooth_vicon = smoothMeasurements(vicon_measurements);
-  
+  /*
+  for (int i = 0; i < smooth_vicon.size(); i ++)
+  {
+    LOG(ERROR) << "meas " << i << ": " << smooth_vicon[i].second.transpose();
+  }
+  */
   std::vector<std::pair<double,Eigen::Vector3d>> interp_radar;
   interp_radar = temporalAlign(smooth_vicon, radar_measurements);
   
-  findRotation(smooth_vicon, interp_radar);
+  Eigen::Quaterniond q_vr = Eigen::Quaterniond::UnitRandom();
+  findRotation(smooth_vicon, interp_radar, q_vr);
+  
+  printErrors(smooth_vicon, interp_radar, q_vr);
   
   return 0;
 }
