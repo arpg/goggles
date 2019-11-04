@@ -13,7 +13,7 @@
 // pulls measurements from a csv file with one measurement per line: timestamp, vx, vy, vz
 // stores measurements in internal datastructure
 void getMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &measurements, 
-                     std::string filename)
+                     std::string filename, bool camera)
 {
   std::ifstream meas_file(filename);
   std::string line;
@@ -25,7 +25,16 @@ void getMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &measurement
     int i = 0;
     while (std::getline(ss, token, ','))
     {
-      if (i < 4) vals[i] = std::stod(token);
+      if (!camera) 
+      {
+        if (i < 4)
+          vals[i] = std::stod(token);
+      }
+      else 
+      {
+        if (i == 0) vals[i] = std::stod(token);
+        if (i > 7 && i < 11) vals[i-7] = std::stod(token);
+      }
       i++;
     }
 
@@ -186,20 +195,36 @@ void printErrors(std::vector<std::pair<double,Eigen::Vector3d>> vicon,
 int main(int argc, char* argv[])
 {
   google::InitGoogleLogging(argv[0]);
-  if (argc != 3)
+
+  std::string vicon_filename;
+  std::string radar_filename;
+  std::string using_camera;
+
+  if (argc == 3)
+  {
+    vicon_filename = std::string(argv[1]);
+    radar_filename = std::string(argv[2]);
+    using_camera = std::string("false");
+  }
+  else if (argc == 4)
+  {
+    vicon_filename = std::string(argv[1]);
+    radar_filename = std::string(argv[2]);
+    using_camera = std::string(argv[3]);
+  }
+  else
   {
     LOG(FATAL) << "wrong number of arguments\n" 
                << "argument 1: <filename for vicon measurements> \n"
-               << "argument 2: <filename for radar measurements>";
+               << "argument 2: <filename for radar measurements>"
+               << "argument 3 (optional): true if using T265 odometry";
   }
-  std::string vicon_filename(argv[1]);
-  std::string radar_filename(argv[2]);
 
   std::vector<std::pair<double,Eigen::Vector3d>> vicon_measurements;
   std::vector<std::pair<double,Eigen::Vector3d>> radar_measurements;
 
-  getMeasurements(vicon_measurements, vicon_filename);
-  getMeasurements(radar_measurements, radar_filename);
+  getMeasurements(vicon_measurements, vicon_filename, false);
+  getMeasurements(radar_measurements, radar_filename, using_camera == "true");
   
   std::vector<std::pair<double,Eigen::Vector3d>> smooth_vicon;
   smooth_vicon = smoothMeasurements(vicon_measurements);
