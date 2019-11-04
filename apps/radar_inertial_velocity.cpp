@@ -358,7 +358,7 @@ private:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);    
 
-    double weight = 1.0 / cloud->size();
+    double weight = 2.0 / cloud->size();
     double d = 1.0;
 
   		// add residuals on doppler readings
