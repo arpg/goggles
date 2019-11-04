@@ -55,7 +55,7 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
       // aren't linear functions just the best?
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J0(jacobians[0]);
       J0.setZero();
-      J0.block<1,3>(0,0) = target_ray_corrected * weight_;
+      J0.block<1,3>(0,0) = unit_ray * weight_;
 
       if (jacobians_minimal != NULL)
       {
@@ -68,11 +68,26 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
     }
     if (jacobians[1] != NULL)
     {
-      // NEED TO RECHECK THIS JACOBIAN
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J1(jacobians[1]);
       J1.block<1,3>(0,0).setZero();// = delta * weight_ * d_;
+      double ray_norm_cube = ray_norm * ray_norm * ray_norm;
+      J1(0,0) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(0)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(0)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(0)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(0)/ray_norm);
+      J1(0,1) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(1)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(1)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(1)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(1)/ray_norm);
+      J1(0,2) = -weight_ * (
+        v_target(0)*(-target_ray_corrected(2)*target_ray_corrected(0))/ray_norm_cube 
+        + v_target(1)*(-target_ray_corrected(2)*target_ray_corrected(1))/ray_norm_cube
+        + v_target(2)*(-target_ray_corrected(2)*target_ray_corrected(2))/ray_norm_cube
+        + v_target(2)/ray_norm);
       J1.block<3,3>(1,0).setIdentity();
-      J1 *= d_ * weight_;
+      J1.block<3,3>(1,0) *= d_ * weight_;
 
       if (jacobians_minimal != NULL)
       {
