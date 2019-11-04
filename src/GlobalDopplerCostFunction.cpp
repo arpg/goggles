@@ -145,8 +145,6 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
       J2_mapped.block<1,3>(0,0) *= -weight_;
       J2_mapped.block<3,3>(1,0).setIdentity();
       J2_mapped.block<3,3>(1,0) *= d_ * weight_;
-      J2_mapped.block<3,3>(1,0) = Eigen::Matrix3d::Identity();
-      J2_mapped.block<3,3>(1,0) *= weight_ * d_;
 
       if (jacobians_minimal != NULL)
       {

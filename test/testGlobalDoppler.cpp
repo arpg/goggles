@@ -22,13 +22,14 @@ TEST(googleTests, testGlobalDoppler)
   // random orientation and positive x velocity
   Eigen::Quaterniond q_ws = Eigen::Quaterniond::UnitRandom();
   Eigen::Vector3d v_w(1.0,0.0,0.0);
+  
   Eigen::Vector3d v_s = q_ws.toRotationMatrix().transpose() * v_w;
 
   // generate doppler readings with additive noise
   double x = 10.0;
   std::random_device rd{};
   std::mt19937 gen{rd()};
-  std::normal_distribution<double> d(0, 0.1);
+  std::normal_distribution<double> d(0, 0.01);
   std::vector<std::pair<double,Eigen::Vector3d>> targets;
   for (int y = -5; y < 5; y += 1)
   {
@@ -51,8 +52,8 @@ TEST(googleTests, testGlobalDoppler)
     std::make_shared<OrientationParameterBlock>(q_ws,id,0.0);
   id = IdProvider::instance().NewId();
   std::shared_ptr<VelocityParameterBlock> v_w_est = 
-    std::make_shared<VelocityParameterBlock>(Eigen::Vector3d(0.5,0.2,-0.6),id,0.0);
-
+    std::make_shared<VelocityParameterBlock>(v_w,id,0.0);
+  
   // create ceres problem
   std::shared_ptr<Map> map_ptr 
     = std::shared_ptr<Map>(new Map());
@@ -85,7 +86,7 @@ TEST(googleTests, testGlobalDoppler)
                                                           v_w_est,
                                                           delta);
   }
-
+  
   GlobalDopplerCostFunction* v_cost_func =
     new GlobalDopplerCostFunction(targets[0].first,
                                   targets[0].second,
@@ -94,8 +95,8 @@ TEST(googleTests, testGlobalDoppler)
                                   sigma_ratio);
   id = IdProvider::instance().NewId();
   std::shared_ptr<DeltaParameterBlock> delta = 
-    std::make_shared<DeltaParameterBlock>(Eigen::Vector3d(0.01,0.01,0.01),id,0.0);
-    
+    std::make_shared<DeltaParameterBlock>(Eigen::Vector3d(1.0e-3,1.0e-3,1.0e-3),id,0.0);
+  
   // check jacobians by manual inspection
   // automatic checking is not reliable because the information
   // matrix is a function of the states
@@ -103,7 +104,7 @@ TEST(googleTests, testGlobalDoppler)
   parameters[0] = q_ws_est->GetParameters();
   parameters[1] = v_w_est->GetParameters();
   parameters[2] = delta->GetParameters();
-
+  
   double* jacobians[3];
   Eigen::Matrix<double,4,4,Eigen::RowMajor> J0; // w.r.t. orientation 
   jacobians[0] = J0.data();
@@ -111,24 +112,24 @@ TEST(googleTests, testGlobalDoppler)
   jacobians[1] = J1.data();
   Eigen::Matrix<double,4,3,Eigen::RowMajor> J2; // w.r.t. delta 
   jacobians[2] = J2.data();
-
-  double* jacobians_minimal[2];
+  
+  double* jacobians_minimal[3];
   Eigen::Matrix<double,4,3,Eigen::RowMajor> J0_min; // w.r.t. orientation 
   jacobians_minimal[0] = J0_min.data();
   Eigen::Matrix<double,4,3,Eigen::RowMajor> J1_min; // w.r.t. velocity 
   jacobians_minimal[1] = J1_min.data();
   Eigen::Matrix<double,4,3,Eigen::RowMajor> J2_min; // w.r.t. delta 
   jacobians_minimal[2] = J2_min.data();
-
+  
   Eigen::Vector4d residuals;
-
+  
   v_cost_func->EvaluateWithMinimalJacobians(parameters, 
                                             residuals.data(), 
                                             jacobians,
                                             jacobians_minimal);
 
   double dx = 1e-6;
-  
+
   Eigen::Matrix<double,4,3> J0_numDiff;
   for (size_t i=0; i<3; i++)
   {
@@ -207,10 +208,9 @@ TEST(googleTests, testGlobalDoppler)
       << "\nuser provided J2: \n" << J2 
       << "\n\nnum diff J2:\n" << J2_numDiff << "\n\n";
   }
- 
+  
   // solve the problem and save the state estimates
   map_ptr->Solve();
-
   LOG(ERROR) << map_ptr->summary.FullReport();
 
   Eigen::Quaterniond q_ws_err = q_ws_est->GetEstimate() * q_ws.inverse();
