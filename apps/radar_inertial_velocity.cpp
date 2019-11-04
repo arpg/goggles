@@ -26,6 +26,7 @@
 #include <OrientationParameterBlock.h>
 #include <VelocityParameterBlock.h>
 #include <BiasParameterBlock.h>
+#include <DeltaParameterBlock.h>
 #include <Map.h>
 #include <IdProvider.h>
 #include "DataTypes.h"
@@ -250,6 +251,7 @@ private:
   std::deque<std::shared_ptr<VelocityParameterBlock>> speeds_;
   std::deque<std::shared_ptr<BiasParameterBlock>> gyro_biases_;
   std::deque<std::shared_ptr<BiasParameterBlock>> accel_biases_;
+  std::deque<std::vector<std::shared_ptr<DeltaParameterBlock>>> ray_errors_;
   Eigen::Matrix3d initial_orientation_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
@@ -333,6 +335,8 @@ private:
 		}
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
+    std::vector<std::shared_ptr<DeltaParameterBlock>> ray_err;
+    ray_errors_.push_front(ray_err);
     residual_blks_.push_front(residuals);
     timestamps_.push_front(timestamp);
 
@@ -367,13 +371,19 @@ private:
                                                     radar_to_imu_mat_,
                                                     weight,
                                                     d);
+      uint64_t id = IdProvider::instance().NewId();
+      ray_errors_.front().push_back(std::make_shared<DeltaParameterBlock>(
+        Eigen::Vector3d::Zero(), id, timestamp));
+
+      map_ptr_->AddParameterBlock(ray_errors_.front().back());
 
 			// add residual block to ceres problem
       ceres::ResidualBlockId res_id =
 				map_ptr_->AddResidualBlock(doppler_cost_function,
                                    doppler_loss_,
                                    orientations_.front(),
-                                	 speeds_.front());
+                                	 speeds_.front(),
+                                   ray_errors_.front().back());
       residual_blks_.front().push_back(res_id);
       
     }
@@ -620,6 +630,8 @@ private:
         gyro_biases_.back()->GetId()); // gyro bias
       states_to_marginalize.push_back(
         accel_biases_.back()->GetId()); // accel bias
+      for (int i = 0; i < ray_errors_.back().size(); i++)
+        states_to_marginalize.push_back(ray_errors_.back()[i]->GetId());
 
       // actually marginalize states
       if (!marginalization_error_ptr_->MarginalizeOut(states_to_marginalize))
@@ -636,6 +648,7 @@ private:
       accel_biases_.pop_back();
       residual_blks_.pop_back();
       timestamps_.pop_back();
+      ray_errors_.pop_back();
 
       // discard marginalization error if it has no residuals
       if (marginalization_error_ptr_->ResidualDim() == 0)
