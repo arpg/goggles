@@ -69,23 +69,13 @@ bool BodyVelocityCostFunction::EvaluateWithMinimalJacobians(
     if (jacobians[1] != NULL)
     {
       Eigen::Map<Eigen::Matrix<double,4,3,Eigen::RowMajor>> J1(jacobians[1]);
-      J1.block<1,3>(0,0).setZero();// = delta * weight_ * d_;
+
       double ray_norm_cube = ray_norm * ray_norm * ray_norm;
-      J1(0,0) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(0)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(0)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(0)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(0)/ray_norm);
-      J1(0,1) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(1)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(1)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(1)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(1)/ray_norm);
-      J1(0,2) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(2)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(2)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(2)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(2)/ray_norm);
+
+      J1.block<1,3>(0,0) = -target_ray_corrected * v_target.transpose() * target_ray_corrected;
+      J1.block<1,3>(0,0) /= ray_norm_cube;
+      J1.block<1,3>(0,0) += v_target / ray_norm;
+      J1.block<1,3>(0,0) *= -weight_;
       J1.block<3,3>(1,0).setIdentity();
       J1.block<3,3>(1,0) *= d_ * weight_;
 

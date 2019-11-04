@@ -139,21 +139,12 @@ bool GlobalDopplerCostFunction::EvaluateWithMinimalJacobians(
         J2_mapped(jacobians[2]);
 
       double ray_norm_cube = pow(ray_norm,3);
-      J2_mapped(0,0) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(0)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(0)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(0)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(0)/ray_norm);
-      J2_mapped(0,1) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(1)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(1)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(1)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(1)/ray_norm);
-      J2_mapped(0,2) = -weight_ * (
-        v_target(0)*(-target_ray_corrected(2)*target_ray_corrected(0))/ray_norm_cube 
-        + v_target(1)*(-target_ray_corrected(2)*target_ray_corrected(1))/ray_norm_cube
-        + v_target(2)*(-target_ray_corrected(2)*target_ray_corrected(2))/ray_norm_cube
-        + v_target(2)/ray_norm);
+      J2_mapped.block<1,3>(0,0) = -target_ray_corrected * v_target.transpose() * target_ray_corrected;
+      J2_mapped.block<1,3>(0,0) /= ray_norm_cube;
+      J2_mapped.block<1,3>(0,0) += v_target / ray_norm;
+      J2_mapped.block<1,3>(0,0) *= -weight_;
+      J2_mapped.block<3,3>(1,0).setIdentity();
+      J2_mapped.block<3,3>(1,0) *= d_ * weight_;
       J2_mapped.block<3,3>(1,0) = Eigen::Matrix3d::Identity();
       J2_mapped.block<3,3>(1,0) *= weight_ * d_;
 
