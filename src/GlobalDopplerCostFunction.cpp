@@ -25,11 +25,11 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   //weight_ = weight * radar_frame_ray.dot(weights);
 
   // reweight based on elevation and azimuth cosines
-  //Eigen::Vector2d el_vec(radar_frame_ray[0], radar_frame_ray[2]);
-  //el_vec.normalize();
-  //Eigen::Vector2d az_vec(radar_frame_ray[0], radar_frame_ray[1]);
-  //az_vec.normalize();
-  weight_ = weight;// * el_vec[0] * az_vec[0];
+  Eigen::Vector2d el_vec(radar_frame_ray[0], radar_frame_ray[2]);
+  el_vec.normalize();
+  Eigen::Vector2d az_vec(radar_frame_ray[0], radar_frame_ray[1]);
+  az_vec.normalize();
+  weight_ = weight * el_vec[0];// * az_vec[0];
   
 }
 
