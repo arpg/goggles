@@ -3,7 +3,7 @@
     <arg name="dev" default="1843"/>
     <arg name="cfg" default="rangeRes_0-04_velRes_0-12_10Hz"/>
     <arg name="topic" default="/mmWaveDataHdl/RScan"/>
-	<arg name="launch_radar" default="true"/>
+	<arg name="launch_radar" default="false"/>
     <arg name="publish_inliers" default="false"/>
     <!-- launch ti mmwave sensor node -->
 
