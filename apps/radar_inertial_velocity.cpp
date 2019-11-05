@@ -75,6 +75,7 @@ public:
 		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
     nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
+    nh_.getParam("publish_inliers", publish_inliers_);
 
 		// get imu params and extrinsics
 		LoadParams(config);
@@ -88,6 +89,10 @@ public:
 																radar_frame,
 																ros::Time(0.0),
 																radar_to_imu_);
+    tf_listener.lookupTransform(radar_frame,
+                                imu_frame,
+                                ros::Time(0,0),
+                                imu_to_radar_);
     Eigen::Quaterniond radar_to_imu_quat;
     tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
     radar_to_imu_mat_ = radar_to_imu_quat.toRotationMatrix();
@@ -95,7 +100,11 @@ public:
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
 
-    pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
+    velocity_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(
+      ns + "/mmWaveDataHdl/velocity",1);
+    if (publish_inliers_) 
+      inlier_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
+        ns + "/mmWaveDataHdl/inlier_set",1);
 
 		radar_sub_ = nh_.subscribe(radar_topic, 1, &RadarInertialVelocityReader::radarCallback, this);
 		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
@@ -178,7 +187,7 @@ public:
       geometry_msgs::TwistWithCovarianceStamped vel_out;
       vel_out.header.stamp = msg->header.stamp;
       populateMessage(imu_propagated_speed_,vel_out,covariance);
-      pub_.publish(vel_out);
+      velocity_publisher_.publish(vel_out);
     }
 	}
 
@@ -226,17 +235,19 @@ public:
       vel_out.header.stamp = msg->header.stamp;
       Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
       populateMessage(speeds_.front()->GetEstimate(),vel_out,covariance_matrix);
-      pub_.publish(vel_out);
+      velocity_publisher_.publish(vel_out);
     }
 	}
 
 private:
   // ros-related objects
   ros::NodeHandle nh_;
-  ros::Publisher pub_;
+  ros::Publisher velocity_publisher_;
+  ros::Publisher inlier_publisher_;
   ros::Subscriber radar_sub_;
 	ros::Subscriber imu_sub_;
 	tf::StampedTransform radar_to_imu_;
+  tf::StampedTransform imu_to_radar_;
   Eigen::Matrix3d radar_to_imu_mat_;
 
   // ceres objects
@@ -279,6 +290,7 @@ private:
   double min_range_;
   int num_iter_;
   double sum_time_;
+  bool publish_inliers_;
 
 
 
@@ -358,6 +370,9 @@ private:
     // copy inlier points to new data structure;
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);    
+
+    // publish inlier set, if requested
+    if (publish_inliers_) PublishInliers(cloud, timestamp);
 
     double weight = 2.5 / cloud->size();
     double d = 0.95;
@@ -685,18 +700,14 @@ private:
   {
     // ensure unique access
     std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
-    //LOG(ERROR) << std::fixed << std::setprecision(3) 
-    //           << "propagating imu state from " << propagated_state_timestamp_
-    //           << " to " << t1;
 
     // propagate state using imu measurement
     std::vector<ImuMeasurement> imu_measurements;
-    bool delete_measurements = propagated_state_timestamp_ < last_optimized_state_timestamp_;
-    imu_measurements = imu_buffer_.GetRange(propagated_state_timestamp_, t1, delete_measurements);
-    //LOG(ERROR) << std::fixed << std::setprecision(5) 
-    //           << "doing propagation with measurements from "
-    //           << imu_measurements.front().t_ << " to " 
-    //           << imu_measurements.back().t_;
+    bool delete_measurements = 
+      propagated_state_timestamp_ < last_optimized_state_timestamp_;
+    imu_measurements = imu_buffer_.GetRange(
+      propagated_state_timestamp_, t1, delete_measurements);
+
     GlobalImuVelocityCostFunction::Propagation(imu_measurements,
                                                params_,
                                                imu_propagated_orientation_,
@@ -707,8 +718,27 @@ private:
                                                t1);
 
     propagated_state_timestamp_ = t1;
-    //LOG(ERROR) << "done propagating state";
-    //LOG(ERROR) << "imu buffer size: " << imu_buffer_.size();
+  }
+
+  /** \brief publishes inlier points after MLESAC step
+    * \param[in] cloud The inlier point cloud
+    * \param[in] timestamp of the outgoing point cloud
+    */
+  void PublishInliers(pcl::PointCloud<RadarPoint>::Ptr imu_frame_cloud, double timestamp)
+  {
+    // transform point cloud back to the radar frame
+    pcl::PointCloud<RadarPoint>::Ptr radar_frame_cloud(new pcl::PointCloud<RadarPoint>());
+    pcl_ros::transformPointCloud(*imu_frame_cloud, *radar_frame_cloud, imu_to_radar_);
+
+    // convert to PCL2 type
+    pcl::PCLPointCloud2 radar_frame_cloud2;
+    pcl::toPCLPointCloud2(*radar_frame_cloud, radar_frame_cloud2);
+
+    // convert to ros message type
+    sensor_msgs::PointCloud2 out_cloud;
+    pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
+    
+    inlier_publisher_.publish(out_cloud);
   }
 
   /** \brief populate ros message with velocity and covariance
