@@ -29,7 +29,7 @@ GlobalDopplerCostFunction::GlobalDopplerCostFunction(double doppler,
   el_vec.normalize();
   Eigen::Vector2d az_vec(radar_frame_ray[0], radar_frame_ray[1]);
   az_vec.normalize();
-  weight_ = weight * el_vec[0];// * az_vec[0];
+  weight_ = weight;// * el_vec[0];// * az_vec[0];
   
 }
 

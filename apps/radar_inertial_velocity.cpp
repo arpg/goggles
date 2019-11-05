@@ -97,7 +97,7 @@ public:
 
     pub_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
 
-		radar_sub_ = nh_.subscribe(radar_topic, 0, &RadarInertialVelocityReader::radarCallback, this);
+		radar_sub_ = nh_.subscribe(radar_topic, 1, &RadarInertialVelocityReader::radarCallback, this);
 		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
@@ -105,15 +105,16 @@ public:
 		initialized_ = false;
     first_state_optimized_ = false;
 
-    window_size_ = 3;
+    window_size_ = 5;
 
     // set up ceres problem
-    doppler_loss_ = new ceres::HuberLoss(1.0);
-    imu_loss_ = new ceres::HuberLoss(2.0);
+    doppler_loss_ = new ceres::CauchyLoss(1.0);
+    imu_loss_ = new ceres::CauchyLoss(1.0);
     yaw_loss_ = new ceres::ScaledLoss(
       NULL,50.0,ceres::DO_NOT_TAKE_OWNERSHIP);
 		quat_param_ = new QuaternionParameterization;
     map_ptr_->options.num_threads = 8;
+    //map_ptr_->options.max_solver_time_in_seconds = 5.0e-2;
   }
 
 	void LoadParams(std::string config_filename)
@@ -358,121 +359,121 @@ private:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::copyPointCloud(*raw_cloud, inliers, *cloud);    
 
-    double weight = 2.0 / cloud->size();
-    double d = 1.0;
+    double weight = 2.5 / cloud->size();
+    double d = 0.95;
 
-  		// add residuals on doppler readings
+    // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
-     Eigen::Vector3d target(cloud->at(i).x,
-       cloud->at(i).y,
-       cloud->at(i).z);
-     std::shared_ptr<ceres::CostFunction> doppler_cost_function =
-     std::make_shared<GlobalDopplerCostFunction>(cloud->at(i).doppler,
-      target,
-      radar_to_imu_mat_,
-      weight,
-      d);
-     uint64_t id = IdProvider::instance().NewId();
-     ray_errors_.front().push_back(std::make_shared<DeltaParameterBlock>(
-      Eigen::Vector3d::Zero(), id, timestamp));
+      Eigen::Vector3d target(cloud->at(i).x,
+         cloud->at(i).y,
+         cloud->at(i).z);
+      std::shared_ptr<ceres::CostFunction> doppler_cost_function =
+      std::make_shared<GlobalDopplerCostFunction>(cloud->at(i).doppler,
+        target,
+        radar_to_imu_mat_,
+        weight,
+        d);
+      uint64_t id = IdProvider::instance().NewId();
+      ray_errors_.front().push_back(std::make_shared<DeltaParameterBlock>(
+        Eigen::Vector3d::Zero(), id, timestamp));
 
-     map_ptr_->AddParameterBlock(ray_errors_.front().back());
+      map_ptr_->AddParameterBlock(ray_errors_.front().back());
 
-  			// add residual block to ceres problem
-     ceres::ResidualBlockId res_id =
-     map_ptr_->AddResidualBlock(doppler_cost_function,
-       doppler_loss_,
-       orientations_.front(),
-       speeds_.front(),
-       ray_errors_.front().back());
-     residual_blks_.front().push_back(res_id);
+    	// add residual block to ceres problem
+      ceres::ResidualBlockId res_id =
+      map_ptr_->AddResidualBlock(doppler_cost_function,
+        doppler_loss_,
+        orientations_.front(),
+        speeds_.front(),
+        ray_errors_.front().back());
+      residual_blks_.front().push_back(res_id);
 
-   }
+     }
 
-      // find imu measurements bracketing current timestep
-   std::vector<ImuMeasurement> imu_measurements = 
-   imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
-
-   if (imu_measurements.size() < 2)
-    LOG(FATAL) << "not enough measurements returned";
-
-  std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
-  ImuMeasurement before, after;
-  while ((it + 1) != imu_measurements.end())
-  {
-    if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
-    {
-      before = *it;
-      after = *(it + 1);
-    }
-    it++;
-  }
-  if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
-    LOG(FATAL) << "imu measurements do not bracket current time";
-
-      // use slerp to interpolate orientation at current timestep
-  double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
-  Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
-
-      // add constraint on yaw at current timestep
-  std::shared_ptr<ceres::CostFunction> yaw_cost_func = 
-  std::make_shared<AHRSYawCostFunction>(q_WS_t0,params_.invert_yaw_);
-
-  ceres::ResidualBlockId orientation_res_id =
-  map_ptr_->AddResidualBlock(yaw_cost_func,
-   yaw_loss_,
-   orientations_.front());
-
-  residual_blks_.front().push_back(orientation_res_id);
-
-      // add imu cost only if there are more than 1 radar measurements in the queue
-  if (timestamps_.size() >= 2)
-  {
-    for (size_t i = 0; i < ray_errors_[1].size(); i++)
-      map_ptr_->SetParameterBlockConstant(ray_errors_[1][i]);
-
-    bool delete_measurements = timestamps_[0] < propagated_state_timestamp_;
-
+    // find imu measurements bracketing current timestep
     std::vector<ImuMeasurement> imu_measurements = 
-    imu_buffer_.GetRange(timestamps_[1], 
-     timestamps_[0], 
-     delete_measurements);
+    imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
 
-    std::shared_ptr<ceres::CostFunction> imu_cost_func =
-    std::make_shared<GlobalImuVelocityCostFunction>(timestamps_[1],
-     timestamps_[0],
-     imu_measurements,
-     params_);
+    if (imu_measurements.size() < 2)
+      LOG(FATAL) << "not enough measurements returned";
 
-    ceres::ResidualBlockId imu_res_id
-    = map_ptr_->AddResidualBlock(imu_cost_func,
-     imu_loss_,
-     orientations_[1],
-     speeds_[1],
-     gyro_biases_[1],
-     accel_biases_[1],
-     orientations_[0],
-     speeds_[0],
-     gyro_biases_[0],
-     accel_biases_[0]);
-    residual_blks_[1].push_back(imu_res_id);
-  }
-  		// solve the ceres problem and get result
-  map_ptr_->Solve();
-  LOG(INFO) << map_ptr_->summary.FullReport();
+    std::vector<ImuMeasurement>::iterator it = imu_measurements.begin();
+    ImuMeasurement before, after;
+    while ((it + 1) != imu_measurements.end())
+    {
+      if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
+      {
+        before = *it;
+        after = *(it + 1);
+      }
+      it++;
+    }
+    if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
+      LOG(FATAL) << "imu measurements do not bracket current time";
 
-  if (publish_imu_propagated_state_)
-  {
-    std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
-    propagated_state_timestamp_ = timestamps_[0];
-    last_optimized_state_timestamp_ = timestamps_[0];
-    imu_propagated_orientation_ = orientations_.front()->GetEstimate();
-    imu_propagated_speed_ = speeds_.front()->GetEstimate();
-    imu_propagated_g_bias_ = gyro_biases_.front()->GetEstimate();
-    imu_propagated_a_bias_ = accel_biases_.front()->GetEstimate();
-    first_state_optimized_ = true;
-  }
+        // use slerp to interpolate orientation at current timestep
+    double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
+    Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
+
+        // add constraint on yaw at current timestep
+    std::shared_ptr<ceres::CostFunction> yaw_cost_func = 
+    std::make_shared<AHRSYawCostFunction>(q_WS_t0,params_.invert_yaw_);
+
+    ceres::ResidualBlockId orientation_res_id =
+    map_ptr_->AddResidualBlock(yaw_cost_func,
+     yaw_loss_,
+     orientations_.front());
+
+    residual_blks_.front().push_back(orientation_res_id);
+
+    // add imu cost only if there are more than 1 radar measurements in the queue
+    if (timestamps_.size() >= 2)
+    {
+      for (size_t i = 0; i < ray_errors_[1].size(); i++)
+        map_ptr_->SetParameterBlockConstant(ray_errors_[1][i]);
+
+      bool delete_measurements = timestamps_[0] < propagated_state_timestamp_;
+
+      std::vector<ImuMeasurement> imu_measurements = 
+      imu_buffer_.GetRange(timestamps_[1], 
+       timestamps_[0], 
+       delete_measurements);
+
+      std::shared_ptr<ceres::CostFunction> imu_cost_func =
+      std::make_shared<GlobalImuVelocityCostFunction>(timestamps_[1],
+       timestamps_[0],
+       imu_measurements,
+       params_);
+
+      ceres::ResidualBlockId imu_res_id
+      = map_ptr_->AddResidualBlock(imu_cost_func,
+       imu_loss_,
+       orientations_[1],
+       speeds_[1],
+       gyro_biases_[1],
+       accel_biases_[1],
+       orientations_[0],
+       speeds_[0],
+       gyro_biases_[0],
+       accel_biases_[0]);
+      residual_blks_[1].push_back(imu_res_id);
+    }
+  	// solve the ceres problem and get result
+    map_ptr_->Solve();
+    LOG(INFO) << map_ptr_->summary.FullReport();
+
+    if (publish_imu_propagated_state_)
+    {
+      std::lock_guard<std::mutex> lck(imu_propagation_mutex_);
+      propagated_state_timestamp_ = timestamps_[0];
+      last_optimized_state_timestamp_ = timestamps_[0];
+      imu_propagated_orientation_ = orientations_.front()->GetEstimate();
+      imu_propagated_speed_ = speeds_.front()->GetEstimate();
+      imu_propagated_g_bias_ = gyro_biases_.front()->GetEstimate();
+      imu_propagated_a_bias_ = accel_biases_.front()->GetEstimate();
+      first_state_optimized_ = true;
+    }
     
     /*
     std::ofstream orientation_log;
