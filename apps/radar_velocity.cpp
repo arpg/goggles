@@ -62,9 +62,11 @@ public:
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
 
-    vel_est_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(ns + "/mmWaveDataHdl/velocity",1);
+    vel_est_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(
+      ns + "/mmWaveDataHdl/velocity",1);
     if (publish_inliers_)
-      inlier_set_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(ns + "/mmWaveDataHdl/RScanInliers",1);
+      inlier_set_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
+        ns + "/mmWaveDataHdl/inlier_set",1);
     sub_ = nh_.subscribe(radar_topic, 0, &RadarVelocityReader::callback, this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
