@@ -463,3 +463,57 @@ Map::ParameterBlockCollection Map::GetParameterBlocks(
   }  
   return it->second;
 }
+
+bool Map::GetCovariance(std::vector<std::shared_ptr<ParameterBlock>> &parameters,
+                     Eigen::MatrixXd &covariance_matrix)
+{
+  size_t total_dim = 0;
+  for (size_t i = 0; i < parameters.size(); i++)
+    total_dim += parameters[i]->GetDimension();
+
+  covariance_matrix.resize(total_dim,total_dim);
+  covariance_matrix.setZero();
+
+  ceres::Covariance::Options cov_options;
+  cov_options.num_threads = 4;
+  cov_options.algorithm_type = ceres::DENSE_SVD;
+  cov_options.null_space_rank = -1;
+  ceres::Covariance covariance(cov_options);
+
+  std::vector<std::pair<const double*, const double*>> cov_blks;
+
+  for (size_t i = 0; i < parameters.size(); i++)
+  {
+    for (size_t j = i; j < parameters.size(); j++)
+    {
+      cov_blks.push_back(std::make_pair(parameters[i]->GetParameters(),
+                                        parameters[j]->GetParameters()));
+    }
+  }
+
+  bool result = covariance.Compute(cov_blks, problem_.get());
+
+  int idx_i = 0;
+  for (size_t i = 0; i < parameters.size(); i++)
+  {
+    int idx_j = idx_i;
+    const int i_dim = parameters[i]->GetDimension();
+
+    for (size_t j = i; j < parameters.size(); j++)
+    {
+      const int j_dim = parameters[j]->GetDimension();
+      Eigen::MatrixXd block_ij(i_dim,j_dim);
+      covariance.GetCovarianceBlock(parameters[i]->GetParameters(),
+                                    parameters[j]->GetParameters(),
+                                    block_ij.data());
+      covariance_matrix.block(idx_i,idx_j,i_dim,j_dim) = block_ij;
+      covariance_matrix.block(idx_j,idx_i,j_dim,i_dim) = block_ij.transpose();
+      idx_j += j_dim;
+    }
+    idx_i += i_dim;
+  }
+
+  // copy upper triangle to lower
+
+  return result;
+}

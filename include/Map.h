@@ -268,6 +268,13 @@ public:
     ceres::Solve(options, problem_.get(), &summary);
   }
 
+  /// \brief Get estimated covariance for a set of parameter blocks
+  /// \param[in] parameters The set of parameters for which to estimate covariance
+  /// \param[out] covariance_matrix The covariance matrix
+  bool GetCovariance(std::vector<std::shared_ptr<ParameterBlock>> &parameters,
+                     Eigen::MatrixXd &covariance_matrix);
+
+
 protected:
 
   /// \brief the ceres problem
