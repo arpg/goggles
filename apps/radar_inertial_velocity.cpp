@@ -106,8 +106,14 @@ public:
       inlier_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
         ns + "/mmWaveDataHdl/inlier_set",1);
 
-		radar_sub_ = nh_.subscribe(radar_topic, 1, &RadarInertialVelocityReader::radarCallback, this);
-		imu_sub_ = nh_.subscribe(imu_topic, 0, &RadarInertialVelocityReader::imuCallback, this);
+		radar_sub_ = nh_.subscribe(radar_topic, 
+                               0, 
+                               &RadarInertialVelocityReader::radarCallback, 
+                               this);
+		imu_sub_ = nh_.subscribe(imu_topic, 
+                             0, 
+                             &RadarInertialVelocityReader::imuCallback, 
+                             this);
     min_range_ = 0.5;
     sum_time_ = 0.0;
     num_iter_ = 0;
@@ -500,26 +506,15 @@ private:
                     << '\n';
     orientation_log.close();
     */
-    // get estimate covariance
+    // get estimate covariance for most recent speed only
+    Eigen::MatrixXd covariance_matrix(3,3);
+    covariance_matrix.setIdentity();
     /*
-    ceres::Covariance::Options cov_options;
-    cov_options.num_threads = 1;
-    cov_options.algorithm_type = ceres::DENSE_SVD;
-    ceres::Covariance covariance(cov_options);
-
-    std::vector<std::pair<const double*, const double*>> cov_blks;
-    cov_blks.push_back(std::make_pair(speeds_and_biases_.front()->head<3>().data(),
-                                      speeds_and_biases_.front()->head<3>().data()));
-
-    covariance.Compute(cov_blks, problem_.get());
-    Eigen::Matrix3d covariance_matrix;
-    covariance.GetCovarianceBlock(speeds_and_biases_.front()->head<3>().data(),
-                                  speeds_and_biases_.front()->head<3>().data(),
-                                  covariance_matrix.data());
-
-    LOG(INFO) << "covariance: \n" << covariance_matrix;
+    std::vector<std::shared_ptr<ParameterBlock>> cov_params;
+    cov_params.push_back(speeds_.front());
+    map_ptr_->GetCovariance(cov_params,covariance_matrix);
     */
-    Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
+    LOG(INFO) << "covariance: \n" << covariance_matrix;
     
   }
 
@@ -737,7 +732,7 @@ private:
     // convert to ros message type
     sensor_msgs::PointCloud2 out_cloud;
     pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
-    
+
     inlier_publisher_.publish(out_cloud);
   }
 

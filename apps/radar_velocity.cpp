@@ -457,28 +457,15 @@ private:
     LOG(INFO) << map_ptr_->summary.FullReport();
     LOG(INFO) << "velocity from ceres: " << velocities_.front()->GetEstimate().transpose();
 
-    // get estimate covariance
+    // get estimate covariance for most recent speed only
+    Eigen::MatrixXd covariance_matrix(3,3);
+    covariance_matrix.setIdentity();
     /*
-    ceres::Covariance::Options cov_options;
-    cov_options.num_threads = 1;
-    cov_options.algorithm_type = ceres::DENSE_SVD;
-    ceres::Covariance covariance(cov_options);
-
-    std::vector<std::pair<const double*, const double*>> cov_blks;
-    cov_blks.push_back(std::make_pair(velocities_.front()->data(),
-                                      velocities_.front()->data()));
-
-    covariance.Compute(cov_blks, problem_.get());
-    Eigen::Matrix3d covariance_matrix;
-    covariance.GetCovarianceBlock(velocities_.front()->data(),
-                                  velocities_.front()->data(),
-                                  covariance_matrix.data());
-
-    VLOG(2) << "covariance: \n" << covariance_matrix;
+    std::vector<std::shared_ptr<ParameterBlock>> cov_params;
+    cov_params.push_back(speeds_.front());
+    map_ptr_->GetCovariance(cov_params,covariance_matrix);
     */
-    // Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-		Eigen::Matrix3d covariance_matrix;
-		// Eigen::DiagonalMatrix<double, 3> covariance_matrix;
+
 		covariance_matrix.diagonal() << 0.01, 0.015, 0.05;
 
     populateMessage(vel_out,velocities_.front()->GetEstimate(),covariance_matrix);
