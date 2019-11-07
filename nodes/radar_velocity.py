@@ -37,12 +37,12 @@ other functions that are model-independent.
 """
 
 import rospy
+import numpy as np
 import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import TwistWithCovarianceStamped
 from geometry_msgs.msg import TwistStamped
 
-import numpy as np
 # from sklearn.linear_model import RANSACRegressor
 # from goggles.base_estimator import dopplerRANSAC
 from goggles.mlesac import MLESAC
@@ -63,10 +63,13 @@ class VelocityEstimator():
             self.writer = csv.writer(csv_file, delimiter=',')
 
         ## prescribe velocity estimator model {2D, 3D} and utils class
-        self.model = model
-        self.odr   = OrthogonalDistanceRegression(model)   # change to full 2D/3D compatible ODR in future
-        self.utils = RadarUtilities()
-        self.type  = rospy.get_param('~type')
+        self.model  = model
+        self.odr    = OrthogonalDistanceRegression(model)
+        self.utils  = RadarUtilities()
+        self.type_  = rospy.get_param('~type')              # 2D or 3D pointcloud data
+
+        ## publish MLESAC inliers?
+        self.publish_inliers_ = rospy.get_param('~publish_inliers')
 
         ## instantiate mlesac object with base_estimator_mlesac class object'
         self.base_estimator = dopplerMLESAC(model)
@@ -83,37 +86,40 @@ class VelocityEstimator():
             ns = ns[1:]
 
         ## init subscriber
-        self.mmwave_topic = rospy.get_param('~mmwave_topic')
-        self.radar_sub = rospy.Subscriber(ns+self.mmwave_topic, PointCloud2, self.ptcloud_cb)
-        rospy.loginfo("INIT: VelocityEstimator Node subcribed to: " + ns + self.mmwave_topic)
+        mmwave_topic = rospy.get_param('~mmwave_topic')
+        self.radar_sub = rospy.Subscriber(ns + mmwave_topic, PointCloud2, self.ptcloud_cb)
+        rospy.loginfo("INIT: VelocityEstimator Node subcribed to:\t" + ns + mmwave_topic)
 
         ## init MLESAC filtered pointcloud topic
-        self.pc_pub = rospy.Publisher(ns + self.mmwave_topic + '/filtered', PointCloud2, queue_size=10)
+        if self.publish_inliers_:
+            rscan_inlier_topic = mmwave_topic + 'Inliers'
+            self.pc_pub = rospy.Publisher(ns + rscan_inlier_topic, PointCloud2, queue_size=10)
+            rospy.loginfo("INIT: RScanInliers publishing on:\t\t" + ns + rscan_inlier_topic)
 
         ## init publisher
-        twist_topic = '/' + self.mmwave_topic.split('/')[1] + '/velocity'
+        twist_topic = '/' + mmwave_topic.split('/')[1] + '/velocity'
         self.twist_pub = rospy.Publisher(ns + twist_topic, TwistWithCovarianceStamped, queue_size=10)
-        rospy.loginfo("INIT: VelocityEstimator Node publishing on: " + ns + twist_topic)
+        rospy.loginfo("INIT: VelocityEstimator Node publishing on:\t" + ns + twist_topic)
 
         ## define filtering threshold parameters - taken from velocity_estimation.m
-        self.azimuth_thres   = rospy.get_param('~azimuth_thres')
-        self.elevation_thres = rospy.get_param('~elevation_thres')
-        self.range_thres     = rospy.get_param('~range_thres')
-        self.intensity_thres = rospy.get_param('~intensity_thres')
-        self.thresholds      = np.array([self.azimuth_thres, self.intensity_thres, \
-                                         self.range_thres, self.elevation_thres])
+        self.azimuth_thres_   = rospy.get_param('~azimuth_thres')
+        self.elevation_thres_ = rospy.get_param('~elevation_thres')
+        self.range_thres_     = rospy.get_param('~range_thres')
+        self.intensity_thres_ = rospy.get_param('~intensity_thres')
+        self.thresholds_      = np.array([self.azimuth_thres_, self.intensity_thres_, \
+                                         self.range_thres_, self.elevation_thres_])
 
-        rospy.loginfo("INIT: " + ns + self.mmwave_topic + " azimuth_thres = " + str(self.azimuth_thres))
-        rospy.loginfo("INIT: " + ns + self.mmwave_topic + " elevation_thres = " + str(self.elevation_thres))
-        rospy.loginfo("INIT: " + ns + self.mmwave_topic + " range_thres = " + str(self.range_thres))
-        rospy.loginfo("INIT: " + ns + self.mmwave_topic + " intensity_thres = " + str(self.intensity_thres))
+        rospy.loginfo("INIT: " + ns + mmwave_topic + " azimuth_thres\t" + "= " + str(self.azimuth_thres_))
+        rospy.loginfo("INIT: " + ns + mmwave_topic + " elevation_thres\t"+ "= " + str(self.elevation_thres_))
+        rospy.loginfo("INIT: " + ns + mmwave_topic + " range_thres\t"+ "= " + str(self.range_thres_))
+        rospy.loginfo("INIT: " + ns + mmwave_topic + " intensity_thres\t"+ "= " + str(self.intensity_thres_))
 
         rospy.loginfo("INIT: VelocityEstimator Node Initialized")
 
-    def ptcloud_cb(self, msg):
+    def ptcloud_cb(self, radar_msg):
         # rospy.loginfo("GOT HERE: ptcloud_cb")
-        pts_list = list(pc2.read_points(msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
-        pts = np.array(pts_list)
+        pts_list = list(pc2.read_points(radar_msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
+        pts = np.array(pts_list, dtype=np.float32)
 
         ## pts.shape = (Ntargets, 6)
         if pts.shape[0] < self.base_estimator.sample_size:
@@ -121,18 +127,18 @@ class VelocityEstimator():
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("ptcloud_cb: EMPTY RADAR MESSAGE")
         else:
-            pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
-            pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
+            # pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
+            # pts[:,2] = -pts[:,2]    ## ROS standard coordinate system Z-axis is up, NED frame Z-axis is down
 
-            self.estimate_velocity(pts, msg)
+            self.estimate_velocity(pts, radar_msg)
 
     def estimate_velocity(self, pts, radar_msg):
         # rospy.loginfo("GOT HERE: estimate_velocity")
         Ntargets = pts.shape[0]
 
         ## create target azimuth vector (in radians)
-        azimuth = np.arctan(np.divide(pts[:,1],pts[:,0]))       # [rad]
-        elevation = np.arcsin(np.divide(pts[:,2],pts[:,4]))     # [rad]
+        azimuth = np.arctan(np.divide(-pts[:,1],pts[:,0]))       # [rad]
+        elevation = np.arcsin(np.divide(-pts[:,2],pts[:,4]))     # [rad]
 
         # if self.model.min_pts == 2:
         #     elevation = float('nan')*np.ones((Ntargets,))
@@ -144,7 +150,7 @@ class VelocityEstimator():
 
         ## apply AIRE thresholding to remove near-field targets
         data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
-        idx_AIRE = self.utils.AIRE_filtering(data_AIRE, self.thresholds)
+        idx_AIRE = self.utils.AIRE_filtering(data_AIRE, self.thresholds_)
         Ntargets_valid = idx_AIRE.shape[0]
 
         ## define pre-filtered radar data for further processing
@@ -170,9 +176,41 @@ class VelocityEstimator():
 
             ## this data to be published on filtered ptcloud topic
             intensity_inlier = radar_intensity[self.mlesac.inliers_]
+            range_inlier     = radar_range[self.mlesac.inliers_]
             doppler_inlier   = radar_doppler[self.mlesac.inliers_]
             azimuth_inlier   = radar_azimuth[self.mlesac.inliers_]
             elevation_inlier = radar_elevation[self.mlesac.inliers_]
+
+            if self.publish_inliers_:
+                pts_AIRE = pts[idx_AIRE,:]    # [x, y, z, intensity, range, doppler]
+                # pts_AIRE = pts[idx_AIRE,0:4]    # [x, y, z, intensity]
+                pts_inliers = pts_AIRE[self.mlesac.inliers_,:]
+
+                rscan_inliers = PointCloud2()
+
+                rscan_inliers.header = radar_msg.header
+
+                rscan_inliers.height = 1
+                rscan_inliers.width = self.mlesac.inliers_.shape[0]
+                rscan_inliers.is_bigendian = False
+                rscan_inliers.point_step = 24
+                rscan_inliers.row_step = rscan_inliers.width * rscan_inliers.point_step
+                rscan_inliers.is_dense = True
+
+                rscan_inliers.fields = [
+                    PointField('x', 0, PointField.FLOAT32, 1),
+                    PointField('y', 4, PointField.FLOAT32, 1),
+                    PointField('z', 8, PointField.FLOAT32, 1),
+                    PointField('intensity', 12, PointField.FLOAT32, 1),
+                    PointField('range', 16, PointField.FLOAT32, 1),
+                    PointField('doppler', 20, PointField.FLOAT32, 1),
+                    ]
+
+                data = np.reshape(pts_inliers, \
+                            (pts_inliers.shape[0]*pts_inliers.shape[1],))
+                rscan_inliers.data = data.tostring()
+
+                self.pc_pub.publish(rscan_inliers)
 
             ## get ODR estimate\
             # odr_data = np.column_stack((doppler_inlier,azimuth_inlier,elevation_inlier))
@@ -186,7 +224,7 @@ class VelocityEstimator():
             if np.isnan(self.vel_estimate_[0]):
                 rospy.logwarn("estimate_velocity: MLESAC VELOCITY ESTIMATE IS NANs")
             else:
-                if self.type == '2d' or self.type == '2D':
+                if self.type_ == '2d' or self.type_ == '2D':
                     self.vel_estimate_ = np.stack((self.vel_estimate_,np.zeros((1,))))
                 self.publish_twist_estimate(radar_msg)
 
@@ -234,7 +272,7 @@ def main():
     # use composition to ascribe a model to the VelocityEstimator class
     velocity_estimator = VelocityEstimator(model=model)
 
-    rospy.loginfo("End of main()")
+    rospy.loginfo("MAIN: End of main()")
 
     try:
         rospy.spin()
