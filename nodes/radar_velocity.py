@@ -62,14 +62,15 @@ class VelocityEstimator():
             csv_file = open('odr.csv', 'a')
             self.writer = csv.writer(csv_file, delimiter=',')
 
-        ## prescribe velocity estimator model {2D, 3D} and utils class
+        ## prescribe velocity estimator model {2D, 3D} and utils objects
         self.model  = model
         self.odr    = OrthogonalDistanceRegression(model)
         self.utils  = RadarUtilities()
-        self.type_  = rospy.get_param('~type')              # 2D or 3D pointcloud data
 
-        ## publish MLESAC inliers?
-        self.publish_inliers_ = rospy.get_param('~publish_inliers')
+        ## additonal ROS params
+        self.type_  = rospy.get_param('~type')      # 2D or 3D pointcloud data
+        self.publish_inliers_ = rospy.get_param('~publish_inliers')     # publish MLESAC inliers?
+        self.use_const_cov_ = rospy.get_param('~use_const_cov')
 
         ## instantiate mlesac object with base_estimator_mlesac class object'
         self.base_estimator = dopplerMLESAC(model)
@@ -246,9 +247,14 @@ class VelocityEstimator():
         twist_estimate.twist.twist.linear.y = self.vel_estimate_[1]
         twist_estimate.twist.twist.linear.z = self.vel_estimate_[2]
 
-        for i in range(self.vel_covariance_.shape[0]):
-            for j in range(self.vel_covariance_.shape[0]):
-                twist_estimate.twist.covariance[(i*6)+j] = self.vel_covariance_[i,j]
+        if self.use_const_cov_:
+            twist_estimate.twiist.covariance[0]  = 0.01
+            twist_estimate.twiist.covariance[7]  = 0.015
+            twist_estimate.twiist.covariance[14] = 0.05
+        else:
+            for i in range(self.vel_covariance_.shape[0]):
+                for j in range(self.vel_covariance_.shape[0]):
+                    twist_estimate.twist.covariance[(i*6)+j] = self.vel_covariance_[i,j]
 
         self.twist_pub.publish(twist_estimate)
 

@@ -13,6 +13,7 @@
   <!-- additional radar parameters -->
   <arg name="launch_radar" default="true" doc="launch radar in addition to velocity estimator?"/>
   <arg name="publish_inliers" default="false" doc="publish MLESAC inlier pointcloud?"/>
+  <arg name="use_const_cov" default="false" doc="use const values for twist covariance rather than estimated covariance?"/>
 
   <!-- Additional radar pre-filtering parameters -->
   <arg name="type" default="3D" doc="2D or 3D radar data"/>

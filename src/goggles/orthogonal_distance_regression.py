@@ -10,8 +10,9 @@ Description:
 import time
 import rospy
 import numpy as np
-from scipy.linalg import block_diag, fractional_matrix_power
-from scipy.linalg.blas import sgemm
+from numpy.linalg import inv, multi_dot
+from scipy.linalg import block_diag
+from scipy.linalg.blas import sgemm, sgemv
 from scipy.optimize import minimize
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
@@ -25,6 +26,10 @@ class OrthogonalDistanceRegression:
         self.converge_thres = converge_thres    # ODR convergence threshold on step size s
         self.maxIterations = max_iter           # max number of ODR iterations
         self.debug = debug                      # for comparison to MATLAB implementation
+
+        self.param_vec_   = None    # body-frame velocity vector - to be estimated by ODR
+        self.covariance_  = None    # covariance of parameter estimate, shape (p,p)
+        self.iter_        = 0       # number of iterations till convergence
 
     def odr(self, data, beta0, weights, s, get_covar):
         """
@@ -41,29 +46,29 @@ class OrthogonalDistanceRegression:
         m = self.model.d.shape[0]
 
         # [ S, T ] = self.getScalingMatrices()
-        S = np.diag(s)          # s scaling matrix - 10 empirically chosen
-        T = np.eye(Ntargets*m)  # t scaling matrix
-        alpha = 1               # Lagrange multiplier
+        S = np.diag(s)                              # s scaling matrix - 10 empirically chosen
+        T = np.eye(Ntargets*m, dtype=np.float32)    # t scaling matrix
+        alpha = 1                                   # Lagrange multiplier
 
         if p == 2:
             ## init delta vector
-            delta0 = np.random.normal(0,self.model.sigma,(Ntargets,))
+            delta0 = np.random.normal(0,self.model.sigma,(Ntargets,)).astype(np.float32)
 
             ## construct weighted diagonal matrix D
-            D = np.diag(np.multiply(weights,d))
+            D = np.diag(np.multiply(weights,d)).astype(np.float32)
 
         elif p == 3:
             ## init delta vector - "interleaved" vector
-            delta0_theta = np.random.normal(0,self.model.sigma[0],(Ntargets,))
-            delta0_phi   = np.random.normal(0,self.model.sigma[1],(Ntargets,))
+            delta0_theta = np.random.normal(0,self.model.sigma[0],(Ntargets,)).astype(np.float32)
+            delta0_phi   = np.random.normal(0,self.model.sigma[1],(Ntargets,)).astype(np.float32)
             delta0 = np.column_stack((delta0_theta, delta0_phi))
             delta0 = delta0.reshape((m*Ntargets,))
 
             ## construct weighted block-diagonal matrix D
-            D_i = np.diag(self.model.d)
+            D_i = np.diag(self.model.d).astype(np.float32)
             Drep = D_i.reshape(1,m,m).repeat(Ntargets,axis=0)
             Dblk = block_diag(*Drep)
-            weights_diag = np.diag(np.repeat(weights,m))
+            weights_diag = np.diag(np.repeat(weights,m)).astype(np.float32)
             D = np.matmul(weights_diag,Dblk)
 
         else:
@@ -71,23 +76,22 @@ class OrthogonalDistanceRegression:
 
         ## construct E matrix - E = D^2 + alpha*T^2 (ODR-1987 Prop. 2.1)
         E = np.matmul(D,D) + alpha*np.matmul(T,T)
-        Einv = np.linalg.inv(E)
+        Einv = inv(E)
 
         ## initialize
         beta = beta0
         delta = delta0
         # s = np.ones((p,), dtype=np.float32)
 
-        iter = 1
+        self.iter_ = 1
         while np.linalg.norm(s) > self.converge_thres:
 
             if p == 2:
                 G, V, M = self.getJacobian2D(data[:,1], delta, beta, weights, E)
 
             elif p ==3:
-                # G, V, M = self.getJacobian3D(data[:,1:2], delta, beta, weights, E)
-                G, V, M = self.getJacobian3D(np.column_stack((data[:,1],data[:,2])), \
-                                             delta, beta, weights, E)
+                G, V, M = self.getJacobian3D(data[:,1:3], delta, beta, weights, E)
+
             else:
                 rospy.logerr("odr: initial guess must be a 2D or 3D vector")
 
@@ -95,54 +99,55 @@ class OrthogonalDistanceRegression:
                     np.column_stack((data[:,1],data[:,2])), \
                     np.zeros((Ntargets,), dtype=np.float32), delta)
 
-            ## re-calculate epsilon
+            ## update epsilon
             eps = np.subtract(doppler_predicted, radar_doppler)
+
+            ## defined to reduce the number of times certain matrix products are computed
+            prod1 = np.matmul(D,delta)
+            prod2 = multi_dot([V,Einv,prod1])
 
             ## form the elements of the linear least squares problem
             Gbar = np.matmul(M,G)
-            y = np.matmul(-M,np.subtract(eps,reduce(np.dot,[V,Einv,D,delta])))
-            # s = np.linalg.solve(Gbar,y)
+            y = np.matmul(-M,np.subtract(eps,prod2))
 
-            ## Compute s via QR factorization of Gbar
+            ## Compute step s via QR factorization of Gbar
             Q,R = np.linalg.qr(Gbar,mode='reduced')
             s = np.squeeze(np.linalg.solve(R,np.matmul(Q.T,y)))
-            # t = -Einv*(V'*M^2*(eps + G*s - V*Einv*D*delta) + D*delta)
 
-            ## TODO: clean this up
-            t0 = np.matmul(D,delta)
-            t1 = np.matmul(G,s)
-            t2 = np.matmul(V,np.matmul(Einv,t0))
-            t3 = np.matmul(V.conj().T,np.matmul(M,M))
-            t = -np.matmul(Einv,np.matmul(t3,(eps + t1 - t2)) + t0)
+            # t = -Einv*(V'*M^2*(eps + G*s - V*Einv*D*delta) + D*delta)
+            t = np.matmul(-Einv, np.add( multi_dot( [V.T, np.matmul(M,M), \
+                    eps+np.matmul(G,s)-prod2] ), prod1 ))
 
             # use s and t to iteratively update beta and delta, respectively
             beta = beta + np.matmul(S,s)
             delta = delta + np.matmul(T,t)
 
-            iter+=1
-            if iter > self.maxIterations:
+            self.iter_ += 1
+            if self.iter_ > self.maxIterations:
                 rospy.loginfo('ODR: max iterations reached')
                 break
 
-        model = beta
+        self.param_vec_ = beta
         if get_covar:
-            cov_beta = odr_getCovariance( Gbar, D, eps, delta, weights );
+            self.covariance_ = self.getCovariance( Gbar, D, eps, delta, weights )
         else:
-            cov_beta = float('nan')*np.ones((p,))
+            self.covariance_ = float('nan')*np.ones((p,))
 
-        return model, cov_beta, iter
+        return
 
 
     def getJacobian2D(self, X, delta, beta, weights, E):
-        ## NOTE: We will use ODRPACK95 notation where the total Jacobian J has
-        ## block components G, V and D:
+        """
+        NOTE: We will use ODRPACK95 notation where the total Jacobian J has
+        block components G, V and D:
 
-        # J = [G,          V;
-        #      zeros(n,p), D]
+        J = [G,          V;
+             zeros(n,p), D]
 
-        # G - the Jacobian matrix of epsilon wrt/ beta and has no special properites
-        # V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
-        # D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
+        G - the Jacobian matrix of epsilon wrt/ beta and has no special properites
+        V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
+        D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
+        """
 
         Ntargets = X.shape[0]   # X is a column vector of azimuth values
         p = beta.shape[0]
@@ -163,16 +168,17 @@ class OrthogonalDistanceRegression:
         return G, V, M
 
     def getJacobian3D(self, X, delta, beta, weights, E):
-        pass
-        ## NOTE: We will use ODRPACK95 notation where the total Jacobian J has
-        ## block components G, V and D:
+        """
+        NOTE: We will use ODRPACK95 notation where the total Jacobian J has
+        block components G, V and D:
 
-        # J = [G,          V;
-        #      zeros(n,p), D]
+        J = [G,          V;
+             zeros(n,p), D]
 
-        # G - the Jacobian matrix of epsilon wrt/ beta and has no special properites
-        # V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
-        # D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
+        G - the Jacobian matrix of epsilon wrt/ beta and has no special properites
+        V - the Jacobian matrix of epsilon wrt/ delta and is a diagonal matrix
+        D - the Jacobian matrix of delta wrt/ delta and is a diagonal matrix
+        """
 
         Ntargets = X.shape[0]   # X is a column vector of azimuth values
         p = beta.shape[0]
@@ -187,7 +193,6 @@ class OrthogonalDistanceRegression:
         delta_phi   = delta[:,1]
 
         ## defined to simplify the following calculations
-        ### STOPPED HERE #######################################################
         x1 = theta + delta_theta
         x2 = phi + delta_phi
 
@@ -200,20 +205,21 @@ class OrthogonalDistanceRegression:
             G[i,:] = weights[i] * np.array([np.cos(x1[i])*np.cos(x2[i]), \
                                             np.sin(x1[i])*np.cos(x2[i]), \
                                             np.sin(x2[i])])
-            # V[i,2*i-1:2*i] = weights[i] * np.array([
+
+            # V[i,2*i:2*i+2] = weights[i] * np.array([
             #     -beta[0]*np.sin(x1[i])*np.cos(x2[i]) + beta[1]*np.cos(x1[i])*np.cos(x2[i]), \
             #     -beta[0]*np.cos(x1[i])*np.sin(x2[i]) - beta[1]*np.sin(x1[i])*np.sin(x2[i]) + \
             #      beta[2]*np.cos(x2[i])])
 
-            V[i,2*1-1] = weights[i]*(-beta[0]*np.sin(x1[i])*np.cos(x2[i]) + \
+            V[i,2*i] = weights[i]*(-beta[0]*np.sin(x1[i])*np.cos(x2[i]) + \
                                       beta[1]*np.cos(x1[i])*np.cos(x2[i]))
 
-            V[i,2*i] = weights[i]*(-beta[0]*np.cos(x1[i])*np.sin(x2[i]) - \
+            V[i,2*i+1] = weights[i]*(-beta[0]*np.cos(x1[i])*np.sin(x2[i]) - \
                                     beta[1]*np.sin(x1[i])*np.sin(x2[i]) + \
                                     beta[2]*np.cos(x2[i]))
 
             ## (ODR-1987 Prop. 2.1)
-            w =  (V[i,2*i-1]**2 / E[2*i-1,2*i-1]) + (V[i,2*i]**2 / E[2*i,2*i])
+            w =  (V[i,2*i]**2 / E[2*i,2*i]) + (V[i,2*i+1]**2 / E[2*i+1,2*i+1])
             M[i,i] = np.sqrt(1/(1+w));
 
         return G, V, M
@@ -221,8 +227,32 @@ class OrthogonalDistanceRegression:
     def getWeights(self):
         pass
 
-    def getCovariance(self):
-        pass
+    def getCovariance(self, Gbar, D, eps, delta, weights):
+        """
+        Computes the (pxp) covariance of the model parameters beta accoriding to
+        method described in "The Computation and Use of the Asymtotic Covariance
+        Matrix for Measurement Error Models", Boggs & Rogers (1989).
+        """
+
+        n = Gbar.shape[0]           # number of targets in the scan
+        p = Gbar.shape[1]           # dimension of the model parameters
+        m = delta.shape[0] / n      # dimension of 'explanatory variable' vector
+
+        ## form complete residual vector, g
+        g = np.vstack((np.reshape(eps,(n,1)),np.reshape(delta,(n*m,1))))
+
+        # residual weighting matrix, Omega
+        W = np.diag(np.square(weights)).astype(np.float32)
+        Omega1 = np.column_stack((W, np.zeros((n,n*m))))
+        Omega2 = np.column_stack((np.zeros((n*m,n)), np.matmul(D,D)))
+        Omega = np.vstack((Omega1, Omega2))
+
+        ## compute total weighted covariance matrix of model parameters (pxp)
+        cov_beta = 1/(n-p) * multi_dot([g.T,Omega,g]) * inv( np.matmul(Gbar.T,Gbar) )
+        # print cov_beta.dtype
+
+        return cov_beta
+
 
 def test_odr(model):
     import pylab
@@ -230,12 +260,11 @@ def test_odr(model):
     ## define MLESAC parameters
     report_scores = False
 
-
     ## define ODR parameters
-    s = np.ones((model.min_pts,), dtype=np.float32)
+    s = 10*np.ones((model.min_pts,), dtype=np.float32)
     converge_thres = 0.0005
     max_iter = 50
-    get_covar = False
+    get_covar = True
 
     ## init instances of MLESAC class
     base_estimator = dopplerMLESAC(model)
@@ -301,7 +330,9 @@ def test_odr(model):
     ## get MLESAC + ODR solution
     start_time = time.time()
     weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
-    model_odr, _, odr_iter = odr.odr(odr_data, model_mlesac, weights, s, get_covar)
+    odr.odr(odr_data, model_mlesac, weights, s, get_covar)
+    model_odr = odr.param_vec_
+    odr_cov = odr.covariance_
     time_odr = time.time() - start_time
 
     print("\nMLESAC + ODR Velocity Profile Estimation:\n")
@@ -323,11 +354,14 @@ def test_odr(model):
     print("MLESAC + OLS\t" + str.format('{0:.4f}',rmse_mlesac_ols) + "\t\t" + \
           str.format('{0:.2f}',1000*time_mlesac_ols))
     print("MLESAC + ODR\t" + str.format('{0:.4f}',rmse_odr) + "\t\t" + \
-          str.format('{0:.2f}',1000*time_odr))
+          str.format('{0:.2f}',1000*(time_mlesac+time_odr)))
 
+def test_odr_montecarlo(model):
+    pass
 
 if __name__=='__main__':
     ## define Radar Doppler model to be used
+    # model = RadarDopplerModel2D()
     model = RadarDopplerModel3D()
 
     test_odr(model)
