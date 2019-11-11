@@ -156,6 +156,6 @@ class RadarDopplerModel3D:
         max_z = 10
         ptcloud_z = (max_z - min_z)*np.random.random((Ntargets,)) + min_z
 
-        pointcloud = np.column_stack((ptcloud_x,ptcloud_y,ptcloud_z))
+        pointcloud = np.column_stack((ptcloud_x, ptcloud_y, ptcloud_z))
 
         return pointcloud

@@ -73,9 +73,9 @@ class MLESAC:
                         scores.append(score)
 
                     # evaluate stopping criteria - not yet used
-                    Ninliers = sum(bestInliers)
-                    w = Ninliers/Ntargets
-                    k = np.log(1-0.95)*np.log(1-w**2)
+                    # Ninliers = sum(bestInliers)
+                    # w = Ninliers/Ntargets
+                    # k = np.log(1-0.95)*np.log(1-w**2)
                 else:
                     ## candidate param_vec_ did NOT have a higher score
                     self.estimator_.param_vec_ = param_vec_temp

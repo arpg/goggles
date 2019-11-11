@@ -26,7 +26,7 @@ class OrthogonalDistanceRegression():
     def __init__(self, model, converge_thres=0.0005, max_iter=50, debug=False):
         self.model = model                      # radar Doppler model (2D or 3D)
         self.converge_thres = converge_thres    # ODR convergence threshold on step size s
-        self.maxIterations = max_iter           # max number of ODR iterations
+        self.max_iterations = max_iter          # max number of ODR iterations
         self.debug = debug                      # for comparison to MATLAB implementation
 
         self.param_vec_   = None    # body-frame velocity vector - to be estimated by ODR
@@ -127,7 +127,7 @@ class OrthogonalDistanceRegression():
             delta = delta + np.matmul(T,t)
 
             self.iter_ += 1
-            if self.iter_ > self.maxIterations:
+            if self.iter_ > self.max_iterations:
                 rospy.loginfo('ODR: max iterations reached')
                 break
 
@@ -269,9 +269,10 @@ def test_odr(model):
     get_covar = True
 
     ## init instances of MLESAC class
-    base_estimator = dopplerMLESAC(model)
-    mlesac = MLESAC(base_estimator,report_scores,False)
-    mlesac_ols = MLESAC(base_estimator,report_scores,True,True)
+    base_estimator1 = dopplerMLESAC(model)
+    base_estimator2 = dopplerMLESAC(model)
+    mlesac = MLESAC(base_estimator1,report_scores)
+    mlesac_ols = MLESAC(base_estimator2,report_scores,ols_flag=True,get_covar=True)
 
     ## init instance of ODR class
     odr = OrthogonalDistanceRegression(model,converge_thres,max_iter,debug=False)
@@ -289,77 +290,92 @@ def test_odr(model):
     Ninliers = 125
     Noutliers = 35
 
-    ## generate truth velocity vector
-    velocity = (max_vel-min_vel)*np.random.random((base_estimator.sample_size,)) + min_vel
+    mc_iter = 250
 
-    ## create noisy INLIER  simulated radar measurements
-    _, inlier_data = model.getSimulatedRadarMeasurements(Ninliers, \
-        velocity,radar_angle_bins,model.sigma_vr)
+    rmse = float('nan')*np.ones((mc_iter,3))    # [mlesac, mlesac+pls, odr]
+    timing = float('nan')*np.ones((mc_iter,3))  # [mlesac, mlesac+pls, odr]
+    odr_iter = float('nan')*np.ones(mc_iter,);
 
-    ## create noisy OUTLIER simulated radar measurements
-    _, outlier_data = model.getSimulatedRadarMeasurements(Noutliers, \
-        velocity,radar_angle_bins,sigma_vr_outlier)
+    for i in range(mc_iter):
 
-    ## combine inlier and outlier data sets
-    Ntargets = Ninliers + Noutliers
-    radar_doppler = np.concatenate((inlier_data[:,0],outlier_data[:,0]),axis=0)
-    radar_azimuth = np.concatenate((inlier_data[:,1],outlier_data[:,1]),axis=0)
-    radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
+        print "MC iter: " + str(i)
 
-    ## concatrnate radar data
-    radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
+        ## generate truth velocity vector
+        velocity = (max_vel-min_vel)*np.random.random((base_estimator1.sample_size,)) + min_vel
 
-    ## get MLSESAC solution
-    start_time = time.time()
-    mlesac.mlesac(radar_data)
-    model_mlesac = mlesac.estimator_.param_vec_mlesac_
-    mlesac_inliers = mlesac.inliers_
-    time_mlesac = time.time() - start_time
+        ## create noisy INLIER  simulated radar measurements
+        _, inlier_data = model.getSimulatedRadarMeasurements(Ninliers, \
+            velocity,radar_angle_bins,model.sigma_vr)
 
-    print("Ninliers = " + str(mlesac.inliers_.shape[0]))
+        ## create noisy OUTLIER simulated radar measurements
+        _, outlier_data = model.getSimulatedRadarMeasurements(Noutliers, \
+            velocity,radar_angle_bins,sigma_vr_outlier)
 
-    ## get MLSESAC + OLS solution
-    start_time = time.time()
-    mlesac_ols.mlesac(radar_data)
-    model_mlesac_ols = mlesac.estimator_.param_vec_ols_
-    time_mlesac_ols = time.time() - start_time
+        ## combine inlier and outlier data sets
+        Ntargets = Ninliers + Noutliers
+        radar_doppler = np.concatenate((inlier_data[:,0],outlier_data[:,0]),axis=0)
+        radar_azimuth = np.concatenate((inlier_data[:,1],outlier_data[:,1]),axis=0)
+        radar_elevation = np.concatenate((inlier_data[:,2],outlier_data[:,2]),axis=0)
 
-    ## concatenate inlier data for ODR regression
-    odr_data = np.column_stack((radar_doppler[mlesac.inliers_], \
-                                radar_azimuth[mlesac.inliers_], \
-                                radar_elevation[mlesac.inliers_]))
+        ## concatrnate radar data
+        radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
 
-    ## get MLESAC + ODR solution
-    start_time = time.time()
-    weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
-    odr.odr(odr_data, model_mlesac, weights, get_covar)
-    model_odr = odr.param_vec_
-    odr_cov = odr.covariance_
-    time_odr = time.time() - start_time
+        ## get MLSESAC solution
+        start_time = time.time()
+        mlesac.mlesac(radar_data)
+        timing[i,0] = time.time() - start_time
 
-    print("\nMLESAC + ODR Velocity Profile Estimation:\n")
-    print("Truth\t MLESAC\t\t MLESAC+OLS\t MLESAC+ODR")
-    for i in range(base_estimator.sample_size):
-        print(str.format('{0:.4f}',velocity[i]) + "\t " + str.format('{0:.4f}',model_mlesac[i]) \
-              + " \t " + str.format('{0:.4f}',model_mlesac_ols[i]) \
-              + " \t " + str.format('{0:.4f}',model_odr[i]))
+        ## get MLSESAC + OLS solution
+        start_time = time.time()
+        mlesac_ols.mlesac(radar_data)
+        timing[i,1] = time.time() - start_time
 
-    rmse_mlesac = np.sqrt(np.mean(np.square(velocity - model_mlesac)))
-    rmse_mlesac_ols = np.sqrt(np.mean(np.square(velocity - model_mlesac_ols)))
-    rmse_odr = np.sqrt(np.mean(np.square(velocity - model_odr)))
-    # rmse_mlesac = np.sqrt(np.square(velocity - model_mlesac))
-    # rmse_mlesac_ols = np.sqrt(np.square(velocity - model_mlesac_ols))
+        ## concatenate inlier data for ODR regression
+        odr_data = np.column_stack((radar_doppler[mlesac.inliers_], \
+                                    radar_azimuth[mlesac.inliers_], \
+                                    radar_elevation[mlesac.inliers_]))
 
-    print("\n\t\tRMSE [m/s]\tExec. Time [ms]")
-    print("MLESAC\t\t" + str.format('{0:.4f}',rmse_mlesac) + "\t\t" + \
-          str.format('{0:.2f}',1000*time_mlesac))
-    print("MLESAC + OLS\t" + str.format('{0:.4f}',rmse_mlesac_ols) + "\t\t" + \
-          str.format('{0:.2f}',1000*time_mlesac_ols))
-    print("MLESAC + ODR\t" + str.format('{0:.4f}',rmse_odr) + "\t\t" + \
-          str.format('{0:.2f}',1000*(time_mlesac+time_odr)))
+        ## get MLESAC + ODR solution
+        start_time = time.time()
+        weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
+        odr.odr(odr_data, mlesac.estimator_.param_vec_, weights, get_covar)
+        timing[i,2] = (time.time() - start_time) + timing[i,0]
 
-def test_odr_montecarlo(model):
-    pass
+        rmse[i,0] = np.sqrt(np.mean(np.square(velocity - mlesac.estimator_.param_vec_)))
+        rmse[i,1] = np.sqrt(np.mean(np.square(velocity - mlesac_ols.estimator_.param_vec_)))
+        rmse[i,2] = np.sqrt(np.mean(np.square(velocity - odr.param_vec_)))
+
+    ## convert time to milliseconds
+    timing = 1000*timing
+
+    ## compute RMSE and timing statistics
+    rmse_stats = np.column_stack((np.mean(rmse,axis=0), \
+                                  np.std(rmse,axis=0), \
+                                  np.min(rmse,axis=0), \
+                                  np.max(rmse,axis=0)))
+
+    time_stats = np.column_stack((np.mean(timing,axis=0), \
+                                  np.std(timing,axis=0), \
+                                  np.min(timing,axis=0), \
+                                  np.max(timing,axis=0)))
+
+    types = ['MLESAC\t\t', 'MLESAC + OLS\t', 'MLESAC + ODR\t']
+
+    print("\nAlgorithm Evaluation - Ego-Velocity RMSE [m/s]:")
+    print("\t\tmean\tstd\tmin\tmax\n")
+    for i in range(len(types)):
+        print types[i] + str.format('{0:.4f}',rmse_stats[i,0]) + "\t" + \
+            str.format('{0:.4f}',rmse_stats[i,1]) + "\t" + \
+            str.format('{0:.4f}',rmse_stats[i,2]) + "\t" + \
+            str.format('{0:.4f}',rmse_stats[i,3])
+
+    print("\nAlgorithm Evaluation - Execution time [ms]:")
+    print("\t\tmean\tstd\tmin\tmax\n")
+    for i in range(len(types)):
+        print types[i] + str.format('{0:.2f}',time_stats[i,0]) + "\t" + \
+            str.format('{0:.2f}',time_stats[i,1]) + "\t" + \
+            str.format('{0:.2f}',time_stats[i,2]) + "\t" + \
+            str.format('{0:.2f}',time_stats[i,3])
 
 if __name__=='__main__':
     ## define Radar Doppler model to be used
