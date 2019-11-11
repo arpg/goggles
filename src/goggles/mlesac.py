@@ -7,7 +7,7 @@ Last Edited:    July 24, 2019
 Description:
 
 """
-
+from __future__ import division
 import time
 import numpy as np
 from functools import partial, reduce
@@ -75,7 +75,7 @@ class MLESAC:
                     # evaluate stopping criteria - not yet used
                     Ninliers = sum(bestInliers)
                     w = Ninliers/Ntargets
-                    k = np.log(1-0.95)*np.log(1-w^2)
+                    k = np.log(1-0.95)*np.log(1-w**2)
                 else:
                     ## candidate param_vec_ did NOT have a higher score
                     self.estimator_.param_vec_ = param_vec_temp

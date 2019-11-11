@@ -7,19 +7,21 @@ Last Edited:    Apr 28, 2019
 Description:
 
 """
+
+from __future__ import division
+
 import time
 import rospy
 import numpy as np
 from numpy.linalg import inv, multi_dot
 from scipy.linalg import block_diag
 from scipy.linalg.blas import sgemm, sgemv
-from scipy.optimize import minimize
 from goggles.radar_doppler_model_2D import RadarDopplerModel2D
 from goggles.radar_doppler_model_3D import RadarDopplerModel3D
 from goggles.base_estimator_mlesac import dopplerMLESAC
 from goggles.mlesac import MLESAC
 
-class OrthogonalDistanceRegression:
+class OrthogonalDistanceRegression():
 
     def __init__(self, model, converge_thres=0.0005, max_iter=50, debug=False):
         self.model = model                      # radar Doppler model (2D or 3D)
@@ -31,7 +33,9 @@ class OrthogonalDistanceRegression:
         self.covariance_  = None    # covariance of parameter estimate, shape (p,p)
         self.iter_        = 0       # number of iterations till convergence
 
-    def odr(self, data, beta0, weights, s, get_covar):
+        self.s_ = 10*np.ones((model.min_pts,), dtype=np.float32)    # step size scale factor
+
+    def odr(self, data, beta0, weights, get_covar):
         """
         d - error variance ratio := sigma_vr / sigma_theta
         """
@@ -46,7 +50,7 @@ class OrthogonalDistanceRegression:
         m = self.model.d.shape[0]
 
         # [ S, T ] = self.getScalingMatrices()
-        S = np.diag(s)                              # s scaling matrix - 10 empirically chosen
+        S = np.diag(self.s_)                         # s scaling matrix - 10 empirically chosen
         T = np.eye(Ntargets*m, dtype=np.float32)    # t scaling matrix
         alpha = 1                                   # Lagrange multiplier
 
@@ -81,7 +85,7 @@ class OrthogonalDistanceRegression:
         ## initialize
         beta = beta0
         delta = delta0
-        # s = np.ones((p,), dtype=np.float32)
+        s = np.ones((p,), dtype=np.float32)
 
         self.iter_ = 1
         while np.linalg.norm(s) > self.converge_thres:
@@ -129,7 +133,7 @@ class OrthogonalDistanceRegression:
 
         self.param_vec_ = beta
         if get_covar:
-            self.covariance_ = self.getCovariance( Gbar, D, eps, delta, weights )
+            self.getCovariance( Gbar, D, eps, delta, weights )
         else:
             self.covariance_ = float('nan')*np.ones((p,))
 
@@ -182,7 +186,7 @@ class OrthogonalDistanceRegression:
 
         Ntargets = X.shape[0]   # X is a column vector of azimuth values
         p = beta.shape[0]
-        m = delta.shape[0] / Ntargets
+        m = int(delta.shape[0] / Ntargets)
 
         theta = X[:,0]
         phi   = X[:,1]
@@ -229,29 +233,28 @@ class OrthogonalDistanceRegression:
 
     def getCovariance(self, Gbar, D, eps, delta, weights):
         """
-        Computes the (pxp) covariance of the model parameters beta accoriding to
-        method described in "The Computation and Use of the Asymtotic Covariance
-        Matrix for Measurement Error Models", Boggs & Rogers (1989).
+        Computes the (pxp) covariance of the model parameters beta according to
+        the method described in "The Computation and Use of the Asymtotic
+        Covariance Matrix for Measurement Error Models", Boggs & Rogers (1989).
         """
 
-        n = Gbar.shape[0]           # number of targets in the scan
-        p = Gbar.shape[1]           # dimension of the model parameters
-        m = delta.shape[0] / n      # dimension of 'explanatory variable' vector
+        n = Gbar.shape[0]               # number of targets in the scan
+        p = Gbar.shape[1]               # dimension of the model parameters
+        m = int(delta.shape[0] / n)     # dimension of 'explanatory variable' vector
 
         ## form complete residual vector, g
         g = np.vstack((np.reshape(eps,(n,1)),np.reshape(delta,(n*m,1))))
 
-        # residual weighting matrix, Omega
+        ## residual weighting matrix, Omega
         W = np.diag(np.square(weights)).astype(np.float32)
-        Omega1 = np.column_stack((W, np.zeros((n,n*m))))
-        Omega2 = np.column_stack((np.zeros((n*m,n)), np.matmul(D,D)))
+        Omega1 = np.column_stack((W, np.zeros((n,n*m), dtype=np.float32)))
+        Omega2 = np.column_stack((np.zeros((n*m,n), dtype=np.float32), np.matmul(D,D)))
         Omega = np.vstack((Omega1, Omega2))
 
         ## compute total weighted covariance matrix of model parameters (pxp)
-        cov_beta = 1/(n-p) * multi_dot([g.T,Omega,g]) * inv( np.matmul(Gbar.T,Gbar) )
-        # print cov_beta.dtype
+        self.covariance_ = ( 1/(n-p) * multi_dot([g.T,Omega,g]) ) * inv(np.matmul(Gbar.T,Gbar))
 
-        return cov_beta
+        return
 
 
 def test_odr(model):
@@ -261,7 +264,6 @@ def test_odr(model):
     report_scores = False
 
     ## define ODR parameters
-    s = 10*np.ones((model.min_pts,), dtype=np.float32)
     converge_thres = 0.0005
     max_iter = 50
     get_covar = True
@@ -330,7 +332,7 @@ def test_odr(model):
     ## get MLESAC + ODR solution
     start_time = time.time()
     weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
-    odr.odr(odr_data, model_mlesac, weights, s, get_covar)
+    odr.odr(odr_data, model_mlesac, weights, get_covar)
     model_odr = odr.param_vec_
     odr_cov = odr.covariance_
     time_odr = time.time() - start_time

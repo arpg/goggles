@@ -7,6 +7,7 @@ Description:
 
 """
 
+from __future__ import division
 import rospy
 import numpy as np
 from functools import reduce

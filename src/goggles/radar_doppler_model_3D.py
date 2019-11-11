@@ -6,7 +6,7 @@ Last Edited:    Apr 22, 2019
 Description:
 
 """
-
+from __future__ import division
 import rospy
 import numpy as np
 from goggles.radar_utilities import RadarUtilities
@@ -56,7 +56,7 @@ class RadarDopplerModel3D:
     # measurement generative (forward) model: model->measurements
     def simulateRadarDoppler(self, model, data, eps, delta):
         Ntargets = data.shape[0]
-        m = delta.shape[0] / Ntargets
+        m = int(delta.shape[0] / Ntargets)
 
         # unpack radar data
         radar_azimuth = data[:,0]

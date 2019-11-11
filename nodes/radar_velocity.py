@@ -35,6 +35,7 @@ of classes.
 other functions that are model-independent.
 
 """
+from __future__ import division
 
 import rospy
 import numpy as np
@@ -69,12 +70,13 @@ class VelocityEstimator():
 
         ## additonal ROS params
         self.type_  = rospy.get_param('~type')      # 2D or 3D pointcloud data
-        self.publish_inliers_ = rospy.get_param('~publish_inliers')     # publish MLESAC inliers?
-        self.use_const_cov_ = rospy.get_param('~use_const_cov')
+        self.publish_inliers_  = rospy.get_param('~publish_inliers')    # publish MLESAC inliers?
+        self.use_const_cov_    = rospy.get_param('~use_const_cov')
+        self.cov_scale_factor_ = rospy.get_param('~cov_scale_factor')
 
         ## instantiate mlesac object with base_estimator_mlesac class object'
         self.base_estimator = dopplerMLESAC(model)
-        self.mlesac = MLESAC(self.base_estimator,report_scores=False,ols_flag=True,get_covar=True)
+        self.mlesac = MLESAC(self.base_estimator,report_scores=False,ols_flag=False,get_covar=False)
 
         ## velocity estimate parameters
         self.vel_estimate_    = None
@@ -155,8 +157,8 @@ class VelocityEstimator():
         Ntargets_valid = idx_AIRE.shape[0]
 
         ## define pre-filtered radar data for further processing
-        radar_intensity = pts[idx_AIRE,3]
-        radar_range     = pts[idx_AIRE,4]
+        # radar_intensity = pts[idx_AIRE,3]
+        # radar_range     = pts[idx_AIRE,4]
         radar_doppler   = pts[idx_AIRE,5]
         radar_azimuth   = azimuth[idx_AIRE]
         radar_elevation = elevation[idx_AIRE]
@@ -166,25 +168,19 @@ class VelocityEstimator():
             ## estimate can be derived from less than 2 targets
             rospy.logwarn("estimate_velocity: < %d TARGETS AFTER AIR THRESHOLDING" % self.base_estimator.sample_size)
         else:
-            # rospy.loginfo(['{0:5.4f}'.format(i) for i in radar_azimuth])    # 'list comprehension'
-
             ## get MLESAC estimate + inlier set
             radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
             self.mlesac.mlesac(radar_data)
-            self.vel_estimate_ = -self.mlesac.estimator_.param_vec_
-            self.vel_covariance_ = self.mlesac.estimator_.covariance_
-            # rospy.loginfo("diag(covariance) = " + str(np.diag(self.vel_covariance_)))
 
             ## this data to be published on filtered ptcloud topic
-            intensity_inlier = radar_intensity[self.mlesac.inliers_]
-            range_inlier     = radar_range[self.mlesac.inliers_]
+            # intensity_inlier = radar_intensity[self.mlesac.inliers_]
+            # range_inlier     = radar_range[self.mlesac.inliers_]
             doppler_inlier   = radar_doppler[self.mlesac.inliers_]
             azimuth_inlier   = radar_azimuth[self.mlesac.inliers_]
             elevation_inlier = radar_elevation[self.mlesac.inliers_]
 
             if self.publish_inliers_:
                 pts_AIRE = pts[idx_AIRE,:]    # [x, y, z, intensity, range, doppler]
-                # pts_AIRE = pts[idx_AIRE,0:4]    # [x, y, z, intensity]
                 pts_inliers = pts_AIRE[self.mlesac.inliers_,:]
 
                 rscan_inliers = PointCloud2()
@@ -214,16 +210,19 @@ class VelocityEstimator():
                 self.pc_pub.publish(rscan_inliers)
 
             ## get ODR estimate\
-            # odr_data = np.column_stack((doppler_inlier,azimuth_inlier,elevation_inlier))
-            # weights = (1/model.sigma_vr)*np.ones((mlesac.inliers_.shape[0],), dtype=np.float32)
-            # model_odr, _, _ = odr.odr(odr_data, model_mlesac, weights, s, get_covar)
+            odr_data = np.column_stack((doppler_inlier,azimuth_inlier,elevation_inlier))
+            weights = (1/self.model.sigma_vr) * \
+                np.ones((self.mlesac.inliers_.shape[0],), dtype=np.float32)
+            self.odr.odr(odr_data, self.mlesac.estimator_.param_vec_, weights, True)
+            self.vel_estimate_ = -self.odr.param_vec_
+            self.vel_covariance_ = self.odr.covariance_
 
             if WRITE_DATA:
-                self.writer.writerow(model_odr.tolist())
+                self.writer.writerow(-self.odr.param_vec_.tolist())
 
             ## publish velocity estimate
             if np.isnan(self.vel_estimate_[0]):
-                rospy.logwarn("estimate_velocity: MLESAC VELOCITY ESTIMATE IS NANs")
+                rospy.logwarn("estimate_velocity: VELOCITY ESTIMATE IS NANs")
             else:
                 if self.type_ == '2d' or self.type_ == '2D':
                     self.vel_estimate_ = np.stack((self.vel_estimate_,np.zeros((1,))))
@@ -247,14 +246,15 @@ class VelocityEstimator():
         twist_estimate.twist.twist.linear.y = self.vel_estimate_[1]
         twist_estimate.twist.twist.linear.z = self.vel_estimate_[2]
 
+        K = self.cov_scale_factor_
         if self.use_const_cov_:
-            twist_estimate.twiist.covariance[0]  = 0.01
-            twist_estimate.twiist.covariance[7]  = 0.015
-            twist_estimate.twiist.covariance[14] = 0.05
+            twist_estimate.twiist.covariance[0]  = K*0.01
+            twist_estimate.twiist.covariance[7]  = K*0.015
+            twist_estimate.twiist.covariance[14] = K*0.05
         else:
             for i in range(self.vel_covariance_.shape[0]):
                 for j in range(self.vel_covariance_.shape[0]):
-                    twist_estimate.twist.covariance[(i*6)+j] = self.vel_covariance_[i,j]
+                    twist_estimate.twist.covariance[(i*6)+j] = K*self.vel_covariance_[i,j]
 
         self.twist_pub.publish(twist_estimate)
 

@@ -7,7 +7,7 @@ Description:
 Base Estimator class for MLESAC Regression.
 
 """
-
+from __future__ import division
 import numpy as np
 from goggles.radar_utilities import RadarUtilities
 
