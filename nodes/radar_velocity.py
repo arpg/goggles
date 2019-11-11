@@ -110,7 +110,7 @@ class VelocityEstimator():
         self.range_thres_     = rospy.get_param('~range_thres')
         self.intensity_thres_ = rospy.get_param('~intensity_thres')
         self.thresholds_      = np.array([self.azimuth_thres_, self.intensity_thres_, \
-                                         self.range_thres_, self.elevation_thres_])
+                                          self.range_thres_, self.elevation_thres_])
 
         rospy.loginfo("INIT: " + ns + mmwave_topic + " azimuth_thres\t" + "= " + str(self.azimuth_thres_))
         rospy.loginfo("INIT: " + ns + mmwave_topic + " elevation_thres\t"+ "= " + str(self.elevation_thres_))
@@ -127,7 +127,7 @@ class VelocityEstimator():
         ## pts.shape = (Ntargets, 6)
         if pts.shape[0] < self.base_estimator.sample_size:
             ## do nothing - do NOT publish a twist message: no useful velocity
-            ## estimate can be derived from less than 2 targets
+            ## estimate can be derived from less than sample_size targets
             rospy.logwarn("ptcloud_cb: EMPTY RADAR MESSAGE")
         else:
             # pts[:,1] = -pts[:,1]    ## ROS standard coordinate system Y-axis is left, NED frame Y-axis is to the right
@@ -142,14 +142,6 @@ class VelocityEstimator():
         ## create target azimuth vector (in radians)
         azimuth = np.arctan(np.divide(-pts[:,1],pts[:,0]))       # [rad]
         elevation = np.arcsin(np.divide(-pts[:,2],pts[:,4]))     # [rad]
-
-        # if self.model.min_pts == 2:
-        #     elevation = float('nan')*np.ones((Ntargets,))
-        # elif self.model.min_pts == 3:
-        #     radar_xy = np.sqrt(np.square(pts[:,0]) + np.square(pts[:,1]))
-        #     elevation = np.arctan(np.divide(pts[:,2],radar_xy))
-        # else:
-        #     rospy.logerr("velocity_estimator_node main(): ESTIMATOR TYPE IMPROPERLY SPECIFIED")
 
         ## apply AIRE thresholding to remove near-field targets
         data_AIRE = np.column_stack((azimuth, pts[:,3], pts[:,4], elevation))
