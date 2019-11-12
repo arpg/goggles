@@ -76,7 +76,8 @@ class VelocityEstimator():
 
         ## instantiate mlesac object with base_estimator_mlesac class object'
         self.base_estimator = dopplerMLESAC(model)
-        self.mlesac = MLESAC(self.base_estimator,report_scores=False,ols_flag=False,get_covar=False)
+        # self.mlesac = MLESAC(self.base_estimator,report_scores=False,ols_flag=False,get_covar=False)
+        self.mlesac = MLESAC(self.base_estimator,report_scores=False,ols_flag=True,get_covar=True)
 
         ## velocity estimate parameters
         self.vel_estimate_    = None
@@ -240,12 +241,12 @@ class VelocityEstimator():
 
         K = self.cov_scale_factor_
         if self.use_const_cov_:
-            twist_estimate.twiist.covariance[0]  = K*0.01
-            twist_estimate.twiist.covariance[7]  = K*0.015
-            twist_estimate.twiist.covariance[14] = K*0.05
+            twist_estimate.twiist.covariance[0]  = K * 0.01
+            twist_estimate.twiist.covariance[7]  = K * 0.015
+            twist_estimate.twiist.covariance[14] = K * 0.05
         else:
             for i in range(self.vel_covariance_.shape[0]):
-                for j in range(self.vel_covariance_.shape[0]):
+                for j in range(self.vel_covariance_.shape[1]):
                     twist_estimate.twist.covariance[(i*6)+j] = K*self.vel_covariance_[i,j]
 
         self.twist_pub.publish(twist_estimate)
@@ -266,8 +267,7 @@ def main():
     else:
         rospy.logerr("velocity_estimator_node main(): ESTIMATOR TYPE IMPROPERLY SPECIFIED")
 
-
-    # use composition to ascribe a model to the VelocityEstimator class
+    ## use composition to ascribe a model to the VelocityEstimator class
     velocity_estimator = VelocityEstimator(model=model)
 
     rospy.loginfo("MAIN: End of main()")

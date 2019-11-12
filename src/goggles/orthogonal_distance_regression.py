@@ -92,10 +92,8 @@ class OrthogonalDistanceRegression():
 
             if p == 2:
                 G, V, M = self.getJacobian2D(data[:,1], delta, beta, weights, E)
-
-            elif p ==3:
+            elif p == 3:
                 G, V, M = self.getJacobian3D(data[:,1:3], delta, beta, weights, E)
-
             else:
                 rospy.logerr("odr: initial guess must be a 2D or 3D vector")
 
