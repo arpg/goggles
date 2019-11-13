@@ -65,8 +65,8 @@ class MLESAC:
                     ## this model better explains the data
                     distances = self.estimator_.distance(data)
 
-                    dll_incr = score - bestScore    # increase in data log likelihood fcn
-                    bestScore = score
+                    dll_incr    = score - bestScore     # increase in data log likelihood fcn
+                    bestScore   = score
                     bestInliers = np.nonzero((distances < self.estimator_.max_distance))
 
                     if self.report_scores:
@@ -128,7 +128,7 @@ class MLESAC:
             self.estimator_.param_vec_ols_ = \
                 float('nan')*np.ones((self.estimator_.sample_size,))
 
-        return self
+        return
 
 
 def test(model):
@@ -141,7 +141,7 @@ def test(model):
     base_estimator_mlesac = dopplerMLESAC(model)
     mlesac = MLESAC(base_estimator_mlesac, report_scores, ols_flag, get_covar)
 
-    # instantiate scikit-learn RANSAC object with base_estimator class object
+    ## instantiate scikit-learn RANSAC object with base_estimator class object
     # base_estimator_ransac = dopplerRANSAC(model=model)
     # ransac = RANSACRegressor(base_estimator=base_estimator_ransac, \
     #     min_samples=base_estimator_ransac.sample_size, \
@@ -190,7 +190,7 @@ def test(model):
     time_mlesac = time.time() - start_time
 
     ## get scikit-learn RANSAC estimate + inlier set
-    #3 NOTE: DOES NOT WORK YET
+    ## NOTE: DOES NOT WORK YET
     # start_time = time.time()
     # ransac.fit(radar_data)
     # model_ransac = np.squeeze(self.ransac.estimator_.param_vec_)

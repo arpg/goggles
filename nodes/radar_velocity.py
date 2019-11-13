@@ -23,7 +23,7 @@ components.
 
 Implementation:
 - The goal is for the VelocityEstimator class (node) to be model dependent
-(e.g. 2D or 3D). In both cases the node is subcribed to the same topic
+(e.g. 2D or 3D). In both cases the node is subscribed to the same topic
 (/mmWaveDataHdl/RScan), and publishes a TwistWithCovarianceStamped message.
 - I will need to write to separate classes (RadarDopplerModel2D and
 RadarDopplerModel3D) that both define the same methods (e.g.
@@ -83,6 +83,8 @@ class VelocityEstimator():
         self.vel_estimate_    = None
         self.vel_covariance_  = None
 
+        self.scan_count = 0
+
         ns = rospy.get_namespace()
         rospy.loginfo("INIT: namespace = %s", ns)
         if ns =='/':
@@ -121,6 +123,7 @@ class VelocityEstimator():
         rospy.loginfo("INIT: VelocityEstimator Node Initialized")
 
     def ptcloud_cb(self, radar_msg):
+        self.scan_count += 1
         # rospy.loginfo("GOT HERE: ptcloud_cb")
         pts_list = list(pc2.read_points(radar_msg, field_names=["x", "y", "z", "intensity", "range", "doppler"]))
         pts = np.array(pts_list, dtype=np.float32)
@@ -164,6 +167,7 @@ class VelocityEstimator():
             ## get MLESAC estimate + inlier set
             radar_data = np.column_stack((radar_doppler,radar_azimuth,radar_elevation))
             self.mlesac.mlesac(radar_data)
+            rospy.loginfo("RScan: %d\t Ninliers = %d", self.scan_count, self.mlesac.inliers_.shape[0])
 
             ## this data to be published on filtered ptcloud topic
             # intensity_inlier = radar_intensity[self.mlesac.inliers_]
@@ -253,7 +257,7 @@ class VelocityEstimator():
 
 def main():
     ## anonymous=True ensures that your node has a unique name by adding random numbers to the end of NAME
-    rospy.init_node('velocity_estimator_node')
+    rospy.init_node('goggles_node')
 
     if WRITE_DATA:
         csv_file = open('odr.csv', 'w+')
@@ -262,7 +266,7 @@ def main():
     type = rospy.get_param('~type')
     if type == '2D' or type == '2d':
         model = RadarDopplerModel2D()
-    elif type =='3D' or type == '3D':
+    elif type == '3D' or type == '3d':
         model = RadarDopplerModel3D()
     else:
         rospy.logerr("velocity_estimator_node main(): ESTIMATOR TYPE IMPROPERLY SPECIFIED")

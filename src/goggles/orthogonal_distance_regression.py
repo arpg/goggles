@@ -36,9 +36,6 @@ class OrthogonalDistanceRegression():
         self.s_ = 10*np.ones((model.min_pts,), dtype=np.float32)    # step size scale factor
 
     def odr(self, data, beta0, weights, get_covar):
-        """
-        d - error variance ratio := sigma_vr / sigma_theta
-        """
         ## unpack radar data (into colum vectors)
         radar_doppler   = data[:,0]
         radar_azimuth   = data[:,1]
@@ -288,7 +285,7 @@ def test_odr(model):
     Ninliers = 125
     Noutliers = 35
 
-    mc_iter = 250
+    mc_iter = 300
 
     rmse = float('nan')*np.ones((mc_iter,3))    # [mlesac, mlesac+pls, odr]
     timing = float('nan')*np.ones((mc_iter,3))  # [mlesac, mlesac+pls, odr]
@@ -296,7 +293,7 @@ def test_odr(model):
 
     for i in range(mc_iter):
 
-        print "MC iter: " + str(i)
+        # print "MC iter: " + str(i)
 
         ## generate truth velocity vector
         velocity = (max_vel-min_vel)*np.random.random((base_estimator1.sample_size,)) + min_vel

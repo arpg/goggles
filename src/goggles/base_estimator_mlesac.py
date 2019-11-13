@@ -20,7 +20,7 @@ class dopplerMLESAC():
 
         ## define MLESAC parameters
         self.sample_size    = self.model.min_pts     # the minimum number of data values required to fit the model
-        self.max_iterations = 25    # the maximum number of iterations allowed in the algorithm
+        self.max_iterations = 40    # the maximum number of iterations allowed in the algorithm
         self.max_distance   = 0.15  # a threshold value for determining when a data point fits a model
         self.converge_thres = 10    # change in data log likelihood fcn required to indicate convergence
 
@@ -34,14 +34,11 @@ class dopplerMLESAC():
         self.param_vec_ = self.model.doppler2BodyFrameVelocity(data)
         return self
 
-    ## distance(s) from data point(S) to model
+    ## distance(s) from data point(s) to model
     def distance(self, data):
         ## TODO: use residual function as part of computing the distances
         Ntargets = data.shape[0]
         p = self.sample_size
-
-        # init distances vector
-        distances = np.zeros((Ntargets,), dtype=np.float32)
 
         radar_doppler   = data[:,0]      # [m/s]
         radar_azimuth   = data[:,1]      # [rad]
@@ -51,11 +48,8 @@ class dopplerMLESAC():
         eps = np.zeros((Ntargets,), dtype=np.float32)
         delta = np.zeros(((p-1)*Ntargets,), dtype=np.float32)
 
-        ## radar doppler generative model
-        doppler_predicted = self.model.simulateRadarDoppler(self.param_vec_, \
-            np.column_stack((radar_azimuth,radar_elevation)), eps, delta)
-
-        eps_sq = np.square(np.subtract(doppler_predicted,radar_doppler))
+        ## compute distances via residual
+        eps_sq = np.square( self.residual(self.param_vec_, data) )
         distances = np.sqrt(eps_sq)
 
         ## distance per data point (column vector)
@@ -78,13 +72,8 @@ class dopplerMLESAC():
         else:
             model = self.param_vec_
 
-        doppler_predicted = self.model.simulateRadarDoppler(model, \
-            np.column_stack((radar_azimuth,radar_elevaton)), \
-            np.zeros((Ntargets,), dtype=np.float32), \
-            np.zeros(((p-1)*Ntargets,), dtype=np.float32))
-
-        # evaluate the data log-likelihood given the model
-        eps_sq = np.square(np.subtract(doppler_predicted,radar_doppler))
+        ## evaluate the data log-likelihood given the model
+        eps_sq = np.square( self.residual(self.param_vec_, data) )
         score = -1/(2*self.model.sigma_vr**2)*np.sum(eps_sq)
 
         return score
@@ -98,7 +87,8 @@ class dopplerMLESAC():
         radar_azimuth  = data[:,1]
         radar_elevaton = data[:,2]
 
-        doppler_predicted = self.model.simulateRadarDoppler(X, \
+        doppler_predicted = self.model.simulateRadarDoppler(
+            X, \
             np.column_stack((radar_azimuth,radar_elevaton)), \
             np.zeros((Ntargets,), dtype=np.float32), \
             np.zeros(((p-1)*Ntargets,), dtype=np.float32))
@@ -147,8 +137,8 @@ class dopplerMLESAC():
                 is_valid = False
 
         elif self.sample_size == 3:
-            radar_doppler = data[:,0]
-            radar_azimuth = data[:,1]
+            radar_doppler   = data[:,0]
+            radar_azimuth   = data[:,1]
             radar_elevation = data[:,2]
 
             numAzimuthBins = self.utils.getNumAzimuthBins(radar_azimuth)
