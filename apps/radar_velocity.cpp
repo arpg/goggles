@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <math.h>
 #include <ceres/ceres.h>
+#include <DataTypes.h>
 #include <BodyVelocityCostFunction.h>
 #include <VelocityChangeCostFunction.h>
 #include <MarginalizationError.h>
@@ -21,8 +22,6 @@
 #include <VelocityParameterBlock.h>
 #include <DeltaParameterBlock.h>
 #include <pcl/sample_consensus/impl/mlesac.hpp>
-#include <boost/foreach.hpp>
-#include <pcl_conversions/pcl_conversions.h>
 #include <BodyDopplerSacModel.h>
 #include <chrono>
 
