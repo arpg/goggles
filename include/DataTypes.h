@@ -1,5 +1,8 @@
 #pragma once
-
+#define PCL_NO_PRECOMPILE
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl/point_types.h>
 #include <Eigen/Core>
 #include <iomanip>
 #include <atomic>
@@ -7,6 +10,25 @@
 #include <thread>
 #include <chrono>
 #include <deque>
+
+struct RadarPoint
+{
+	PCL_ADD_POINT4D;
+	float intensity;
+	float range;
+	float doppler;
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+POINT_CLOUD_REGISTER_POINT_STRUCT (RadarPoint,
+									(float, x, x)
+									(float, y, y)
+									(float, z, z)
+									(float, intensity, intensity)
+									(float, range, range)
+									(float, doppler, doppler))
+
+typedef pcl::PointCloud<RadarPoint> RadarPointCloud;
 
 struct ImuMeasurement
 {

@@ -1,4 +1,3 @@
-#define PCL_NO_PRECOMPILE
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
@@ -26,25 +25,6 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <BodyDopplerSacModel.h>
 #include <chrono>
-
-struct RadarPoint
-{
-	PCL_ADD_POINT4D;
-	float intensity;
-	float range;
-	float doppler;
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} EIGEN_ALIGN16;
-
-POINT_CLOUD_REGISTER_POINT_STRUCT (RadarPoint,
-									(float, x, x)
-									(float, y, y)
-									(float, z, z)
-									(float, intensity, intensity)
-									(float, range, range)
-									(float, doppler, doppler))
-
-typedef pcl::PointCloud<RadarPoint> RadarPointCloud;
 
 
 class RadarVelocityReader
