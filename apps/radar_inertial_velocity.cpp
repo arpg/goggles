@@ -725,6 +725,13 @@ private:
     pcl::PointCloud<RadarPoint>::Ptr radar_frame_cloud(new pcl::PointCloud<RadarPoint>());
     pcl_ros::transformPointCloud(*imu_frame_cloud, *radar_frame_cloud, imu_to_radar_);
 
+    // redo stupid left-handed coordinate system from radar
+    for (int i = 0; i < radar_frame_cloud->size(); i++)
+    {
+      radar_frame_cloud->at(i).y *= -1.0;
+      radar_frame_cloud->at(i).z *= -1.0;
+    }
+
     // convert to PCL2 type
     pcl::PCLPointCloud2 radar_frame_cloud2;
     pcl::toPCLPointCloud2(*radar_frame_cloud, radar_frame_cloud2);

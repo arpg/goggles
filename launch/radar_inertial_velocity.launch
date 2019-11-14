@@ -34,7 +34,7 @@
 	<!-- -1.57 yaw for CU handheld -->
 	<!-- 0 yaw for JPL handheld -->
 	<node pkg="tf" type="static_transform_publisher" name="radar_to_imu"
-    args="0 0 0 3.14 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
+    args="0 0 0 -1.5708 0 0 $(arg imu_ref_frame) $(arg radar_ref_frame) 100"/>
 
 
   <!-- launch goggles velocity estimation node -->
