@@ -113,6 +113,10 @@ set( RAD_IN_VEL_SRCS
   ${APP_DIR}/radar_inertial_velocity.cpp
   )
 
+set( RAD_OBS_SRCS
+  ${APP_DIR}/radar_obstacle.cpp
+  )
+
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
@@ -159,5 +163,10 @@ target_link_libraries(radar_velocity
 
 add_executable(radar_inertial_velocity ${RAD_IN_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_inertial_velocity
+   ${LINK_LIBS}
+)
+
+add_executable(radar_obstacle_filter ${RAD_OBS_SRCS} ${SOURCES} ${HEADERS})
+target_link_libraries(radar_obstacle_filter
    ${LINK_LIBS}
 )
