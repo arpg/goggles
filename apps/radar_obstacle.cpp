@@ -42,7 +42,7 @@ public:
         double el_angle = double(j) * bin_width_ - elevation_fov_;
         double az_angle = double(i) * bin_width_ - azimuth_fov_;
         Eigen::Vector3d ray(cos(az_angle) * cos(el_angle),
-                            -sin(az_angle) * cos(el_angle),
+                            sin(az_angle) * cos(el_angle),
                             sin(el_angle));
         ray_table_[i][j] = ray;
       }
@@ -121,6 +121,9 @@ public:
       {
         // copy current point
         RadarPoint new_point(*it);
+
+        //LOG(ERROR) << "raw unit vector: " << point.normalized().transpose();
+        //LOG(ERROR) << "    discretized: " << ray_table_[az_idx][el_idx].transpose() << "\n\n";
 
         // adjust xyz to bin center
         new_point.x = ray_table_[az_idx][el_idx].x() * range;
