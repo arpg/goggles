@@ -151,6 +151,25 @@ public:
     // group nearby returns in each bin by intensity
 
     // add fake return at max range to each empty bin
+    for (int i = 0; i < num_azimuth_bins_; i++)
+    {
+      for (int j = 0; j < num_elevation_bins_; j++)
+      {
+        if (binned_points[i][j].size() == 0)
+        {
+          RadarPoint fake_point;
+          fake_point.range = max_range_;
+          fake_point.intensity = 0.0;
+          fake_point.doppler = 0.0;
+          double el_angle = double(j) * bin_width_ - elevation_fov_;
+          double az_angle = double(i) * bin_width_ - azimuth_fov_;
+          fake_point.x = math.cos(el_angle) * max_range_;
+          fake_point.y = math.sin(az_angle) * max_range_;
+          fake_point.z = math.sin(el_angle) * max_range_;
+          binned_points[i][j].push_back(fake_point);
+        }
+      }
+    }
   }
 
   
