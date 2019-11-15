@@ -20,26 +20,67 @@ public:
   RadarObstacleFilter(ros::NodeHandle nh) 
   : nh_(nh),
     max_range_(std::numeric_limits<double>::max()), 
-    min_range_(0.0), 
-    initialized_(false),
-    bin_tolerance_(1.0e-3)
+    min_range_(0.0)
   {
+    bin_width_ = math.pi / 180.0;
+    elevation_fov_ = math.pi;
+    azimuth_fov_ = math.pi;
+    num_elevation_bins_ = elevation_fov_ / bin_width_;
+    num_azimuth_bins_ = azimuth_fov_ / bin_width_;
     InitializeNode();
   }
 
-  /// \brief Constructor
-  /// \param[in] nh a ros nodehandle
-  /// \param[in] max_range The maximum range to consider
-  /// \param[in] min_range The minimum range to consider
-  RadarObstacleFilter(ros::NodeHandle nh, double max_range, double min_range)
+  /** \brief Constructor
+    * \param[in] nh a ros nodehandle
+    * \param[in] max_range The maximum range to consider
+    * \param[in] min_range The minimum range to consider
+    * \param[in] bin_width The bin width in radians used for discretization
+    * \param[in] num_el_bins The number of bins in the elevation direction
+    * \param[in] num_az_bins The number of bins in the azimuth direction
+    */
+  RadarObstacleFilter(ros::NodeHandle nh, 
+                      double max_range, 
+                      double min_range,
+                      double bin_width,
+                      size_t num_el_bins,
+                      size_t num_az_bins)
   : nh_(nh),
     max_range_(max_range), 
     min_range_(min_range),
-    initialized_(false),
-    bin_tolerance_(1.0e-3)
+    bin_width_(bin_width),
+    num_elevation_bins_(num_el_bins),
+    num_azimuth_bins_(num_az_bins_)
   {
+    elevation_fov_ = 0.5 * double(num_elevation_bins_) * bin_width_;
+    azimuth_fov_ = 0.5 * double(num_azimuth_bins_) * bin_width_;
     InitializeNode();
   }
+
+  /** \brief Constructor
+    * \param[in] nh a ros nodehandle
+    * \param[in] max_range The maximum range to consider
+    * \param[in] min_range The minimum range to consider
+    * \param[in] bin_width The bin width in radians used for discretization
+    * \param[in] elevation_fov The field of view in elevation in radians
+    * \param[in] azimuth_fov The field of view in azimuth in radians
+    */
+  RadarObstacleFilter(ros::NodeHandle nh, 
+                      double max_range, 
+                      double min_range,
+                      double bin_width,
+                      double elevation_fov,
+                      double azimuth_fov)
+  : nh_(nh),
+    max_range_(max_range), 
+    min_range_(min_range),
+    bin_width_(bin_width),
+    elevation_fov_(elevation_fov),
+    azimuth_fov_(azimuth_fov)
+  {
+    num_elevation_bins_ = 2.0 * elevation_fov / bin_width_;
+    num_azimuth_bins_ = 2.0 * azimuth_fov / bin_width_;
+    InitializeNode();
+  } 
 
   /// \brief Initializes ros node subscriber and publisher
   void InitializeNode()
@@ -64,71 +105,67 @@ public:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::fromROSMsg(*msg, *cloud);
 
-    if (!initialized_)
-      initialized_ = InitializeFilter(cloud);
-  }
+    std::vector<std::vector<std::vector<RadarPoint>>> binned_points;
 
-  /// \brief Initializes the filter parameters
-  /// \param[in] cloud A point cloud to use for the initialization process
-  /// \return true if the initialization was successful, false if not
-  bool InitializeFilter(const pcl::PointCloud<RadarPoint>::Ptr cloud)
-  {
-    bool success = false;
-
-    // add points in cloud to elevation and azimuth sets
-    for (pcl::PointCloud<RadarPoint>::const_iterator it = cloud->begin();
-      it != cloud->end(); it++)
+    binned_points.resize(num_azimuth_bins_);
+    for (int i = 0; i < num_azimuth_bins_; i++)
     {
-      // create unit vectors in elevation and azimuth from the current point
-      Eigen::Vector2d az_vec(it->x, it->y);
-      Eigen::Vector2d el_vec(it->x, it->z);
-      az_vec.normalize();
-      el_vec.normalize();
-
-      // get elevation and azimuth angles
-      double azimuth_angle = std::copy_sign(std::acos(az_vec[0]),az_vec[1]);
-      double elevation_angle = std::copy_sign(std::acos(el_vec[0]),el_vec[1]);
-
-      // insert new vectors into the elevation and azimuth bin sets
-      azimuth_bins_.insert(azimuth_angle);
-      elevation_bins_.insert(elevation_angle);
+      binned_points[i].resize(num_elevation_bins_);
     }
 
-    // detect the elevation and azimuth field of view of the sensor
+    // iterate over all points in the input cloud
+    for (pcl::PointCloud<RadarPoint>::iterator it = cloud.begin(); 
+          it != cloud.end(); it++)
+    {
+      // find azimuth bin index for the current point
+      Eigen::Vector2d az_vector(it->x, it->y);
+      az_vector.normalize();
+      double az_angle = math.copy_sign(math.acos(az_vector[0]),az_vector[1]);
+      size_t az_idx = size_t(az_angle / bin_width) + (num_azimuth_bins_ / 2);
 
-    // detect the number of elevation and azimuth bins present in the input cloud
+      // find elevation bin index for current point
+      Eigen::Vector2d el_vector(it->x, it->z);
+      el_vector.normalize();
+      double el_angle = math.copy_sign(math.acos(el_vector[0],el_vector[1]));
+      size_t el_idx = size_t(el_angle / bin_width) + (num_elevation_bins_ / 2);
 
+      if (std::fabs(az_angle) <= azimuth_fov_
+          && std::fabs(el_angle) <= elevation_fov_)
+      {
+        // copy current point into the correct bin
+        binned_points[az_idx][el_idx].push_back(*it);
+      }
+    }
 
-    return success;
+    // Sort returns in each bin by range
+    for (int i = 0; i < num_azimuth_bins_; i++)
+    {
+      for (int j = 0; j < num_elevation_bins_; j++)
+      {
+        std::sort(binned_points[i][j].begin(),
+                  binned_points[i][j].end(),
+                  /* look up how to specify comparator */);
+      }
+    }
+
+    // group nearby returns in each bin by intensity
+
+    // add fake return at max range to each empty bin
   }
 
+  
 protected:
-  struct AngleCompare
-  {
-    // compare the input angles within a given tolerance
-    bool operator() (const double& lhs, const double& rhs) const
-    {
-      if (std::fabs(rhs_angle - lhs_angle) < bin_tolerance_)
-        return false;
-      else
-        return lhs_angle < rhs_angle;
-    }
-  };
-
-  size_t num_az_bins_;
-  size_t num_el_bins_;
+  size_t num_elevation_bins_; 
+  size_t num_azimuth_bins_;
+  double bin_width_; // bin width in radians
   double max_range_;
   double min_range_;
-  bool initialized_;
+  double azimuth_fov_; // 1/2 azimuth field of view in radians
+  double elevation_fov_; // 1/2 elevation field of view in radians
 
   ros::NodeHandle nh_;
   ros::Publisher pub_;
   ros::Subscriber sub_;
-
-  double bin_tolerance_;
-
-  std::set<double> azimuth_bins_;
-  std::set<double> elevation_bins_;
 };
 
 
