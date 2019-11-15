@@ -718,6 +718,7 @@ private:
 
     // convert to ros message type
     sensor_msgs::PointCloud2 out_cloud;
+    out_cloud.header.stamp = ros::Time(timestamp);
     pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
 
     inlier_publisher_.publish(out_cloud);

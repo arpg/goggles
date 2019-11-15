@@ -296,6 +296,7 @@ private:
     if (publish_inliers_)
     {
       sensor_msgs::PointCloud2 inliers_out;
+      inliers_out.header.stamp = ros::Time(timestamp);
       pcl::PCLPointCloud2 cloud2;
       pcl::toPCLPointCloud2(*cloud, cloud2);
       pcl_conversions::fromPCL(cloud2, inliers_out);
