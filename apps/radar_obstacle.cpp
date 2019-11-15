@@ -13,7 +13,7 @@
 class RadarObstacleFilter
 {
 public:
-  EIGEN_MAKE_ALIGNED_ALLOCATOR_NEW
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   /// \brief Default constructor
   /// \param[in] nh a ros nodehandle
@@ -22,65 +22,32 @@ public:
     max_range_(std::numeric_limits<double>::max()), 
     min_range_(0.0)
   {
-    bin_width_ = math.pi / 180.0;
-    elevation_fov_ = math.pi;
-    azimuth_fov_ = math.pi;
-    num_elevation_bins_ = elevation_fov_ / bin_width_;
-    num_azimuth_bins_ = azimuth_fov_ / bin_width_;
     InitializeNode();
+    MakeRayLookupTable();
   }
 
-  /** \brief Constructor
-    * \param[in] nh a ros nodehandle
-    * \param[in] max_range The maximum range to consider
-    * \param[in] min_range The minimum range to consider
-    * \param[in] bin_width The bin width in radians used for discretization
-    * \param[in] num_el_bins The number of bins in the elevation direction
-    * \param[in] num_az_bins The number of bins in the azimuth direction
-    */
-  RadarObstacleFilter(ros::NodeHandle nh, 
-                      double max_range, 
-                      double min_range,
-                      double bin_width,
-                      size_t num_el_bins,
-                      size_t num_az_bins)
-  : nh_(nh),
-    max_range_(max_range), 
-    min_range_(min_range),
-    bin_width_(bin_width),
-    num_elevation_bins_(num_el_bins),
-    num_azimuth_bins_(num_az_bins_)
+  /// \brief Makes a lookup table of rays for each index of elevation and azimuth
+  void MakeRayLookupTable()
   {
-    elevation_fov_ = 0.5 * double(num_elevation_bins_) * bin_width_;
-    azimuth_fov_ = 0.5 * double(num_azimuth_bins_) * bin_width_;
-    InitializeNode();
-  }
+    std::vector<Eigen::Vector3d> init_list;
+    ray_table_.resize(num_azimuth_bins_);
+    Eigen::Vector3d init_vec = Eigen::Vector3d::Zero();
+    for (int i = 0; i < num_azimuth_bins_; i++)
+      ray_table_[i].resize(num_elevation_bins_);
 
-  /** \brief Constructor
-    * \param[in] nh a ros nodehandle
-    * \param[in] max_range The maximum range to consider
-    * \param[in] min_range The minimum range to consider
-    * \param[in] bin_width The bin width in radians used for discretization
-    * \param[in] elevation_fov The field of view in elevation in radians
-    * \param[in] azimuth_fov The field of view in azimuth in radians
-    */
-  RadarObstacleFilter(ros::NodeHandle nh, 
-                      double max_range, 
-                      double min_range,
-                      double bin_width,
-                      double elevation_fov,
-                      double azimuth_fov)
-  : nh_(nh),
-    max_range_(max_range), 
-    min_range_(min_range),
-    bin_width_(bin_width),
-    elevation_fov_(elevation_fov),
-    azimuth_fov_(azimuth_fov)
-  {
-    num_elevation_bins_ = 2.0 * elevation_fov / bin_width_;
-    num_azimuth_bins_ = 2.0 * azimuth_fov / bin_width_;
-    InitializeNode();
-  } 
+    for (int i = 0; i < num_azimuth_bins_; i++)
+    {
+      for (int j = 0; j < num_elevation_bins_; j++)
+      {
+        double el_angle = double(j) * bin_width_ - elevation_fov_;
+        double az_angle = double(i) * bin_width_ - azimuth_fov_;
+        Eigen::Vector3d ray(cos(az_angle) * cos(el_angle),
+                            -sin(az_angle) * cos(el_angle),
+                            sin(el_angle));
+        ray_table_[i][j] = ray;
+      }
+    }
+  }
 
   /// \brief Initializes ros node subscriber and publisher
   void InitializeNode()
@@ -89,6 +56,20 @@ public:
     std::string out_topic;
     nh_.getParam("input_cloud", in_topic);
     nh_.getParam("output_cloud", out_topic);
+    nh_.getParam("min_range", min_range_);
+    nh_.getParam("max_range", max_range_);
+    nh_.getParam("azimuth_fov", azimuth_fov_);
+    nh_.getParam("elevation_fov", elevation_fov_);
+    nh_.getParam("bin_width", bin_width_);
+
+    // convert degrees to radians
+    azimuth_fov_ *= M_PI / 180.0;
+    elevation_fov_ *= M_PI / 180.0;
+    bin_width_ *= M_PI / 180.0;
+
+    // get num bins
+    num_azimuth_bins_ = size_t(2.0 * azimuth_fov_ / bin_width_);
+    num_elevation_bins_ = size_t(2.0 * elevation_fov_ / bin_width_);
 
     std::string ns = ros::this_node::getNamespace();
 
@@ -100,13 +81,11 @@ public:
 
   void PointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-
     double timestamp = msg->header.stamp.toSec();
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::fromROSMsg(*msg, *cloud);
 
     std::vector<std::vector<std::vector<RadarPoint>>> binned_points;
-
     binned_points.resize(num_azimuth_bins_);
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
@@ -114,26 +93,43 @@ public:
     }
 
     // iterate over all points in the input cloud
-    for (pcl::PointCloud<RadarPoint>::iterator it = cloud.begin(); 
-          it != cloud.end(); it++)
+    for (pcl::PointCloud<RadarPoint>::iterator it = cloud->begin(); 
+          it != cloud->end(); it++)
     {
       // find azimuth bin index for the current point
       Eigen::Vector2d az_vector(it->x, it->y);
       az_vector.normalize();
-      double az_angle = math.copy_sign(math.acos(az_vector[0]),az_vector[1]);
-      size_t az_idx = size_t(az_angle / bin_width) + (num_azimuth_bins_ / 2);
+      double az_angle = std::copysign(acos(az_vector[0]),az_vector[1]);
+      size_t az_idx = size_t(az_angle / bin_width_) + (num_azimuth_bins_ / 2);
 
       // find elevation bin index for current point
-      Eigen::Vector2d el_vector(it->x, it->z);
+      Eigen::Vector3d el_vector(it->x, it->y, it->z);
       el_vector.normalize();
-      double el_angle = math.copy_sign(math.acos(el_vector[0],el_vector[1]));
-      size_t el_idx = size_t(el_angle / bin_width) + (num_elevation_bins_ / 2);
+      double el_angle = asin(el_vector.z());
+      size_t el_idx = size_t(el_angle / bin_width_) + (num_elevation_bins_ / 2);
 
+      // find range
+      Eigen::Vector3d point(it->x,it->y,it->z);
+      double range = point.norm();
+
+      // add to binned points if it is within field of view
+      // and its range is within the specified window
       if (std::fabs(az_angle) <= azimuth_fov_
-          && std::fabs(el_angle) <= elevation_fov_)
+          && std::fabs(el_angle) <= elevation_fov_
+          && range <= max_range_
+          && range >= min_range_)
       {
-        // copy current point into the correct bin
-        binned_points[az_idx][el_idx].push_back(*it);
+        // copy current point
+        RadarPoint new_point(*it);
+
+        // adjust xyz to bin center
+        new_point.x = ray_table_[az_idx][el_idx].x() * range;
+        new_point.y = ray_table_[az_idx][el_idx].y() * range;
+        new_point.z = ray_table_[az_idx][el_idx].z() * range;
+        new_point.range = range;
+
+        // add to binned points
+        binned_points[az_idx][el_idx].push_back(new_point);
       }
     }
 
@@ -144,7 +140,7 @@ public:
       {
         std::sort(binned_points[i][j].begin(),
                   binned_points[i][j].end(),
-                  /* look up how to specify comparator */);
+                  compareRange);
       }
     }
 
@@ -161,19 +157,47 @@ public:
           fake_point.range = max_range_;
           fake_point.intensity = 0.0;
           fake_point.doppler = 0.0;
-          double el_angle = double(j) * bin_width_ - elevation_fov_;
-          double az_angle = double(i) * bin_width_ - azimuth_fov_;
-          fake_point.x = math.cos(el_angle) * max_range_;
-          fake_point.y = math.sin(az_angle) * max_range_;
-          fake_point.z = math.sin(el_angle) * max_range_;
+          fake_point.x = ray_table_[i][j].x() * max_range_;
+          fake_point.y = ray_table_[i][j].y() * max_range_;
+          fake_point.z = ray_table_[i][j].z() * max_range_;
           binned_points[i][j].push_back(fake_point);
         }
       }
     }
+
+    // publish new pointcloud
+    pcl::PointCloud<RadarPoint>::Ptr out_cloud(boost::make_shared<pcl::PointCloud<RadarPoint>>());
+    for (int i = 0; i < num_azimuth_bins_; i++)
+    {
+      for (int j = 0; j < num_elevation_bins_; j++)
+      {
+        for (int k = 0; k < binned_points[i][j].size(); k++)
+        {
+          out_cloud->push_back(binned_points[i][j][k]);
+        }
+      }
+    }
+
+    sensor_msgs::PointCloud2 out_cloud_msg;
+    pcl::PCLPointCloud2 out_cloud2;
+    pcl::toPCLPointCloud2(*out_cloud, out_cloud2);
+    pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
+    out_cloud_msg.header.stamp = ros::Time(timestamp);
+    out_cloud_msg.header.frame_id = msg->header.frame_id;
+    pub_.publish(out_cloud_msg);
   }
 
   
 protected:
+
+  struct 
+  {
+    bool operator()(RadarPoint a, RadarPoint b) const
+    {
+      return a.range < b.range;
+    }
+  } compareRange;
+
   size_t num_elevation_bins_; 
   size_t num_azimuth_bins_;
   double bin_width_; // bin width in radians
@@ -185,6 +209,8 @@ protected:
   ros::NodeHandle nh_;
   ros::Publisher pub_;
   ros::Subscriber sub_;
+
+  std::vector<std::vector<Eigen::Vector3d>> ray_table_;
 };
 
 
