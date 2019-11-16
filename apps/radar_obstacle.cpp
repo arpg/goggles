@@ -129,20 +129,29 @@ public:
     }
     io_service.stop();
     pool.join_all();
-    /*
-    // Sort returns in each bin by range
+    
+    // if multiple returns exist in a bin, 
+    // remove all but the highest intensity return
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
       for (int j = 0; j < num_elevation_bins_; j++)
       {
-        std::sort(binned_points[i][j].begin(),
-                  binned_points[i][j].end(),
-                  compareRange);
+        if (binned_points_[i][j].size() > 1)
+        {
+          std::sort(binned_points_[i][j].begin(),
+                    binned_points_[i][j].end(),
+                    compareRange);
+          while (binned_points_[i][j].size() > 1)
+          {
+            if (binned_points_[i][j][0].intensity > binned_points_[i][j][1].intensity)
+              binned_points_[i][j].erase(binned_points_[i][j].begin() + 1);
+            else
+              binned_points_[i][j].erase(binned_points_[i][j].begin());
+          }
+        }
       }
     }
-
-    // group nearby returns in each bin by intensity
-    */
+    
     // add fake return at max range to each empty bin
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
@@ -200,14 +209,14 @@ public:
       // find azimuth bin index for the current point
       Eigen::Vector2d az_vector(p.x, p.y);
       az_vector.normalize();
-      double az_angle = std::copysign(acos(az_vector[0]),az_vector[1]);
-      size_t az_idx = size_t(az_angle / bin_width_) + (num_azimuth_bins_ / 2);
+      double az_angle = asin(az_vector.y());
+      size_t az_idx = size_t((az_angle / bin_width_) + (double(num_azimuth_bins_ - 1) / 2.0));
 
       // find elevation bin index for current point
       Eigen::Vector3d el_vector(p.x, p.y, p.z);
       el_vector.normalize();
       double el_angle = asin(el_vector.z());
-      size_t el_idx = size_t(el_angle / bin_width_) + (num_elevation_bins_ / 2);
+      size_t el_idx = size_t((el_angle / bin_width_) + (double(num_elevation_bins_ - 1) / 2.0));
 
       // add to binned points if it is within field of view
       if (std::fabs(az_angle) <= azimuth_fov_
@@ -217,10 +226,20 @@ public:
         RadarPoint new_point(p);
 
         // adjust xyz to bin center
-        new_point.x = ray_table_[az_idx][el_idx].x() * range;
-        new_point.y = ray_table_[az_idx][el_idx].y() * range;
-        new_point.z = ray_table_[az_idx][el_idx].z() * range;
+        new_point.x = p.x; //ray_table_[az_idx][el_idx].x() * range;
+        new_point.y = p.y; //ray_table_[az_idx][el_idx].y() * range;
+        new_point.z = p.z; //ray_table_[az_idx][el_idx].z() * range;
         new_point.range = range;
+
+        if (az_idx >= num_azimuth_bins_ || az_idx < 0)
+          LOG(FATAL) << "azimuth index, " << az_idx << ", outside range of bin indices, 0 to " << num_azimuth_bins_ - 1;
+
+        if (el_idx >= num_elevation_bins_ || el_idx < 0)
+        {
+          LOG(ERROR) << "elevation angle: " << el_angle << " " << el_angle / bin_width_;
+          LOG(FATAL) << "elevation index, " << el_idx << ", outside range of bin indices, 0 to " << num_elevation_bins_ - 1;
+
+        }
 
         // add to binned points
         boost::lock_guard<boost::mutex> lck(*bin_mutexes_[az_idx][el_idx]);
