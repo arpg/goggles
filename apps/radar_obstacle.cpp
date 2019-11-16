@@ -12,6 +12,7 @@
 #include <boost/thread.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/bind.hpp>
+#include <chrono>
 
 class RadarObstacleFilter
 {
@@ -87,7 +88,7 @@ public:
 
     std::string ns = ros::this_node::getNamespace();
 
-    sub_ = nh_.subscribe(in_topic, 0, &RadarObstacleFilter::PointCloudCallback, this);
+    sub_ = nh_.subscribe(in_topic, 1, &RadarObstacleFilter::PointCloudCallback, this);
 
     pub_ = nh_.advertise<sensor_msgs::PointCloud2>(
       ns + out_topic,1);
@@ -95,6 +96,7 @@ public:
 
   void PointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
+    auto start = std::chrono::high_resolution_clock::now();
     double timestamp = msg->header.stamp.toSec();
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::fromROSMsg(*msg, *cloud);
@@ -105,7 +107,7 @@ public:
         binned_points_[i][j].clear();
     }
 
-    /*
+    
     boost::asio::io_service io_service;
     boost::thread_group pool;
     boost::asio::io_service::work work(io_service);
@@ -113,20 +115,20 @@ public:
 
     for (int i = 0; i < num_threads; i++)
       pool.create_thread(boost::bind(&boost::asio::io_service::run, &io_service));
-    */
+    
     // iterate over all points in the input cloud
     for (pcl::PointCloud<RadarPoint>::iterator it = cloud->begin(); 
           it != cloud->end(); it++)
     {
-      /*
+      
       io_service.post(boost::bind(&RadarObstacleFilter::BinRadarReturns,
                                   this,
                                   *it));
-      */
-      BinRadarReturns(*it);
+      
+      //BinRadarReturns(*it);
     }
-    //io_service.stop();
-    //pool.join_all();
+    io_service.stop();
+    pool.join_all();
     /*
     // Sort returns in each bin by range
     for (int i = 0; i < num_azimuth_bins_; i++)
@@ -179,6 +181,11 @@ public:
     pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
     out_cloud_msg.header.stamp = ros::Time(timestamp);
     out_cloud_msg.header.frame_id = msg->header.frame_id;
+
+    auto finish = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = finish - start;
+    LOG(ERROR) << "execution time: " << elapsed.count();
+
     pub_.publish(out_cloud_msg);
   }
 
