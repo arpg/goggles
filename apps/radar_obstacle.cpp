@@ -9,7 +9,9 @@
 #include <iomanip>
 #include <limits>
 #include <math.h>
-#include <boost/asio/thread_pool.hpp>
+#include <boost/thread.hpp>
+#include <boost/asio/io_service.hpp>
+#include <boost/bind.hpp>
 
 class RadarObstacleFilter
 {
@@ -72,6 +74,17 @@ public:
     num_azimuth_bins_ = size_t(2.0 * azimuth_fov_ / bin_width_);
     num_elevation_bins_ = size_t(2.0 * elevation_fov_ / bin_width_);
 
+    binned_points_.resize(num_azimuth_bins_);
+    bin_mutexes_.resize(num_azimuth_bins_);
+    for (int i = 0; i < num_azimuth_bins_; i++)
+    {
+      binned_points_[i].resize(num_elevation_bins_);
+      for (int j = 0; j < num_elevation_bins_; j++)
+      {
+        bin_mutexes_[i].push_back(new boost::mutex());
+      }
+    }
+
     std::string ns = ros::this_node::getNamespace();
 
     sub_ = nh_.subscribe(in_topic, 0, &RadarObstacleFilter::PointCloudCallback, this);
@@ -86,62 +99,35 @@ public:
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
     pcl::fromROSMsg(*msg, *cloud);
 
-    std::vector<std::vector<std::vector<RadarPoint>>> binned_points;
-    binned_points.resize(num_azimuth_bins_);
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
-      binned_points[i].resize(num_elevation_bins_);
+      for (int j = 0; j < num_elevation_bins_; j++)
+        binned_points_[i][j].clear();
     }
 
-    boost::asio::thread_pool pool(4);
+    /*
+    boost::asio::io_service io_service;
+    boost::thread_group pool;
+    boost::asio::io_service::work work(io_service);
+    size_t num_threads = 4;
 
-    // TO-DO: add mutex for binned points access (or array of mutexes?)
-    //        and convert contents of for-loop to function for thread pool
-
+    for (int i = 0; i < num_threads; i++)
+      pool.create_thread(boost::bind(&boost::asio::io_service::run, &io_service));
+    */
     // iterate over all points in the input cloud
     for (pcl::PointCloud<RadarPoint>::iterator it = cloud->begin(); 
           it != cloud->end(); it++)
     {
-
-      // find range
-      Eigen::Vector3d point(it->x,it->y,it->z);
-      double range = point.norm();
-
-      if (range <= max_range_ && range >= min_range_)
-      {
-        // find azimuth bin index for the current point
-        Eigen::Vector2d az_vector(it->x, it->y);
-        az_vector.normalize();
-        double az_angle = std::copysign(acos(az_vector[0]),az_vector[1]);
-        size_t az_idx = size_t(az_angle / bin_width_) + (num_azimuth_bins_ / 2);
-
-        // find elevation bin index for current point
-        Eigen::Vector3d el_vector(it->x, it->y, it->z);
-        el_vector.normalize();
-        double el_angle = asin(el_vector.z());
-        size_t el_idx = size_t(el_angle / bin_width_) + (num_elevation_bins_ / 2);
-
-        // add to binned points if it is within field of view
-        if (std::fabs(az_angle) <= azimuth_fov_
-            && std::fabs(el_angle) <= elevation_fov_)
-        {
-          // copy current point
-          RadarPoint new_point(*it);
-
-          // adjust xyz to bin center
-          new_point.x = ray_table_[az_idx][el_idx].x() * range;
-          new_point.y = ray_table_[az_idx][el_idx].y() * range;
-          new_point.z = ray_table_[az_idx][el_idx].z() * range;
-          new_point.range = range;
-
-          // add to binned points
-          binned_points[az_idx][el_idx].push_back(new_point);
-        }
-      }
-
-      pool.join();
+      /*
+      io_service.post(boost::bind(&RadarObstacleFilter::BinRadarReturns,
+                                  this,
+                                  *it));
+      */
+      BinRadarReturns(*it);
     }
-
+    //io_service.stop();
+    //pool.join_all();
+    /*
     // Sort returns in each bin by range
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
@@ -154,13 +140,13 @@ public:
     }
 
     // group nearby returns in each bin by intensity
-
+    */
     // add fake return at max range to each empty bin
     for (int i = 0; i < num_azimuth_bins_; i++)
     {
       for (int j = 0; j < num_elevation_bins_; j++)
       {
-        if (binned_points[i][j].size() == 0)
+        if (binned_points_[i][j].size() == 0)
         {
           RadarPoint fake_point;
           fake_point.range = max_range_;
@@ -169,7 +155,7 @@ public:
           fake_point.x = ray_table_[i][j].x() * max_range_;
           fake_point.y = ray_table_[i][j].y() * max_range_;
           fake_point.z = ray_table_[i][j].z() * max_range_;
-          binned_points[i][j].push_back(fake_point);
+          binned_points_[i][j].push_back(fake_point);
         }
       }
     }
@@ -180,9 +166,9 @@ public:
     {
       for (int j = 0; j < num_elevation_bins_; j++)
       {
-        for (int k = 0; k < binned_points[i][j].size(); k++)
+        for (int k = 0; k < binned_points_[i][j].size(); k++)
         {
-          out_cloud->push_back(binned_points[i][j][k]);
+          out_cloud->push_back(binned_points_[i][j][k]);
         }
       }
     }
@@ -196,9 +182,44 @@ public:
     pub_.publish(out_cloud_msg);
   }
 
-  void BinRadarReturns()
+  void BinRadarReturns(RadarPoint& p)
   {
+    // find range
+    Eigen::Vector3d point(p.x,p.y,p.z);
+    double range = point.norm();
 
+    if (range <= max_range_ && range >= min_range_)
+    {
+      // find azimuth bin index for the current point
+      Eigen::Vector2d az_vector(p.x, p.y);
+      az_vector.normalize();
+      double az_angle = std::copysign(acos(az_vector[0]),az_vector[1]);
+      size_t az_idx = size_t(az_angle / bin_width_) + (num_azimuth_bins_ / 2);
+
+      // find elevation bin index for current point
+      Eigen::Vector3d el_vector(p.x, p.y, p.z);
+      el_vector.normalize();
+      double el_angle = asin(el_vector.z());
+      size_t el_idx = size_t(el_angle / bin_width_) + (num_elevation_bins_ / 2);
+
+      // add to binned points if it is within field of view
+      if (std::fabs(az_angle) <= azimuth_fov_
+          && std::fabs(el_angle) <= elevation_fov_)
+      {
+        // copy current point
+        RadarPoint new_point(p);
+
+        // adjust xyz to bin center
+        new_point.x = ray_table_[az_idx][el_idx].x() * range;
+        new_point.y = ray_table_[az_idx][el_idx].y() * range;
+        new_point.z = ray_table_[az_idx][el_idx].z() * range;
+        new_point.range = range;
+
+        // add to binned points
+        boost::lock_guard<boost::mutex> lck(*bin_mutexes_[az_idx][el_idx]);
+        binned_points_[az_idx][el_idx].push_back(new_point);
+      }
+    }
   }
 
   
@@ -225,6 +246,8 @@ protected:
   ros::Subscriber sub_;
 
   std::vector<std::vector<Eigen::Vector3d>> ray_table_;
+  std::vector<std::vector<std::vector<RadarPoint>>> binned_points_;
+  std::vector<std::vector<boost::mutex*>> bin_mutexes_;
 };
 
 
