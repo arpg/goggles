@@ -2,7 +2,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Imu.h>
-#include <geometry_msgs/TwistWithCovarianceStamped.h>
+#include <nav_msgs/Odometry.h>
 #include <tf/transform_listener.h>
 #include <tf_conversions/tf_eigen.h>
 #include <pcl_ros/point_cloud.h>
@@ -83,7 +83,7 @@ public:
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
 
-    velocity_publisher_ = nh_.advertise<geometry_msgs::TwistWithCovarianceStamped>(
+    velocity_publisher_ = nh_.advertise<nav_msgs::Odometry>(
       ns + "/mmWaveDataHdl/velocity",1);
     if (publish_inliers_) 
       inlier_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
@@ -173,10 +173,13 @@ public:
     {
       Eigen::Matrix3d covariance = Eigen::Matrix3d::Identity();
       propagateStateWithImu(new_meas.t_);
-      geometry_msgs::TwistWithCovarianceStamped vel_out;
-      vel_out.header.stamp = msg->header.stamp;
-      populateMessage(imu_propagated_speed_,vel_out,covariance);
-      velocity_publisher_.publish(vel_out);
+      nav_msgs::Odometry odom_out;
+      odom_out.header.stamp = msg->header.stamp;
+      populateMessage(imu_propagated_speed_,
+                      imu_propagated_orientation_,
+                      odom_out,
+                      covariance);
+      velocity_publisher_.publish(odom_out);
     }
 	}
 
@@ -221,11 +224,14 @@ public:
 
     if (!publish_imu_propagated_state_)
     {
-      geometry_msgs::TwistWithCovarianceStamped vel_out;
-      vel_out.header.stamp = msg->header.stamp;
+      nav_msgs::Odometry odom_out;
+      odom_out.header.stamp = msg->header.stamp;
       Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-      populateMessage(speeds_.front()->GetEstimate(),vel_out,covariance_matrix);
-      velocity_publisher_.publish(vel_out);
+      populateMessage(speeds_.front()->GetEstimate(),
+                      orientations_.front()->GetEstimate(),
+                      odom_out,
+                      covariance_matrix);
+      velocity_publisher_.publish(odom_out);
     }
 	}
 
@@ -255,6 +261,7 @@ private:
   std::deque<std::shared_ptr<BiasParameterBlock>> accel_biases_;
   std::deque<std::vector<std::shared_ptr<DeltaParameterBlock>>> ray_errors_;
   Eigen::Matrix3d initial_orientation_;
+  Eigen::Quaterniond initial_yaw_;
   std::deque<double> timestamps_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::shared_ptr<MarginalizationError> marginalization_error_ptr_;
@@ -339,6 +346,7 @@ private:
 			map_ptr_->AddParameterBlock(gyro_biases_.front());
 			map_ptr_->AddParameterBlock(accel_biases_.front());
 		}
+
     // add latest parameter blocks and remove old ones if necessary
     std::vector<ceres::ResidualBlockId> residuals;
     std::vector<std::shared_ptr<DeltaParameterBlock>> ray_err;
@@ -367,7 +375,7 @@ private:
 
     double weight = 2.5 / cloud->size();
     double d = 0.95;
-    /*
+    
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
@@ -420,6 +428,7 @@ private:
     // use slerp to interpolate orientation at current timestep
     double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
     Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
+    q_WS_t0 = initial_yaw_.conjugate() * q_WS_t0;
 
     // add constraint on yaw at current timestep
     std::shared_ptr<ceres::CostFunction> yaw_cost_func = 
@@ -431,7 +440,7 @@ private:
      orientations_.front());
 
     residual_blks_.front().push_back(orientation_res_id);
-    */
+    
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
@@ -463,6 +472,7 @@ private:
         accel_biases_[0]);
       residual_blks_[1].push_back(imu_res_id);
     }
+    
   	// solve the ceres problem and get result
     map_ptr_->Solve();
     LOG(INFO) << map_ptr_->summary.FullReport();
@@ -521,6 +531,10 @@ private:
       sum_a += measurements[i].a_;
     }
     Eigen::Vector3d g_vec = sum_a / double(measurements.size());
+    initial_yaw_ = Eigen::Quaterniond(measurements.back().q_.w(),
+                                      measurements.back().q_.x(),
+                                      measurements.back().q_.y(),
+                                      measurements.back().q_.z());
 
     // set gravity vector magnitude
     params_.g_ = g_vec.norm();
@@ -667,6 +681,7 @@ private:
           NULL,
           parameter_block_ptrs);
       }
+      
     }
     return true;
   }
@@ -736,33 +751,36 @@ private:
     * \param[in] covariance the estimate covariance
     */
   void populateMessage(Eigen::Vector3d velocity,
-                       geometry_msgs::TwistWithCovarianceStamped &vel,
+                       Eigen::Quaterniond orientation,
+                       nav_msgs::Odometry &odom,
                        Eigen::Matrix3d &covariance)
   {
-
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
 
 		if(ns.compare("/") == 0) {
     	// single radar frame_id to comply with TI naming convention
-      vel.header.frame_id = "radar_odom_frame";
+      odom.header.frame_id = "radar_odom_frame";
     }
     else {
       // multi-radar frame_id
-    	vel.header.frame_id = ns.erase(0,1) + "_link";
+    	odom.header.frame_id = ns.erase(0,1) + "_link";
     }
 
-    vel.twist.twist.linear.x = velocity[0];
-    vel.twist.twist.linear.y = velocity[1];
-    vel.twist.twist.linear.z = velocity[2];
+    odom.twist.twist.linear.x = velocity.x();
+    odom.twist.twist.linear.y = velocity.y();
+    odom.twist.twist.linear.z = velocity.z();
+    odom.pose.pose.orientation.x = orientation.x();
+    odom.pose.pose.orientation.y = orientation.y();
+    odom.pose.pose.orientation.z = orientation.z();
+    odom.pose.pose.orientation.w = orientation.w();
 
     for (int i = 0; i < 3; i++)
     {
       for (int j = 0; j < 3; j++)
-        vel.twist.covariance[(i*6)+j] = covariance(i,j);
+        odom.twist.covariance[(i*6)+j] = covariance(i,j);
     }
   }
-
 };
 
 int main(int argc, char** argv)
