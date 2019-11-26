@@ -89,7 +89,7 @@ public:
 		}
 		if (no_doppler)
 		{
-			LOG(ERROR) << "no doppler reading in current cloud";
+			LOG(INFO) << "no doppler reading in current cloud";
 		}
 
     geometry_msgs::TwistWithCovarianceStamped vel_out;
