@@ -367,7 +367,7 @@ private:
 
     double weight = 2.5 / cloud->size();
     double d = 0.95;
-
+    /*
     // add residuals on doppler readings
     for (int i = 0; i < cloud->size(); i++)
     {
@@ -394,9 +394,8 @@ private:
         speeds_.front(),
         ray_errors_.front().back());
       residual_blks_.front().push_back(res_id);
-
-     }
-
+    }
+    
     // find imu measurements bracketing current timestep
     std::vector<ImuMeasurement> imu_measurements = 
     imu_buffer_.GetRange(timestamps_[0],timestamps_[0],false);
@@ -418,11 +417,11 @@ private:
     if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
       LOG(FATAL) << "imu measurements do not bracket current time";
 
-        // use slerp to interpolate orientation at current timestep
+    // use slerp to interpolate orientation at current timestep
     double r = (timestamps_[0] - before.t_) / (after.t_ - before.t_);
     Eigen::Quaterniond q_WS_t0 = before.q_.slerp(r, after.q_);
 
-        // add constraint on yaw at current timestep
+    // add constraint on yaw at current timestep
     std::shared_ptr<ceres::CostFunction> yaw_cost_func = 
     std::make_shared<AHRSYawCostFunction>(q_WS_t0,params_.invert_yaw_);
 
@@ -432,7 +431,7 @@ private:
      orientations_.front());
 
     residual_blks_.front().push_back(orientation_res_id);
-
+    */
     // add imu cost only if there are more than 1 radar measurements in the queue
     if (timestamps_.size() >= 2)
     {
@@ -448,21 +447,20 @@ private:
 
       std::shared_ptr<ceres::CostFunction> imu_cost_func =
       std::make_shared<GlobalImuVelocityCostFunction>(timestamps_[1],
-       timestamps_[0],
-       imu_measurements,
-       params_);
+        timestamps_[0],
+        imu_measurements,
+        params_);
 
-      ceres::ResidualBlockId imu_res_id
-      = map_ptr_->AddResidualBlock(imu_cost_func,
-       imu_loss_,
-       orientations_[1],
-       speeds_[1],
-       gyro_biases_[1],
-       accel_biases_[1],
-       orientations_[0],
-       speeds_[0],
-       gyro_biases_[0],
-       accel_biases_[0]);
+      ceres::ResidualBlockId imu_res_id = map_ptr_->AddResidualBlock(imu_cost_func,
+        imu_loss_,
+        orientations_[1],
+        speeds_[1],
+        gyro_biases_[1],
+        accel_biases_[1],
+        orientations_[0],
+        speeds_[0],
+        gyro_biases_[0],
+        accel_biases_[0]);
       residual_blks_[1].push_back(imu_res_id);
     }
   	// solve the ceres problem and get result
@@ -525,7 +523,7 @@ private:
     Eigen::Vector3d g_vec = sum_a / double(measurements.size());
 
     // set gravity vector magnitude
-    params_.g_ = -g_vec.norm();
+    params_.g_ = g_vec.norm();
 
     // set initial velocity and biases
     Eigen::Vector3d speed_initial = Eigen::Vector3d::Zero();
@@ -549,7 +547,7 @@ private:
     // assuming IMU is set close to Z-down
     Eigen::Vector3d down_vec(0.0,0.0,1.0);
     Eigen::Vector3d increment;
-    Eigen::Vector3d g_direction = -g_vec.normalized();
+    Eigen::Vector3d g_direction = g_vec.normalized();
     Eigen::Vector3d cross = down_vec.cross(g_direction);
     if (cross.norm() == 0.0)
       increment = cross;
@@ -559,6 +557,7 @@ private:
     increment *= angle;
     increment *= -1.0;
 
+    LOG(ERROR) << "g magnitude: " << params_.g_;
     LOG(ERROR) << "      angle: " << angle;
     LOG(ERROR) << "g_direction: " << g_direction.transpose();
 
@@ -708,24 +707,26 @@ private:
   {
     // transform point cloud back to the radar frame
     pcl::PointCloud<RadarPoint>::Ptr radar_frame_cloud(new pcl::PointCloud<RadarPoint>());
-    pcl_ros::transformPointCloud(*imu_frame_cloud, *radar_frame_cloud, imu_to_radar_);
+    //pcl_ros::transformPointCloud(*imu_frame_cloud, *radar_frame_cloud, imu_to_radar_);
 
     // redo stupid left-handed coordinate system from radar
+    /*
     for (int i = 0; i < radar_frame_cloud->size(); i++)
     {
       radar_frame_cloud->at(i).y *= -1.0;
       radar_frame_cloud->at(i).z *= -1.0;
     }
-
+    */
     // convert to PCL2 type
     pcl::PCLPointCloud2 radar_frame_cloud2;
-    pcl::toPCLPointCloud2(*radar_frame_cloud, radar_frame_cloud2);
+    pcl::toPCLPointCloud2(*imu_frame_cloud, radar_frame_cloud2);
 
     // convert to ros message type
     sensor_msgs::PointCloud2 out_cloud;
     out_cloud.header.stamp = ros::Time(timestamp);
+    
     pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
-
+    out_cloud.header.frame_id = "enu_imu_frame";
     inlier_publisher_.publish(out_cloud);
   }
 
