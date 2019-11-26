@@ -56,13 +56,13 @@ public:
 		nh_.getParam("config", config);
     nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
     nh_.getParam("publish_inliers", publish_inliers_);
-    frame_id_ = imu_frame;
+    pose_frame_id_ = imu_frame;
 
 		// get imu params and extrinsics
 		LoadParams(config);
     imu_buffer_.SetTimeout(params_.frequency_);
 		tf::TransformListener tf_listener;
-    ros::Duration(0.5).sleep();
+    ros::Duration(0.25).sleep();
     ros::Time now = ros::Time::now();
 		tf_listener.waitForTransform(imu_frame,
 																 radar_frame,
@@ -76,6 +76,10 @@ public:
                                 imu_frame,
                                 now,
                                 imu_to_radar_);
+    ros::Duration(0.1).sleep();
+    if (!tf_listener.getParent(pose_frame_id_,now,odom_frame_id_))
+      LOG(ERROR) << "parent frame not found";
+
     Eigen::Quaterniond radar_to_imu_quat;
     tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
     radar_to_imu_mat_ = radar_to_imu_quat.toRotationMatrix();
@@ -288,7 +292,8 @@ private:
   int num_iter_;
   double sum_time_;
   bool publish_inliers_;
-  std::string frame_id_;
+  std::string pose_frame_id_;
+  std::string odom_frame_id_;
 
 
 
@@ -741,7 +746,7 @@ private:
     out_cloud.header.stamp = ros::Time(timestamp);
     
     pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
-    out_cloud.header.frame_id = "enu_imu_frame";
+    out_cloud.header.frame_id = pose_frame_id_;
     inlier_publisher_.publish(out_cloud);
   }
 
@@ -760,16 +765,17 @@ private:
 
 		if(ns.compare("/") == 0) {
     	// single radar frame_id to comply with TI naming convention
-      odom.header.frame_id = "radar_odom_frame";
+      odom.header.frame_id = odom_frame_id_;
+      odom.child_frame_id = pose_frame_id_;
     }
     else {
       // multi-radar frame_id
     	odom.header.frame_id = ns.erase(0,1) + "_link";
     }
-
-    odom.twist.twist.linear.x = velocity.x();
-    odom.twist.twist.linear.y = velocity.y();
-    odom.twist.twist.linear.z = velocity.z();
+    Eigen::Vector3d v_s = orientation.toRotationMatrix().inverse() * velocity;
+    odom.twist.twist.linear.x = v_s.x();
+    odom.twist.twist.linear.y = v_s.y();
+    odom.twist.twist.linear.z = v_s.z();
     odom.pose.pose.orientation.x = orientation.x();
     odom.pose.pose.orientation.y = orientation.y();
     odom.pose.pose.orientation.z = orientation.z();
