@@ -68,13 +68,13 @@ public:
 
     // Reject clutter
     Declutter(cloud);
-
+    /*
 		for (int i = 0; i < cloud->size(); i++)
 		{
 			cloud->at(i).y *= -1.0;
 			cloud->at(i).z *= -1.0;
 		}
-
+    */
 
     if (cloud->size() < 10)
 		{
@@ -103,7 +103,7 @@ public:
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
     num_iter_++;
-    LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
+    LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
     vel_est_publisher_.publish(vel_out);
   }
 

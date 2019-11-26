@@ -56,22 +56,25 @@ public:
 		nh_.getParam("config", config);
     nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
     nh_.getParam("publish_inliers", publish_inliers_);
+    frame_id_ = imu_frame;
 
 		// get imu params and extrinsics
 		LoadParams(config);
     imu_buffer_.SetTimeout(params_.frequency_);
 		tf::TransformListener tf_listener;
+    ros::Duration(0.5).sleep();
+    ros::Time now = ros::Time::now();
 		tf_listener.waitForTransform(imu_frame,
 																 radar_frame,
-																 ros::Time(0.0),
+																 now,
 																 ros::Duration(1.0));
 		tf_listener.lookupTransform(imu_frame,
 																radar_frame,
-																ros::Time(0.0),
+																now,
 																radar_to_imu_);
     tf_listener.lookupTransform(radar_frame,
                                 imu_frame,
-                                ros::Time(0,0),
+                                now,
                                 imu_to_radar_);
     Eigen::Quaterniond radar_to_imu_quat;
     tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
@@ -186,12 +189,13 @@ public:
 	  pcl::fromROSMsg(*msg, *raw_cloud);
 
 		// undo stupid left-handed coordinate system from radar
+    /*
 		for (int i = 0; i < raw_cloud->size(); i++)
 		{
 			raw_cloud->at(i).y *= -1.0;
 			raw_cloud->at(i).z *= -1.0;
 		}
-
+    */
 		// Reject clutter
     Declutter(raw_cloud);
 		bool no_doppler = true;
@@ -213,7 +217,7 @@ public:
     std::chrono::duration<double> elapsed = finish - start;
     sum_time_ += elapsed.count();
     num_iter_++;
-    LOG(ERROR) << "execution time: " << sum_time_ / double(num_iter_);
+    LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
 
     if (!publish_imu_propagated_state_)
     {
@@ -277,6 +281,7 @@ private:
   int num_iter_;
   double sum_time_;
   bool publish_inliers_;
+  std::string frame_id_;
 
 
 
@@ -739,7 +744,7 @@ private:
 
 		if(ns.compare("/") == 0) {
     	// single radar frame_id to comply with TI naming convention
-      vel.header.frame_id = "base_radar_link";
+      vel.header.frame_id = "radar_odom_frame";
     }
     else {
       // multi-radar frame_id
