@@ -190,20 +190,13 @@ public:
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
+
 	  double timestamp = msg->header.stamp.toSec();
 
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
 	  pcl::fromROSMsg(*msg, *raw_cloud);
 
-		// undo stupid left-handed coordinate system from radar
-    /*
-		for (int i = 0; i < raw_cloud->size(); i++)
-		{
-			raw_cloud->at(i).y *= -1.0;
-			raw_cloud->at(i).z *= -1.0;
-		}
-    */
 		// Reject clutter
     Declutter(raw_cloud);
 		bool no_doppler = true;
@@ -325,7 +318,8 @@ private:
 		// if imu is not initialized, run initialization
 		if (!initialized_)
 		{
-			InitializeImu(timestamp);
+			if (!InitializeImu(timestamp))
+        return;
 		}
 		// else add new params copied from previous values
 		else
@@ -520,24 +514,49 @@ private:
   /** \brief uses initial IMU measurements to determine the magnitude of the
     * gravity vector and the initial attitude
     */
-  void InitializeImu(double timestamp)
+  bool InitializeImu(double timestamp)
   {
     LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
+
     double start_t = imu_buffer_.GetStartTime();
     double t1 = imu_buffer_.GetEndTime();
     double duration = 0.2;
     if (t1 - start_t < duration)
     {
 	    LOG(ERROR) << "not enough imu measurements to initialize";
-	    return;
+	    return false;
     }
     std::vector<ImuMeasurement> measurements =
           imu_buffer_.GetRange(t1 - 0.2, t1, false);
 
+    // some IMUs give erratic readings when they're first starting
+    // check for these and throw them out if found
+    double delete_end_time = measurements.front().t_;
+    double imu_period = 1.0/params_.frequency_;
+    int num_to_delete = 0;
+    for (int i = 1; i < measurements.size(); i++)
+    {
+      if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period / 10.0)
+      {
+        delete_end_time = measurements[i].t_;
+        num_to_delete++;
+      }  
+    }
+    if (num_to_delete > 0)
+    {
+      LOG(ERROR) << "found " << num_to_delete << " bad imu measurements";
+      measurements = imu_buffer_.GetRange(start_t, delete_end_time, true);
+      return false;
+    }
+
     LOG(ERROR) << "attempting to initialize with " << measurements.size() << " from " << std::fixed << std::setprecision(4) << measurements.front().t_ << " to " << measurements.back().t_;
+
     if (measurements.size() < 50)
-		    return;
+    {
+      LOG(ERROR) << "not enough imu measurements to initialize";
+		  return false;
+    }
     // find gravity vector and average stationary gyro reading
     Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
     Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();
@@ -618,6 +637,8 @@ private:
     LOG(ERROR) << "initialized!";
     LOG(ERROR) << "initial orientation: " << initial_orientation.coeffs().transpose();
     LOG(ERROR) << "initial biases: " << b_g_initial.transpose();
+
+    return true;
   }
 
   /** \brief linearize old states and measurements and add them to the
