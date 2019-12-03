@@ -166,7 +166,7 @@ public:
     new_meas.q_.y() = msg->orientation.y;
     new_meas.q_.z() = msg->orientation.z;
     new_meas.q_.w() = msg->orientation.w;
-    LOG(ERROR) << "got imu with ts: " << std::fixed << std::setprecision(4) << new_meas.t_;
+    //LOG(ERROR) << "got imu with ts: " << std::fixed << std::setprecision(4) << new_meas.t_;
     if (new_meas.g_.lpNorm<Eigen::Infinity>() > params_.g_max_)
       LOG(ERROR) << "Gyro saturation";
     if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
@@ -516,17 +516,13 @@ private:
     */
   bool InitializeImu(double timestamp)
   {
-    LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
 
     double start_t = imu_buffer_.GetStartTime();
     double t1 = imu_buffer_.GetEndTime();
     double duration = 0.2;
     if (t1 - start_t < duration)
-    {
-	    LOG(ERROR) << "not enough imu measurements to initialize";
 	    return false;
-    }
     std::vector<ImuMeasurement> measurements =
           imu_buffer_.GetRange(t1 - 0.2, t1, false);
 
@@ -537,7 +533,7 @@ private:
     int num_to_delete = 0;
     for (int i = 1; i < measurements.size(); i++)
     {
-      if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period / 10.0)
+      if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period / 2.0)
       {
         delete_end_time = measurements[i].t_;
         num_to_delete++;
@@ -545,18 +541,15 @@ private:
     }
     if (num_to_delete > 0)
     {
-      LOG(ERROR) << "found " << num_to_delete << " bad imu measurements";
-      measurements = imu_buffer_.GetRange(start_t, delete_end_time, true);
+      imu_buffer_.GetRange(start_t, delete_end_time, true);
       return false;
     }
 
-    LOG(ERROR) << "attempting to initialize with " << measurements.size() << " from " << std::fixed << std::setprecision(4) << measurements.front().t_ << " to " << measurements.back().t_;
-
-    if (measurements.size() < 50)
-    {
-      LOG(ERROR) << "not enough imu measurements to initialize";
+    if (measurements.size() < duration * params_.frequency_)
 		  return false;
-    }
+    
+    LOG(ERROR) << "initializing states from imu measurements"; 
+	
     // find gravity vector and average stationary gyro reading
     Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
     Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();
