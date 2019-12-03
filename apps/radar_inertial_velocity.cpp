@@ -95,11 +95,11 @@ public:
         ns + "/mmWaveDataHdl/inlier_set",1);
 
 		radar_sub_ = nh_.subscribe(radar_topic, 
-                               0, 
+                               1, 
                                &RadarInertialVelocityReader::radarCallback, 
                                this);
 		imu_sub_ = nh_.subscribe(imu_topic, 
-                             0, 
+                             1, 
                              &RadarInertialVelocityReader::imuCallback, 
                              this);
     min_range_ = 0.5;
@@ -166,7 +166,7 @@ public:
     new_meas.q_.y() = msg->orientation.y;
     new_meas.q_.z() = msg->orientation.z;
     new_meas.q_.w() = msg->orientation.w;
-
+    LOG(ERROR) << "got imu with ts: " << std::fixed << std::setprecision(4) << new_meas.t_;
     if (new_meas.g_.lpNorm<Eigen::Infinity>() > params_.g_max_)
       LOG(ERROR) << "Gyro saturation";
     if (new_meas.a_.lpNorm<Eigen::Infinity>() > params_.a_max_)
@@ -524,10 +524,20 @@ private:
   {
     LOG(ERROR) << "initializing state from imu";
     imu_buffer_.WaitForMeasurements();
-    double t0 = imu_buffer_.GetStartTime();
+    double start_t = imu_buffer_.GetStartTime();
+    double t1 = imu_buffer_.GetEndTime();
+    double duration = 0.2;
+    if (t1 - start_t < duration)
+    {
+	    LOG(ERROR) << "not enough imu measurements to initialize";
+	    return;
+    }
     std::vector<ImuMeasurement> measurements =
-          imu_buffer_.GetRange(t0, t0 + 0.2, false);
+          imu_buffer_.GetRange(t1 - 0.2, t1, false);
 
+    LOG(ERROR) << "attempting to initialize with " << measurements.size() << " from " << std::fixed << std::setprecision(4) << measurements.front().t_ << " to " << measurements.back().t_;
+    if (measurements.size() < 50)
+		    return;
     // find gravity vector and average stationary gyro reading
     Eigen::Vector3d sum_a = Eigen::Vector3d::Zero();
     Eigen::Vector3d sum_g = Eigen::Vector3d::Zero();

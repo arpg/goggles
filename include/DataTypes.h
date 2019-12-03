@@ -103,7 +103,7 @@ class ImuBuffer
 		{
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk,
-												timeout_,
+												10.0 * timeout_,
 												[this]{return measurements_.size() > 0;}))
 			{
 				LOG(ERROR) << "waiting for imu measurements has failed";
@@ -129,12 +129,12 @@ class ImuBuffer
 									 << "start time of requested range ("
 									 << t0 << ") is less than the timestamp"
 									 << " of the first measurement (" 
-									 << measurements_.front().t_ << ")";
+									 << GetStartTime() << ")";
 			
 			// block execution until up-to-date imu measurements are available
 			std::unique_lock<std::mutex> lk(mtx_);
 			if (!cv_.wait_for(lk, 
-											  timeout_,
+											  10.0 * timeout_,
 											  [&t1,this]{return t1 <= GetEndTime();}))
 			{
 				LOG(ERROR) << std::fixed << std::setprecision(3)
