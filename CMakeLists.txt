@@ -22,7 +22,6 @@ find_package(Boost REQUIRED )
 find_package(Threads REQUIRED)
 find_package(PCL REQUIRED)
 find_package(Ceres REQUIRED)
-find_package(GTest REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 generate_messages(
