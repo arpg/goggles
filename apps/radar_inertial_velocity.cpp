@@ -62,7 +62,7 @@ public:
 		LoadParams(config);
     imu_buffer_.SetTimeout(params_.frequency_);
 		tf::TransformListener tf_listener;
-    ros::Duration(0.25).sleep();
+    ros::Duration(0.5).sleep();
     ros::Time now = ros::Time::now();
 		tf_listener.waitForTransform(imu_frame,
 																 radar_frame,
@@ -76,9 +76,10 @@ public:
                                 imu_frame,
                                 now,
                                 imu_to_radar_);
-    ros::Duration(0.1).sleep();
-    if (!tf_listener.getParent(pose_frame_id_,now,odom_frame_id_))
-      LOG(ERROR) << "parent frame not found";
+    ros::Duration(0.5).sleep();
+    //if (!tf_listener.getParent(pose_frame_id_,now,odom_frame_id_))
+      //LOG(FATAL) << "parent frame not found";
+    odom_frame_id_ = "radar_odom_frame";
 
     Eigen::Quaterniond radar_to_imu_quat;
     tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
