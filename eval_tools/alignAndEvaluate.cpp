@@ -246,26 +246,87 @@ void findRotations(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>& 
   delete loss;
 }
 
-void printErrors(std::vector<std::pair<double,Eigen::Vector3d>> vicon,
-  std::vector<std::pair<double,Eigen::Vector3d>> radar,
-  Eigen::Quaterniond& q_vr)
+std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
+spatialAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas,
+             std::vector<Eigen::Quaterniond> &rotations)
 {
-  Eigen::Vector3d sum_sq_errs = Eigen::Vector3d::Zero();
+  size_t num_topics = rotations.size();
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> result;
+  result.resize(num_topics);
+  result[0] = meas[0];
 
-  for (int i = 0; i < vicon.size(); i++)
+  for (size_t i = 1; i < num_topics; i++)
   {
-    Eigen::Vector3d tf_radar = q_vr.toRotationMatrix() * radar[i].second;
-    //LOG(ERROR) << "radar: " << tf_radar.transpose();
-    //LOG(ERROR) << "vicon: " << vicon[i].second.transpose();
-    Eigen::Vector3d err = vicon[i].second - tf_radar;
-    sum_sq_errs += err.cwiseProduct(err);
+    Eigen::Matrix3d C = rotations[i].toRotationMatrix();
+    for (size_t j = 0; j < meas[i].size(); j++)
+    {
+      double timestamp = meas[i][j].first;
+      Eigen::Vector3d rotated_v = C * meas[i][j].second;
+      result[i].push_back(std::make_pair(timestamp,rotated_v));
+    }
   }
-  //LOG(ERROR) << "sum_sq_err: " << sum_sq_errs.transpose();
-
-  Eigen::Vector3d rms_err = (sum_sq_errs / vicon.size()).cwiseSqrt();
-
-  LOG(ERROR) << "RMS err: " << rms_err.transpose();
+  return result;
 }
+
+std::string replaceSlashes(std::string &input)
+{
+  std::string result = input;
+  for (int i = 0; i < input.size(); i++)
+  {
+    if (result[i] == '/')
+      result[i] = '_';
+  }
+  return result;
+}
+
+void writeToCsv(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas,
+                std::string &filename_prefix,
+                std::vector<std::string> &topics)
+{
+  for (size_t i = 0; i < topics.size(); i++)
+  {
+    std::string filename = filename_prefix + replaceSlashes(topics[i]) + ".csv";
+    std::ofstream out_file(filename, std::ios_base::trunc);
+
+    for (size_t j = 0; j < meas[i].size(); j++)
+    {
+      out_file << std::fixed << std::setprecision(5) << meas[i][j].first << ","
+               << meas[i][j].second.x() << ","
+               << meas[i][j].second.y() << ","
+               << meas[i][j].second.z() << "\n";
+    }
+    out_file.close();
+  }
+}
+
+std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
+getErrors(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
+{
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> result;
+  size_t num_topics = meas.size();
+  result.resize(num_topics);
+  
+  for (size_t i = 0; i < num_topics; i++)
+  {
+    for (size_t j = 0; j < meas[i].size(); j++)
+    {
+      double timestamp = meas[i][j].first;
+      if (i == 0)
+      {
+        result[i].push_back(std::make_pair(timestamp,Eigen::Vector3d::Zero()));
+      }
+      else
+      {
+        Eigen::Vector3d error = meas[i][j].second - meas[0][j].second;
+        result[i].push_back(std::make_pair(timestamp,error.cwiseAbs()));
+      }
+    }
+  }
+
+  return result;
+}
+
+
 
 int main(int argc, char* argv[])
 {
@@ -273,12 +334,12 @@ int main(int argc, char* argv[])
 
   std::string bagfile_name;
   std::vector<std::string> topics;
-  std::string using_groundtruth;
+  bool using_groundtruth;
 
   if (argc > 3)
   {
     bagfile_name = std::string(argv[1]);
-    using_groundtruth = std::string(argv[2]);
+    using_groundtruth = std::string(argv[2]) == "true";
     for (int i = 3; i < argc; i++)
         topics.push_back(std::string(argv[i]));
   }
@@ -290,11 +351,13 @@ int main(int argc, char* argv[])
                << "arguments 3-n: list of topics to compare with groundtruth topic first if present";
   }
 
+  std::string name_prefix = bagfile_name.substr(0,bagfile_name.size()-4);
+
   size_t num_topics = topics.size();
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
   measurements.resize(num_topics);
 
-  getMeasurements(measurements, topics, bagfile_name, using_groundtruth == "true");
+  getMeasurements(measurements, topics, bagfile_name, using_groundtruth);
   
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
 
@@ -306,8 +369,20 @@ int main(int argc, char* argv[])
     rotations.push_back(Eigen::Quaterniond::UnitRandom());
   
   findRotations(aligned_measurements, rotations);
-  /*
-  printErrors(smooth_vicon, interp_radar, q_vr);
-  */
+
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> rotated_measurements;
+  rotated_measurements = spatialAlign(aligned_measurements, rotations);
+  std::string meas_file_name = name_prefix + "_aligned";
+  
+  writeToCsv(rotated_measurements, meas_file_name, topics);
+  
+  if (using_groundtruth)
+  {
+    std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> errors;
+    errors = getErrors(rotated_measurements);
+    std::string err_file_name = name_prefix + "_errors";
+    writeToCsv(errors, err_file_name, topics);
+  }
+  
   return 0;
 }
