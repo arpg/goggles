@@ -28,15 +28,13 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
   bag.open(bagfile_name, rosbag::bagmode::Read);
   rosbag::View view(bag, rosbag::TopicQuery(topics));
 
-  // containers for poses, twists, and timestamps
-  std::vector<std::vector<double> timestamps; // used for all topics
-  std::vector<std::vector<Eigen::Vector3d>> twists; // only used for non-groundtruth topics
-  std::vector<std::vector<Eigen::Quaterniond>> orientations; // used for all topics
-  std::vector<Eigen::Vector3d> positions; // only used for groundtuth topic
+  // containers for positions, twists, and timestamps
+  std::vector<std::vector<double> timestamps;
+  std::vector<std::vector<Eigen::Vector3d>> twists;
+  std::vector<Eigen::Vector3d> positions;
 
   timestamps.resize(topics.size());
   twist.resize(topics.size());
-  orientation.resize(topics.size());
 
   // iterate through rosbag and transfer messages to their proper containers
   foreach(rosbag::MessageInstance const m, view)
@@ -55,7 +53,6 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
     if (using_groundtruth && topic_index == 0)
     {
       // assuming groundtruth message will be poseStamped
-
       geometry_msgs::PoseStamped::ConstPtr msg
         = m.instantiate<geometry_msgs::PoseStamped>();
 
@@ -67,18 +64,12 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
       Eigen::Vector3d position(msg->pose.position.x,
                                msg->pose.position.y,
                                msg->pose.position.z);
-      Eigen::Quaterniond orientation(msg->pose.orientation.w,
-                                     msg->pose.orientation.x,
-                                     msg->pose.orientation.y,
-                                     msg->pose.orientation.z);
       positions.push_back(position);
-      orientations[topic_index].push_back(orientation);
     }
     else
     {
       // assuming all other messages will be odometry messages
       // with twist in the local frame
-
       nav_msgs::Odometry::ConstPtr msg = m.instantiate<nav_msgs::Odometry>();
 
       if (msg == NULL)
@@ -93,13 +84,18 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
                                      msg->pose.pose.orientation.x,
                                      msg->pose.pose.orientation.y,
                                      msg->pose.pose.orientation.z);
-      twists[topic_index].push_back(twist);
-      orientations[topic_index].push_back(orientation);
+      twists[topic_index].push_back(orientation.toRotationMatrix().inverse() * twist);
     }
 
     timestamps[topic_index].push_back(timestamp);
   }
   bag.close();
+
+  // if using groundtruth, need to calculate global twist via finite differences
+  if (using_groundtruth)
+  {
+
+  }
 }
 
 // smooths measurements in the given vector using a boxcar filter
