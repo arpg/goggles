@@ -9,43 +9,97 @@
 #include <iostream>
 #include <iomanip>
 #include <GlobalVelocityMeasCostFunction.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <nav_msgs/Odometry.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <boost/foreach.hpp>
+#define foreach BOOST_FOREACH
 
 // pulls measurements from a csv file with one measurement per line: timestamp, vx, vy, vz
 // stores measurements in internal datastructure
-void getMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &measurements, 
-                     std::string filename, bool camera)
+void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
+                     std::vector<std::string> topics, 
+                     std::string bagfile_name, 
+                     bool using_groundtruth)
 {
-  std::ifstream meas_file(filename);
-  std::string line;
-  while(std::getline(meas_file, line))
+  // open rosbag and find requested topics
+  rosbag::Bag bag;
+  bag.open(bagfile_name, rosbag::bagmode::Read);
+  rosbag::View view(bag, rosbag::TopicQuery(topics));
+
+  // containers for poses, twists, and timestamps
+  std::vector<std::vector<double> timestamps; // used for all topics
+  std::vector<std::vector<Eigen::Vector3d>> twists; // only used for non-groundtruth topics
+  std::vector<std::vector<Eigen::Quaterniond>> orientations; // used for all topics
+  std::vector<Eigen::Vector3d> positions; // only used for groundtuth topic
+
+  timestamps.resize(topics.size());
+  twist.resize(topics.size());
+  orientation.resize(topics.size());
+
+  // iterate through rosbag and transfer messages to their proper containers
+  foreach(rosbag::MessageInstance const m, view)
   {
-    double vals[4];
-    std::istringstream ss(line);
-    std::string token;
-    int i = 0;
-    while (std::getline(ss, token, ','))
+    std::string topic = m.getTopic();
+    size_t topic_index = std::difference(topics.begin(), 
+                                         find(topics.begin(), 
+                                              topics.end(), 
+                                              topic));
+    if (topic_index >= topics.size())
+      LOG(FATAL) << "topic not found";
+
+    double timestamp;
+
+    // if the current message is for the groundtruth topic
+    if (using_groundtruth && topic_index == 0)
     {
-      if (!camera) 
-      {
-        if (i < 4)
-          vals[i] = std::stod(token);
-      }
-      else 
-      {
-        if (i == 0) vals[i] = std::stod(token);
-        if (i > 7 && i < 11) vals[i-7] = std::stod(token);
-      }
-      i++;
+      // assuming groundtruth message will be poseStamped
+
+      geometry_msgs::PoseStamped::ConstPtr msg
+        = m.instantiate<geometry_msgs::PoseStamped>();
+
+      if (msg == NULL)
+        LOG(FATAL) << "wrong message type for groundtruth message";
+
+      timestamp = msg->header.stamp.toSec();
+
+      Eigen::Vector3d position(msg->pose.position.x,
+                               msg->pose.position.y,
+                               msg->pose.position.z);
+      Eigen::Quaterniond orientation(msg->pose.orientation.w,
+                                     msg->pose.orientation.x,
+                                     msg->pose.orientation.y,
+                                     msg->pose.orientation.z);
+      positions.push_back(position);
+      orientations[topic_index].push_back(orientation);
+    }
+    else
+    {
+      // assuming all other messages will be odometry messages
+      // with twist in the local frame
+
+      nav_msgs::Odometry::ConstPtr msg = m.instantiate<nav_msgs::Odometry>();
+
+      if (msg == NULL)
+        LOG(FATAL) << "wrong message type for non-groundtruth message";
+
+      timestamp = msg->header.stamp.toSec();
+
+      Eigen::Vector3d twist(msg->twist.twist.linear.x,
+                            msg->twist.twist.linear.y,
+                            msg->twist.twist.linear.z);
+      Eigen::Quaterniond orientation(msg->pose.pose.orientation.w,
+                                     msg->pose.pose.orientation.x,
+                                     msg->pose.pose.orientation.y,
+                                     msg->pose.pose.orientation.z);
+      twists[topic_index].push_back(twist);
+      orientations[topic_index].push_back(orientation);
     }
 
-    if (i < 4)
-      LOG(FATAL) << "wrong number of tokens in line";
-
-    Eigen::Vector3d vel;
-    vel << vals[1], vals[2], vals[3];
-
-    measurements.push_back(std::make_pair(vals[0],vel));
+    timestamps[topic_index].push_back(timestamp);
   }
+  bag.close();
 }
 
 // smooths measurements in the given vector using a boxcar filter
@@ -196,35 +250,28 @@ int main(int argc, char* argv[])
 {
   google::InitGoogleLogging(argv[0]);
 
-  std::string vicon_filename;
-  std::string radar_filename;
-  std::string using_camera;
+  std::string bagfile_name;
+  std::vector<std::string> topics;
+  bool using_groundtruth;
 
-  if (argc == 3)
+  if (argc > 3)
   {
-    vicon_filename = std::string(argv[1]);
-    radar_filename = std::string(argv[2]);
-    using_camera = std::string("false");
-  }
-  else if (argc == 4)
-  {
-    vicon_filename = std::string(argv[1]);
-    radar_filename = std::string(argv[2]);
-    using_camera = std::string(argv[3]);
+    bagfile_name = std::string(argv[1]);
+    using_groundtruth = std::string(argv[2]);
+    for (int i = 3; i < argc; i++)
+        topics.push_back(std::string(argv[i]));
   }
   else
   {
     LOG(FATAL) << "wrong number of arguments\n" 
-               << "argument 1: <filename for vicon measurements> \n"
-               << "argument 2: <filename for radar measurements>"
-               << "argument 3 (optional): true if using T265 odometry";
+               << "argument 1: <filename for rosbag> \n"
+               << "argument 2: true if using groundtruth, false if not \n"
+               << "arguments 3-n: list of topics to compare with groundtruth topic first if present";
   }
 
-  std::vector<std::pair<double,Eigen::Vector3d>> vicon_measurements;
-  std::vector<std::pair<double,Eigen::Vector3d>> radar_measurements;
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
 
-  getMeasurements(vicon_measurements, vicon_filename, false);
-  getMeasurements(radar_measurements, radar_filename, using_camera == "true");
+  getMeasurements(measurements, topics, bagfile_name, using_groundtruth == "true");
   
   std::vector<std::pair<double,Eigen::Vector3d>> smooth_vicon;
   smooth_vicon = smoothMeasurements(vicon_measurements);
