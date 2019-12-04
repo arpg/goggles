@@ -126,7 +126,7 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
   // if using groundtruth, need to calculate global twist via finite differences
   if (using_groundtruth)
   {
-    for (int i = 1; i < gt_positions.size() - 1; i++)
+    for (size_t i = 1; i < gt_positions.size() - 1; i++)
     {
       Eigen::Vector3d delta_p = gt_positions[i+1] - gt_positions[i-1];
       double delta_t = gt_timestamps[i+1] - gt_timestamps[i-1];
@@ -146,7 +146,7 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
   result.resize(num_topics);
 
   // ensure measurements in indices 1 through n have timestamps before those in index 0
-  for (int i = 1; i < num_topics; i++)
+  for (size_t i = 1; i < num_topics; i++)
   {
     while (meas[0].size() > 0 && meas[i].front().first >= meas[0].front().first)
       meas[0].erase(meas[0].begin());
@@ -157,7 +157,7 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
 
   // align measurements for each topic to those in index 0
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0; 
-  for (int i = 1; i < num_topics; i++)
+  for (size_t i = 1; i < num_topics; i++)
   {
     it0 = meas[0].begin();
     std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas[i].begin();
@@ -194,41 +194,56 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
 
 // uses full batch optimization to find rotation that best aligns the measurements
 // in meas1 with those in meas2
-void findRotation(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
-  std::vector<std::pair<double,Eigen::Vector3d>> &meas1,
-  Eigen::Quaterniond& q_vr)
+void findRotations(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>& meas,
+                   std::vector<Eigen::Quaterniond>& rotations)
 {
-  // create ceres problem
-  ceres::Problem problem;
-  ceres::Solver::Options options;
-
-  // create single parameter block
+  size_t num_topics = meas.size();
   QuaternionParameterization* qp = new QuaternionParameterization();
-  problem.AddParameterBlock(q_vr.coeffs().data(),4);
-  problem.SetParameterization(q_vr.coeffs().data(), qp);
-
   ceres::LossFunction* loss = new ceres::CauchyLoss(1.0);
 
-  // add all residual blocks
-  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0 = meas0.begin();
-  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas1.begin();
-  while (it0 != meas0.end() && it1 != meas1.end())
+  ceres::Problem::Options prob_options;
+  prob_options.local_parameterization_ownership =
+    ceres::Ownership::DO_NOT_TAKE_OWNERSHIP;
+  prob_options.loss_function_ownership = 
+    ceres::Ownership::DO_NOT_TAKE_OWNERSHIP;
+  prob_options.cost_function_ownership = 
+    ceres::Ownership::TAKE_OWNERSHIP;
+
+  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0;
+
+  for (size_t i = 1; i < num_topics; i++)
   {
-    ceres::CostFunction* cost_func = 
-      new GlobalVelocityMeasCostFunction(it0->second, it1->second);
+    // create problem
+    ceres::Problem problem(prob_options);
+    ceres::Solver::Options options;
 
-    problem.AddResidualBlock(cost_func, loss, q_vr.coeffs().data());
+    // add parameter block
+    problem.AddParameterBlock(rotations[i].coeffs().data(),4);
+    problem.SetParameterization(rotations[i].coeffs().data(), qp);
 
-    it0++;
-    it1++;
+    // add residual blocks
+    std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0 = meas[0].begin();
+    std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas[i].begin();
+    while (it0 != meas[0].end() && it1 != meas[i].end())
+    {
+      ceres::CostFunction* cost_func = 
+        new GlobalVelocityMeasCostFunction(it0->second, it1->second);
+
+      problem.AddResidualBlock(cost_func, loss, rotations[i].coeffs().data());
+
+      it0++;
+      it1++;
+    }
+
+    // solve the problem
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+    LOG(ERROR) << "\n\n\nResult for topic " << i << ":\n" << summary.FullReport();
+    LOG(ERROR) << "\n\nFound rotation:\n" << rotations[i].toRotationMatrix();
   }
 
-  ceres::Solver::Summary summary;
-  ceres::Solve(options, &problem, &summary);
-
-  LOG(ERROR) << summary.FullReport();
-
-  LOG(ERROR) << "found rotation: \n\n" << q_vr.toRotationMatrix() << "\n\n";
+  delete qp;
+  delete loss;
 }
 
 void printErrors(std::vector<std::pair<double,Eigen::Vector3d>> vicon,
@@ -275,19 +290,23 @@ int main(int argc, char* argv[])
                << "arguments 3-n: list of topics to compare with groundtruth topic first if present";
   }
 
+  size_t num_topics = topics.size();
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
-  measurements.resize(topics.size());
+  measurements.resize(num_topics);
 
   getMeasurements(measurements, topics, bagfile_name, using_groundtruth == "true");
   
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
 
   aligned_measurements = temporalAlign(measurements);
+
+  std::vector<Eigen::Quaterniond> rotations;
+  rotations.push_back(Eigen::Quaterniond(1,0,0,0));
+  for (int i = 1; i < num_topics; i++)
+    rotations.push_back(Eigen::Quaterniond::UnitRandom());
   
+  findRotations(aligned_measurements, rotations);
   /*
-  Eigen::Quaterniond q_vr = Eigen::Quaterniond::UnitRandom();
-  findRotation(smooth_vicon, interp_radar, q_vr);
-  
   printErrors(smooth_vicon, interp_radar, q_vr);
   */
   return 0;
