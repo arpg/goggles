@@ -6,7 +6,6 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <QuaternionParameterization.h>
 #include <ErrorInterface.h>
-#include "DataTypes.h"
 #include <ceres/ceres.h>
 
 
