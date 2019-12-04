@@ -16,92 +16,10 @@
 #include <boost/foreach.hpp>
 #define foreach BOOST_FOREACH
 
-// pulls measurements from a csv file with one measurement per line: timestamp, vx, vy, vz
-// stores measurements in internal datastructure
-void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
-                     std::vector<std::string> topics, 
-                     std::string bagfile_name, 
-                     bool using_groundtruth)
-{
-  // open rosbag and find requested topics
-  rosbag::Bag bag;
-  bag.open(bagfile_name, rosbag::bagmode::Read);
-  rosbag::View view(bag, rosbag::TopicQuery(topics));
-
-  // containers for positions, twists, and timestamps
-  std::vector<std::vector<double> timestamps;
-  std::vector<std::vector<Eigen::Vector3d>> twists;
-  std::vector<Eigen::Vector3d> positions;
-
-  timestamps.resize(topics.size());
-  twist.resize(topics.size());
-
-  // iterate through rosbag and transfer messages to their proper containers
-  foreach(rosbag::MessageInstance const m, view)
-  {
-    std::string topic = m.getTopic();
-    size_t topic_index = std::difference(topics.begin(), 
-                                         find(topics.begin(), 
-                                              topics.end(), 
-                                              topic));
-    if (topic_index >= topics.size())
-      LOG(FATAL) << "topic not found";
-
-    double timestamp;
-
-    // if the current message is for the groundtruth topic
-    if (using_groundtruth && topic_index == 0)
-    {
-      // assuming groundtruth message will be poseStamped
-      geometry_msgs::PoseStamped::ConstPtr msg
-        = m.instantiate<geometry_msgs::PoseStamped>();
-
-      if (msg == NULL)
-        LOG(FATAL) << "wrong message type for groundtruth message";
-
-      timestamp = msg->header.stamp.toSec();
-
-      Eigen::Vector3d position(msg->pose.position.x,
-                               msg->pose.position.y,
-                               msg->pose.position.z);
-      positions.push_back(position);
-    }
-    else
-    {
-      // assuming all other messages will be odometry messages
-      // with twist in the local frame
-      nav_msgs::Odometry::ConstPtr msg = m.instantiate<nav_msgs::Odometry>();
-
-      if (msg == NULL)
-        LOG(FATAL) << "wrong message type for non-groundtruth message";
-
-      timestamp = msg->header.stamp.toSec();
-
-      Eigen::Vector3d twist(msg->twist.twist.linear.x,
-                            msg->twist.twist.linear.y,
-                            msg->twist.twist.linear.z);
-      Eigen::Quaterniond orientation(msg->pose.pose.orientation.w,
-                                     msg->pose.pose.orientation.x,
-                                     msg->pose.pose.orientation.y,
-                                     msg->pose.pose.orientation.z);
-      twists[topic_index].push_back(orientation.toRotationMatrix().inverse() * twist);
-    }
-
-    timestamps[topic_index].push_back(timestamp);
-  }
-  bag.close();
-
-  // if using groundtruth, need to calculate global twist via finite differences
-  if (using_groundtruth)
-  {
-
-  }
-}
-
 // smooths measurements in the given vector using a boxcar filter
 // with a fixed width of 20
 std::vector<std::pair<double,Eigen::Vector3d>> 
-smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> meas)
+smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
 {
   std::vector<std::pair<double,Eigen::Vector3d>> result;
   int width = 20;
@@ -130,54 +48,146 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> meas)
   return result;
 }
 
-// resamples the measurements in meas1 to temporally align with those in meas0
-// returns resampled meas1 vector
-std::vector<std::pair<double,Eigen::Vector3d>> 
-temporalAlign(std::vector<std::pair<double,Eigen::Vector3d>> &meas0,
-                   std::vector<std::pair<double,Eigen::Vector3d>> &meas1)
+// pulls measurements from a csv file with one measurement per line: timestamp, vx, vy, vz
+// stores measurements in internal datastructure
+void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
+                     std::vector<std::string> topics, 
+                     std::string bagfile_name, 
+                     bool using_groundtruth)
 {
-  std::vector<std::pair<double,Eigen::Vector3d>> result;
+  // open rosbag and find requested topics
+  rosbag::Bag bag;
+  bag.open(bagfile_name, rosbag::bagmode::Read);
+  rosbag::View view(bag, rosbag::TopicQuery(topics));
 
-  // first ensure the timestamp of it1 occurs before it0
-  while (meas0.size() > 0 && meas1.front().first > meas0.front().first)
-    meas0.erase(meas0.begin());
+  // containers for positions, and timestamps
+  // used for groundtruth only
+  std::vector<double> gt_timestamps;
+  std::vector<Eigen::Vector3d> gt_positions;
 
-  // then ensure first two measurements in meas1 bracket first measurement in meas0
-  while (meas1.size() > 1 && meas1[1].first < meas0.front().first)
-    meas1.erase(meas1.begin());
-
-  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0 = meas0.begin();
-  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas1.begin();
-
-  
-  // finally iterate through both vectors, creating resampled measurements
-  // by interpolating those in meas2 to match the timestamps in meas1
-  for ( ; it0 != meas0.end(); it0++)
+  // iterate through rosbag and transfer messages to their proper containers
+  foreach(rosbag::MessageInstance const m, view)
   {
-    // get timestamp to interpolate to
-    double ts0 = it0->first;
+    std::string topic = m.getTopic();
 
-    // find measurements in meas1 bracketing current measurement in meas0
-    while ((it1 + 1) != meas1.end() && (it1 + 1)->first < ts0)
-      it1++;
+    size_t topic_index = std::distance(topics.begin(), 
+                                         find(topics.begin(), 
+                                              topics.end(), 
+                                              topic));
 
-    if (it1->first > ts0)
-      LOG(FATAL) << "timestamp from meas0 is greater than the timestamp from meas1";
-    if ((it1 + 1)->first < ts0)
-      LOG(FATAL) << "timestamp from meas0+1 is less than the timestamp from meas1";
+    if (topic_index >= topics.size())
+      LOG(FATAL) << "topic not found";
 
-    // interpolate measurement
-    double ts1_pre = it1->first;
-    double ts1_post = (it1 + 1)->first;
-    double r = (ts0 - ts1_pre) / (ts1_post - ts1_pre);
-    Eigen::Vector3d v_interp = (1.0 - r) * it1->second + r * (it1 + 1)->second;
+    double timestamp;
 
-    // add interpolated measurement to result vector
-    result.push_back(std::make_pair(ts0,v_interp));
+    // if the current message is for the groundtruth topic
+    if (using_groundtruth && topic_index == 0)
+    {
+      // assuming groundtruth message will be poseStamped
+      geometry_msgs::PoseStamped::ConstPtr msg
+        = m.instantiate<geometry_msgs::PoseStamped>();
+
+      if (msg == NULL)
+        LOG(FATAL) << "wrong message type for groundtruth message";
+
+      double timestamp = msg->header.stamp.toSec();
+
+      Eigen::Vector3d position(msg->pose.position.x,
+                               msg->pose.position.y,
+                               msg->pose.position.z);
+      gt_positions.push_back(position);
+      gt_timestamps.push_back(timestamp);
+    }
+    else
+    {
+      // assuming all other messages will be odometry messages
+      // with twist in the local frame
+      nav_msgs::Odometry::ConstPtr msg = m.instantiate<nav_msgs::Odometry>();
+
+      if (msg == NULL)
+        LOG(FATAL) << "wrong message type for non-groundtruth message";
+
+      double timestamp = msg->header.stamp.toSec();
+
+      Eigen::Vector3d twist_s(msg->twist.twist.linear.x,
+                            msg->twist.twist.linear.y,
+                            msg->twist.twist.linear.z);
+      Eigen::Quaterniond orientation(msg->pose.pose.orientation.w,
+                                     msg->pose.pose.orientation.x,
+                                     msg->pose.pose.orientation.y,
+                                     msg->pose.pose.orientation.z);
+
+      Eigen::Vector3d twist_g = orientation.toRotationMatrix().inverse() * twist_s;
+      measurements[topic_index].push_back(std::make_pair(timestamp,twist_g));
+    }
+  }
+  bag.close();
+
+  // if using groundtruth, need to calculate global twist via finite differences
+  if (using_groundtruth)
+  {
+    for (int i = 1; i < gt_positions.size() - 1; i++)
+    {
+      Eigen::Vector3d delta_p = gt_positions[i+1] - gt_positions[i-1];
+      double delta_t = gt_timestamps[i+1] - gt_timestamps[i-1];
+      measurements[0].push_back(std::make_pair(gt_timestamps[i], delta_p / delta_t));
+    }
+    measurements[0] = smoothMeasurements(measurements[0]);
+  }
+}
+
+// resamples the measurements in meas to temporally align with the measurements
+// in the first index of meas
+std::vector<std::vector<std::pair<double,Eigen::Vector3d>> >
+temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
+{
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> result;
+  size_t num_topics = meas.size();
+  result.resize(num_topics);
+
+  // ensure measurements in indices 1 through n have timestamps before those in index 0
+  for (int i = 1; i < num_topics; i++)
+  {
+    while (meas[0].size() > 0 && meas[i].front().first >= meas[0].front().first)
+      meas[0].erase(meas[0].begin());
   }
 
-  if (result.size() != meas0.size())
-    LOG(ERROR) << "size of resampled vector not equal to size of source vector";
+  // all measurements are aligned to those in index 0
+  result[0] = meas[0];
+
+  // align measurements for each topic to those in index 0
+  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0; 
+  for (int i = 1; i < num_topics; i++)
+  {
+    it0 = meas[0].begin();
+    std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas[i].begin();
+
+    for ( ; it0 != meas[0].end(); it0++)
+    {
+      // get reference timestamp
+      double ts0 = it0->first;
+
+      // find measurements bracketing reference timestamp
+      while ((it1 + 1) != meas[i].end() && (it1 + 1)->first < ts0)
+        it1++;
+
+      if (it1->first > ts0)
+        LOG(FATAL) << "timestamp from meas0 is greater than the timestamp from meas1";
+      if ((it1 + 1)->first < ts0)
+        LOG(FATAL) << "timestamp from meas0+1 is less than the timestamp from meas1";
+
+      // interpolate measurement
+      double ts1_pre = it1->first;
+      double ts1_post = (it1 + 1)->first;
+      double r = (ts0 - ts1_pre) / (ts1_post - ts1_pre);
+      Eigen::Vector3d v_interp = (1.0 - r) * it1->second + r * (it1 + 1)->second;
+
+      result[i].push_back(std::make_pair(ts0,v_interp));
+    }
+
+    if (result[i].size() != result[0].size())
+      LOG(ERROR) << "size of resampled vector " << i << " not equal to reference vector";
+  }
   
   return result;
 }
@@ -248,7 +258,7 @@ int main(int argc, char* argv[])
 
   std::string bagfile_name;
   std::vector<std::string> topics;
-  bool using_groundtruth;
+  std::string using_groundtruth;
 
   if (argc > 3)
   {
@@ -266,24 +276,19 @@ int main(int argc, char* argv[])
   }
 
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
+  measurements.resize(topics.size());
 
   getMeasurements(measurements, topics, bagfile_name, using_groundtruth == "true");
   
-  std::vector<std::pair<double,Eigen::Vector3d>> smooth_vicon;
-  smooth_vicon = smoothMeasurements(vicon_measurements);
-  /*
-  for (int i = 0; i < smooth_vicon.size(); i ++)
-  {
-    LOG(ERROR) << "meas " << i << ": " << smooth_vicon[i].second.transpose();
-  }
-  */
-  std::vector<std::pair<double,Eigen::Vector3d>> interp_radar;
-  interp_radar = temporalAlign(smooth_vicon, radar_measurements);
+  std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
+
+  aligned_measurements = temporalAlign(measurements);
   
+  /*
   Eigen::Quaterniond q_vr = Eigen::Quaterniond::UnitRandom();
   findRotation(smooth_vicon, interp_radar, q_vr);
   
   printErrors(smooth_vicon, interp_radar, q_vr);
-  
+  */
   return 0;
 }
