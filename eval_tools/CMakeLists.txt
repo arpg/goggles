@@ -30,7 +30,7 @@ include_directories(
   ${GFLAGS_INCLUDE_DIRS},
   ${INC_DIR})
 
-add_executable(alignByVel alignByVel.cpp ${SRCS} ${HEADERS})
+add_executable(alignByVel alignAndEvaluate.cpp ${SRCS} ${HEADERS})
 target_link_libraries(alignByVel ${LINK_LIBS})
 
 #add_executable(alignByImu alignByImu.cpp ${SRCS} ${HEADERS})
