@@ -33,7 +33,7 @@ public:
   void InitializeNode()
   {
     std::string in_topic;
-    nh_.getParam("input_cloud", in_topic);
+    nh_.getParam("radar_topic", in_topic);
     nh_.getParam("min_range", min_range_);
     nh_.getParam("max_range", max_range_);
 
@@ -43,6 +43,9 @@ public:
 
     pub_ = nh_.advertise<sensor_msgs::Range>(
       ns + "mmWaveDataHdl/altitude",1);
+
+    point_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(
+      ns + "mmWaveDataHdl/altitude_point",1);
   }
 
   void PointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -58,7 +61,7 @@ public:
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<RadarPoint> ec;
     ec.setClusterTolerance(0.2);
-    ec.setMinClusterSize(3);
+    ec.setMinClusterSize(5);
     ec.setMaxClusterSize(20);
     ec.setSearchMethod(tree);
     ec.setInputCloud(cloud);
@@ -80,24 +83,46 @@ public:
       cluster_means.push_back(sum_cluster / it->indices.size());
     }
 
-    // find cluster nearest to the sensor
     double altitude = max_range_;
-    for (size_t i = 0; i < cluster_means.size(); i++)
+    if (cluster_means.size() > 0)
     {
-      double range = cluster_means[i].norm();
-      if (range < altitude) altitude = range;
-    }
+      // find cluster nearest to the sensor
+      size_t cluster_idx = 0;
+      for (size_t i = 0; i < cluster_means.size(); i++)
+      {
+        double range = cluster_means[i].norm();
+        if (range < altitude) 
+        {
+          altitude = range;
+          cluster_idx = i;
+        }
+      }
+      if (altitude < min_range_)
+        altitude = min_range_;
 
+      // publish mean of selected point cluster for debugging purposes
+      pcl::PointXYZ out_point(cluster_means[cluster_idx].x(),
+                              cluster_means[cluster_idx].y(),
+                              cluster_means[cluster_idx].z());
+      pcl::PointCloud<pcl::PointXYZ> out_cloud;
+      out_cloud.push_back(out_point);
+      pcl::PCLPointCloud2 out_cloud2;
+      pcl::toPCLPointCloud2(out_cloud, out_cloud2);
+      sensor_msgs::PointCloud2 out_cloud_msg;
+      pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
+      out_cloud_msg.header = msg->header;
+      point_pub_.publish(out_cloud_msg);
+
+
+      auto finish = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = finish - start;
+      LOG(INFO) << "execution time: " << elapsed.count();
+    }
     sensor_msgs::Range out_range_msg;
     out_range_msg.header = msg->header;
     out_range_msg.min_range = min_range_;
     out_range_msg.max_range = max_range_;
     out_range_msg.range = altitude;
-
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    LOG(INFO) << "execution time: " << elapsed.count();
-
     pub_.publish(out_range_msg);
   }
 
@@ -107,6 +132,7 @@ protected:
 
   ros::NodeHandle nh_;
   ros::Publisher pub_;
+  ros::Publisher point_pub_;
   ros::Subscriber sub_;
 };
 
