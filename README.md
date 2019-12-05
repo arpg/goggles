@@ -35,18 +35,18 @@ The launch file ```radar_velocity.launch``` also launches the TI AWR1843 sensor 
 
 ## 3.2 radar\_inertial\_velocity
 
-Subscribed Topics:<\br>
-```<imu topic specified by user>```(sensor_msgs/Imu)<\br>
+Subscribed Topics:<br/>
+```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
   Input IMU measurements
   
-```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)<\br>
+```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)<br/>
   Input radar measurements, must have doppler field
 
-Published Topics:<\br>
-```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<\br>
+Published Topics:<br/>
+```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<br/>
 Output velocity and orientation estimates.
 
-Run with the following command:<\br>
+Run with the following command:<br/>
 ```rosrun goggles radar_inertial_velocity _radar_topic:=<radar pointcloud topic> _imu_topic:=<imu topic> _config:=<config file for imu> _imu_ref_frame:=<coordinate frame for the imu> _radar_ref_frame:=<coordinate frame for the radar board>```
 
 The radar-inertial node requires a config file for the IMU containing priors on the IMU noise and biases. An example config file for the LORD Microstrain 3DM-GX5-25 can be found in the config directory.
@@ -66,7 +66,7 @@ Command line arguments:
  2) "true" if groundtruth is provided, "false" if not
  3) a space-separated list of the topics to compare in the input ros bag
 
- Example command:<\br>
+ Example command:<br/>
  ```./alignAndEvaluate example.bag true /vrpn_node/Radar/pose /mmWaveDataHdl/velocity /camera/odom/sample```
 
  Notes:
