@@ -24,7 +24,9 @@ public:
   /// \brief Default constructor
   /// \param[in] nh a ros nodehandle
   RadarAltimeter(ros::NodeHandle nh) 
-  : nh_(nh)
+  : nh_(nh),
+    min_range_(0.0),
+    max_range_(std::numeric_limits<double>::max())
   {
     InitializeNode();
   }
@@ -32,10 +34,10 @@ public:
   /// \brief Initializes ros node subscriber and publisher
   void InitializeNode()
   {
-    std::string in_topic;
-    nh_.getParam("radar_topic", in_topic);
-    nh_.getParam("min_range", min_range_);
-    nh_.getParam("max_range", max_range_);
+    std::string in_topic = "/mmWaveDataHdl/RScan";
+    nh_.param("radar_topic", in_topic, in_topic);
+    nh_.param("min_range", min_range_, min_range_);
+    nh_.param("max_range", max_range_, max_range_);
 
     std::string ns = ros::this_node::getNamespace();
 
