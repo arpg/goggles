@@ -35,6 +35,17 @@ The launch file ```radar_velocity.launch``` also launches the TI AWR1843 sensor 
 
 ## 3.2 radar\_inertial\_velocity
 
+Subscribed Topics:
+```<imu topic specified by user>```(sensor_msgs/Imu)
+  Input IMU measurements
+
+```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)
+  Input radar measurements, must have doppler field
+
+Published Topics:
+```mmWaveDataHdl/velocity```(nav_msgs/Odometry)
+Output velocity and orientation estimates.
+
 Run with the following command:
 ```rosrun goggles radar_inertial_velocity _radar_topic:=<radar pointcloud topic> _imu_topic:=<imu topic> _config:=<config file for imu> _imu_ref_frame:=<coordinate frame for the imu> _radar_ref_frame:=<coordinate frame for the radar board>```
 
@@ -45,3 +56,20 @@ Also note the radar-inertial node currently relies on a yaw estimate from the IM
 The radar-inertial node can also be launched with default parameters using the launch file ```radar_inertial_velocity.launch```
 
 As with ```radar_velocity.launch``` the parameter ```launch_radar``` must be set to false if you're not also using the TI AWR1843 board.
+
+## 3.3 alignAndEvaluate
+
+Found in the ```eval_tools``` directory. Accepts a ros bag with one or more Odometry topic with the estimated velocities of a sensor platform from radar or other means and optionally one Pose topic with the groundtruth poses of the platform from motion capture. ```alignAndEvaluate``` calculates the rotation to align the coordinate frames of the Odometry and Pose topics and outputs the aligned velocity estimates from each topic to csv files. If a groundtruth topic is given, ```alignAndEvaluate``` also outputs the errors between the Odometry topics and groundtruth to csv files.
+
+Command line arguments:
+ 1) filename for the input ros bag
+ 2) "true" if groundtruth is provided, "false" if not
+ 3) a space-separated list of the topics to compare in the input ros bag
+
+ Example command:
+ ```./alignAndEvaluate example.bag true /vrpn_node/Radar/pose /mmWaveDataHdl/velocity /camera/odom/sample```
+
+ Notes:
+  - This is not a ROS package. It is built with the ```cmake``` and ```make``` commands.
+  - Output files are written to the same directory as the input bag.
+  - Output filenames follow the format ```<bagfile name>_aligned_<topic name>.csv``` or ```<bagfile name>_errors_<topic_name>.csv```
