@@ -56,7 +56,6 @@ public:
 
   void PointCloudCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-    auto start = std::chrono::high_resolution_clock::now();
     double timestamp = msg->header.stamp.toSec();
     pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>());
     pcl::fromROSMsg(*msg, *cloud);
@@ -105,10 +104,6 @@ public:
       }
       if (altitude < min_range_)
         altitude = min_range_;
-
-      auto finish = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = finish - start;
-      LOG(INFO) << "execution time: " << elapsed.count();
 
       filterRange(altitude, timestamp);
     }
