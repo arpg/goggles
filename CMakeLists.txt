@@ -112,8 +112,8 @@ set( RAD_IN_VEL_SRCS
   ${APP_DIR}/radar_inertial_velocity.cpp
   )
 
-set( RAD_OBS_SRCS
-  ${APP_DIR}/radar_obstacle.cpp
+set( RAD_ALT_SRCS
+  ${APP_DIR}/radar_altimeter.cpp
   )
 
 ## Specify additional locations of header files
@@ -165,7 +165,7 @@ target_link_libraries(radar_inertial_velocity
    ${LINK_LIBS}
 )
 
-add_executable(radar_obstacle_filter ${RAD_OBS_SRCS} ${SOURCES} ${HEADERS})
-target_link_libraries(radar_obstacle_filter
+add_executable(radar_altimeter ${RAD_ALT_SRCS} ${SOURCES} ${HEADERS})
+target_link_libraries(radar_altimeter
    ${LINK_LIBS}
 )
