@@ -78,7 +78,7 @@ Published Topics:<br/>
 Output altitude measurement.
 
 Run with the following command:<br/>
-```rosrun goggles radar_altimeter _radar_topic:=<radar pointcloud topic>```
+```rosrun goggles radar_altimeter _radar_topic:=<radar pointcloud topic> _min_range:=<min range> _max_range:=<max range>```
 
 ## 3.4 alignAndEvaluate
 
