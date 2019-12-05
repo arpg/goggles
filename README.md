@@ -28,11 +28,11 @@ Build using catkin\_make or catkin build
 ## 3.1 radar\_velocity
 
 Subscribed Topics:<br/>
-```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
+ - ```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
   Input radar measurements, must have doppler field
 
 Published Topics:<br/>
-```mmWaveDataHdl/velocity```(geometry_msgs/TwistWithCovarianceStamped)<br/>
+ - ```mmWaveDataHdl/velocity```(geometry_msgs/TwistWithCovarianceStamped)<br/>
 Output velocity estimates.
 
 Run using ```rosrun goggles radar_velocity _radar_topic:=<radar pointcloud topic>```
@@ -44,14 +44,14 @@ The launch file ```radar_velocity.launch``` also launches the TI AWR1843 sensor 
 ## 3.2 radar\_inertial\_velocity
 
 Subscribed Topics:<br/>
-```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
+ - ```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
   Input IMU measurements
   
-```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
+ - ```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
   Input radar measurements, must have doppler field
 
 Published Topics:<br/>
-```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<br/>
+ - ```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<br/>
 Output velocity and orientation estimates.
 
 Run with the following command:<br/>
