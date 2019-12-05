@@ -48,8 +48,7 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
   return result;
 }
 
-// pulls measurements from a csv file with one measurement per line: timestamp, vx, vy, vz
-// stores measurements in internal datastructure
+// pulls measurements from a rosbag for every topic listed in topics vector
 void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
                      std::vector<std::string> topics, 
                      std::string bagfile_name, 
