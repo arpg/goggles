@@ -65,7 +65,22 @@ The radar-inertial node can also be launched with default parameters using the l
 
 As with ```radar_velocity.launch``` the parameter ```launch_radar``` must be set to false if you're not also using the TI AWR1843 board.
 
-## 3.3 alignAndEvaluate
+## 3.3 radar_altimeter
+
+Measures altitude of a quadrotor using a downward-facing radar sensor. Recommend using 3d sensor with high range resolution and a narrow field of view.
+
+Subscribed Topics:<br/>
+ - ```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
+  Input radar measurements
+
+Published Topics:<br/>
+ - ```mmWaveDataHdl/altitude```(sensor_msgs/Range<br/>
+Output altitude measurement.
+
+Run with the following command:<br/>
+```rosrun goggles radar_altimeter _radar_topic:=<radar pointcloud topic>```
+
+## 3.4 alignAndEvaluate
 
 Found in the ```eval_tools``` directory. Accepts a ros bag with one or more Odometry topic with the estimated velocities of a sensor platform from radar or other means and optionally one Pose topic with the groundtruth poses of the platform from motion capture. ```alignAndEvaluate``` calculates the rotation to align the coordinate frames of the Odometry and Pose topics and outputs the aligned velocity estimates from each topic to csv files. If a groundtruth topic is given, ```alignAndEvaluate``` also outputs the errors between the Odometry topics and groundtruth to csv files.
 
