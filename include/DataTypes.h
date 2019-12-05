@@ -3,6 +3,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
+#include <glog/logging.h>
 #include <Eigen/Core>
 #include <iomanip>
 #include <atomic>
