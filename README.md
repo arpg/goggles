@@ -27,6 +27,14 @@ Build using catkin\_make or catkin build
 
 ## 3.1 radar\_velocity
 
+Subscribed Topics:<br/>
+```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)<br/>
+  Input radar measurements, must have doppler field
+
+Published Topics:<br/>
+```mmWaveDataHdl/velocity```(geometry_msgs/TwistWithCovarianceStamped)<br/>
+Output velocity estimates.
+
 Run using ```rosrun goggles radar_velocity _radar_topic:=<radar pointcloud topic>```
 
 Input pointclouds must have doppler measurements for every point.
