@@ -26,7 +26,11 @@ public:
   RadarAltimeter(ros::NodeHandle nh) 
   : nh_(nh),
     min_range_(0.0),
-    max_range_(std::numeric_limits<double>::max())
+    max_range_(std::numeric_limits<double>::max()),
+    initialized_(false),
+    Q_(0.2),
+    R_(0.05),
+    P_(0.1)
   {
     InitializeNode();
   }
@@ -85,11 +89,11 @@ public:
       cluster_means.push_back(sum_cluster / it->indices.size());
     }
 
-    double altitude = max_range_;
     if (cluster_means.size() > 0)
     {
       // find cluster nearest to the sensor
       size_t cluster_idx = 0;
+      double altitude = max_range_;
       for (size_t i = 0; i < cluster_means.size(); i++)
       {
         double range = cluster_means[i].norm();
@@ -102,35 +106,71 @@ public:
       if (altitude < min_range_)
         altitude = min_range_;
 
-      // publish mean of selected point cluster for debugging purposes
-      pcl::PointXYZ out_point(cluster_means[cluster_idx].x(),
-                              cluster_means[cluster_idx].y(),
-                              cluster_means[cluster_idx].z());
-      pcl::PointCloud<pcl::PointXYZ> out_cloud;
-      out_cloud.push_back(out_point);
-      pcl::PCLPointCloud2 out_cloud2;
-      pcl::toPCLPointCloud2(out_cloud, out_cloud2);
-      sensor_msgs::PointCloud2 out_cloud_msg;
-      pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
-      out_cloud_msg.header = msg->header;
-      point_pub_.publish(out_cloud_msg);
-
-
       auto finish = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed = finish - start;
       LOG(INFO) << "execution time: " << elapsed.count();
+
+      filterRange(altitude, timestamp);
     }
+
+    publishRange(msg);
+
+    // publish mean of selected point cluster for debugging purposes
+    pcl::PointXYZ out_point(altitude_, 0.0, 0.0);
+    pcl::PointCloud<pcl::PointXYZ> out_cloud;
+    out_cloud.push_back(out_point);
+    pcl::PCLPointCloud2 out_cloud2;
+    pcl::toPCLPointCloud2(out_cloud, out_cloud2);
+    sensor_msgs::PointCloud2 out_cloud_msg;
+    pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
+    out_cloud_msg.header = msg->header;
+    point_pub_.publish(out_cloud_msg);
+  }
+
+  void filterRange(double y, double timestamp)
+  {
+    if (initialized_)
+    {
+      // using constant altitude assumption
+      // could add velocity input for state transition later
+      double delta_t = timestamp - last_timestamp_;
+      double x_hat = altitude_;
+      P_ = P_ + Q_ * delta_t; // add process noise
+      double y_tilde = y - x_hat;
+      double S = P_ + R_; // add measurement noise
+      double K = P_ / S; // compute Kalman gain
+      altitude_ = x_hat + K * y_tilde;
+      P_ = (1.0 - K) * P_;
+    }
+    else
+    {
+      altitude_ = y;
+      initialized_ = true;
+    }
+    last_timestamp_ = timestamp;
+  }
+
+  void publishRange(const sensor_msgs::PointCloud2ConstPtr& msg)
+  {
     sensor_msgs::Range out_range_msg;
     out_range_msg.header = msg->header;
     out_range_msg.min_range = min_range_;
     out_range_msg.max_range = max_range_;
-    out_range_msg.range = altitude;
+    out_range_msg.range = altitude_;
     pub_.publish(out_range_msg);
   }
 
 protected:
 
-  double min_range_, max_range_;
+  double min_range_;
+  double max_range_;
+  double altitude_;
+  double Q_; // process noise
+  double R_; // measurement noise
+  double P_; // range variance
+  double last_timestamp_; // timestamp of previous measurement
+
+  bool initialized_;
 
   ros::NodeHandle nh_;
   ros::Publisher pub_;
