@@ -28,7 +28,7 @@ Build using catkin\_make or catkin build
 ## 3.1 radar\_velocity
 
 Subscribed Topics:<br/>
-```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)<br/>
+```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
   Input radar measurements, must have doppler field
 
 Published Topics:<br/>
@@ -47,7 +47,7 @@ Subscribed Topics:<br/>
 ```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
   Input IMU measurements
   
-```<radar pointcloud topic specified by user>```(sensor_msgs/Imu)<br/>
+```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
   Input radar measurements, must have doppler field
 
 Published Topics:<br/>
