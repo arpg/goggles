@@ -35,6 +35,3 @@ include_directories(
 
 add_executable(alignAndEvaluate alignAndEvaluate.cpp ${SRCS} ${HEADERS})
 target_link_libraries(alignAndEvaluate ${LINK_LIBS})
-
-#add_executable(alignByImu alignByImu.cpp ${SRCS} ${HEADERS})
-#target_link_libraries(alignByImu ${LINK_LIBS})
