@@ -48,7 +48,7 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
   return result;
 }
 
-// detects outliers in groundtruth data and deletes them,
+// detects outliers (large discontinuities) in groundtruth data and deletes them,
 // leaves gaps in the groundtrtuh data
 void rejectOutliers(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
 {
