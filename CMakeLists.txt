@@ -23,6 +23,7 @@ find_package(Threads REQUIRED)
 find_package(PCL REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(OpenCV)
 
 generate_messages(
    DEPENDENCIES
@@ -48,6 +49,7 @@ list(APPEND LINK_LIBS
   ${PCL_LIBRARIES}
   ${GTEST_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
+  ${OpenCV_LIBS}
   pthread
 )
 
@@ -116,6 +118,10 @@ set( RAD_ALT_SRCS
   ${APP_DIR}/radar_altimeter.cpp
   )
 
+set( HUD_SRCS
+  ${APP_DIR}/head_up_display.cpp
+  )
+
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 # include_directories(include)
@@ -128,6 +134,7 @@ include_directories(
   ${CERES_INCLUDE_DIRS}
   ${GTEST_INCLUDE_DIRS}
 	${YAML_CPP_INCLUDE_DIRS}
+  ${OpenCV_INCLIDE_DIRS}
   ${INC_DIR}
 )
 
@@ -169,3 +176,8 @@ add_executable(radar_altimeter ${RAD_ALT_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_altimeter
    ${LINK_LIBS}
 )
+
+if (OpenCV_FOUND)
+  add_executable(head_up_display ${HUD_SRCS} ${SOURCES} ${HEADERS})
+  target_link_libraries(head_up_display ${LINK_LIBS})
+endif()
