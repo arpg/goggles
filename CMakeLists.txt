@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 	tf
   tf_conversions
+  cv_bridge
 )
 
 enable_testing()

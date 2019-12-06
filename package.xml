@@ -48,6 +48,8 @@
 	<build_depend>tf</build_depend>
   <build_depend>tf_conversions</build_depend>
   <build_depend>pcl_ros</build_depend>
+  <build_depend>cv_bridge</build_depend>
+
   <run_depend>roscpp</run_depend>
   <run_depend>std_msgs</run_depend>
   <run_depend>sensor_msgs</run_depend>
@@ -56,5 +58,6 @@
 	<run_depend>tf</run_depend>
   <run_depend>tf_conversions</run_depend>
   <run_depend>pcl_ros</run_depend>
+  <run_depend>cv_bridge</run_depend>
 
 </package>
