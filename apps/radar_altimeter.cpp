@@ -29,8 +29,8 @@ public:
     max_range_(std::numeric_limits<double>::max()),
     initialized_(false),
     Q_(0.2),
-    R_(0.05),
-    P_(0.1)
+    R_(0.025),
+    P_(0.05)
   {
     InitializeNode();
   }
@@ -65,8 +65,8 @@ public:
     tree->setInputCloud(cloud);
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<RadarPoint> ec;
-    ec.setClusterTolerance(0.2);
-    ec.setMinClusterSize(5);
+    ec.setClusterTolerance(0.1);
+    ec.setMinClusterSize(1);
     ec.setMaxClusterSize(20);
     ec.setSearchMethod(tree);
     ec.setInputCloud(cloud);
@@ -91,21 +91,21 @@ public:
     if (cluster_means.size() > 0)
     {
       // find cluster nearest to the sensor
-      size_t cluster_idx = 0;
       double altitude = max_range_;
+      bool updated = false;
       for (size_t i = 0; i < cluster_means.size(); i++)
       {
         double range = cluster_means[i].norm();
         if (range < altitude) 
         {
           altitude = range;
-          cluster_idx = i;
+          updated = true;
         }
       }
       if (altitude < min_range_)
         altitude = min_range_;
 
-      filterRange(altitude, timestamp);
+      if (updated) filterRange(altitude, timestamp);
     }
 
     publishRange(msg);
@@ -129,13 +129,23 @@ public:
       // using constant altitude assumption
       // could add velocity input for state transition later
       double delta_t = timestamp - last_timestamp_;
+      
       double x_hat = altitude_;
-      P_ = P_ + Q_ * delta_t; // add process noise
+      double P_hat = P_;
       double y_tilde = y - x_hat;
-      double S = P_ + R_; // add measurement noise
-      double K = P_ / S; // compute Kalman gain
-      altitude_ = x_hat + K * y_tilde;
-      P_ = (1.0 - K) * P_;
+
+      // check for outlier measurement
+      if (std::fabs(y_tilde) / delta_t > 10.0)
+        return;
+
+      P_hat = P_hat + Q_ * delta_t; // add process noise
+      double S = P_hat + R_; // add measurement noise
+      double K = P_hat / S; // compute Kalman gain
+      x_hat = x_hat + K * y_tilde;
+      P_hat = (1.0 - K) * P_;
+
+      P_ = P_hat;
+      altitude_ = x_hat;
     }
     else
     {
