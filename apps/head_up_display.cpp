@@ -10,6 +10,7 @@
 #include <sensor_msgs/Image.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl_ros/impl/transforms.hpp>
 #include <Eigen/Core>
 #include <DataTypes.h>
 #include <glog/logging.h>
@@ -34,6 +35,7 @@ public:
     std::string in_image_topic = "/camera/image_raw";
     std::string out_image_topic = "/hud/image";
     std::string in_radar_topic = "/mmWaveDataHdl/RScan";
+    std::string cam_info_topic = "/camera/camera_info";
     std::string num_scans = "3";
 
     nh.param("in_image_topic", in_image_topic, in_image_topic);
@@ -41,15 +43,23 @@ public:
     nh.param("in_radar_topic", in_radar_topic, in_radar_topic);
     nh.param("world_frame", world_frame_, world_frame_);
     nh.param("scans_to_display", num_scans, num_scans);
+    nh.param("cam_info_topic", cam_info_topic, cam_info_topic);
     scans_to_display_ = std::stoi(num_scans);
 
     sensor_msgs::ImageConstPtr img = 
       ros::topic::waitForMessage<sensor_msgs::Image>(in_image_topic);
     sensor_msgs::PointCloud2ConstPtr pcl = 
       ros::topic::waitForMessage<sensor_msgs::PointCloud2>(in_radar_topic);
+    sensor_msgs::CameraInfoConstPtr cam_info = 
+      ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic);
 
     image_frame_ = img->header.frame_id;
     radar_frame_ = pcl->header.frame_id;
+
+    D_ << cam_info->D[0],cam_info->D[1],cam_info->D[2];
+    K_ << cam_info->K[0],cam_info->K[1],cam_info->K[2],
+          cam_info->K[3],cam_info->K[4],cam_info->K[5],
+          cam_info->K[6],cam_info->K[7],cam_info->K[8];
 
     listener_.waitForTransform(image_frame_, 
                                radar_frame_, 
@@ -88,8 +98,16 @@ public:
                               world_frame_, 
                               ros::Time(0), 
                               world_to_radar);
+    std::vector<pcl::PointCloud<RadarPoint>> cam_frame_scans;
+    tf::Transform radar_to_world = world_to_radar.inverse();
+    for (size_t i = 0; i < scan_deque_.size(); i++)
+    {
+      pcl::PointCloud<RadarPoint> cam_frame_cloud;
+      tf::Transform cloud_to_cam = radar_to_cam_ * radar_to_world * scan_deque_[i].first;
 
-    //pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
+      pcl_ros::transformPointCloud(scan_deque_[i].second, cam_frame_cloud, cloud_to_cam);  
+      cam_frame_scans.push_back(cam_frame_cloud);
+    }
 
     // extract image from message
     cv_bridge::CvImagePtr cv_ptr;
@@ -97,14 +115,15 @@ public:
     {
       cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
     }
+    catch (cv_bridge::Exception &e)
     {
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
     }
 
-    // project radar points into cv mats
+    // project radar points into the camera
 
-    // add radar mats to input image
+    // add radar map to input image
 
     // publish message
     image_pub_.publish(cv_ptr->toImageMsg());
@@ -122,6 +141,8 @@ protected:
   std::string world_frame_;
 
   size_t scans_to_display_;
+  Eigen::Vector3d D_; // camera distortion parameters
+  Eigen::Matrix<double,3,3,Eigen::RowMajor> K_; // camera intrinsic parameters
   std::deque<std::pair<tf::StampedTransform,pcl::PointCloud<RadarPoint>>> scan_deque_;
 };
 
