@@ -48,6 +48,40 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
   return result;
 }
 
+// detects outliers in groundtruth data and deletes them,
+// leaves gaps in the groundtrtuh data
+void rejectOutliers(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
+{
+  double threshold = 2.5;
+  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_pre0 = meas.begin();
+  std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_pre1 = meas.begin() + 1;
+  while (it_pre0 != meas.end() && it_pre1 != meas.end())
+  {
+    if ((it_pre0->second - it_pre1->second).norm() > threshold)
+    {
+      std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_post0 = it_pre1 + 1;
+      std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_post1 = it_post0 + 1;
+      while (it_post0 != meas.end() && it_post1 != meas.end() && 
+        (it_post0->second - it_post1->second).norm() < threshold)
+      {
+        it_post0++;
+        it_post1++;
+      }
+      LOG(ERROR) << "found outliers between " << std::fixed << std::setprecision(3) 
+                 << it_pre0->first << " and " << it_post1->first;
+
+      meas.erase(it_pre0,it_post1 + 1);
+      it_pre0 = it_post1;
+      it_pre1 = it_post1 + 1;
+    }
+    else
+    {
+      it_pre0++;
+      it_pre1++;
+    }
+  }
+}
+
 // pulls measurements from a rosbag for every topic listed in topics vector
 void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
                      std::vector<std::string> topics, 
@@ -225,6 +259,9 @@ void findRotations(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>& 
     std::vector<std::pair<double,Eigen::Vector3d>>::iterator it1 = meas[i].begin();
     while (it0 != meas[0].end() && it1 != meas[i].end())
     {
+      while (it0->first > it1->first && it1 != meas[i].end())
+        it1++;
+
       ceres::CostFunction* cost_func = 
         new GlobalVelocityMeasCostFunction(it0->second, it1->second);
 
@@ -307,17 +344,27 @@ getErrors(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
   
   for (size_t i = 0; i < num_topics; i++)
   {
-    for (size_t j = 0; j < meas[i].size(); j++)
+    size_t gt_idx = 0;
+    size_t other_idx = 0;
+    while (gt_idx < meas[0].size() && other_idx < meas[i].size())
     {
-      double timestamp = meas[i][j].first;
+      double timestamp = meas[0][gt_idx].first;
       if (i == 0)
       {
         result[i].push_back(std::make_pair(timestamp,Eigen::Vector3d::Zero()));
+        gt_idx++;
       }
       else
       {
-        Eigen::Vector3d error = meas[i][j].second - meas[0][j].second;
+        while (gt_idx < meas[0].size() && other_idx < meas[i].size() 
+          && timestamp > meas[i][other_idx].first)
+        {
+          other_idx++;
+        }
+        Eigen::Vector3d error = meas[i][other_idx].second - meas[0][gt_idx].second;
         result[i].push_back(std::make_pair(timestamp,error.cwiseAbs()));
+        gt_idx++;
+        other_idx++;
       }
     }
   }
@@ -361,7 +408,10 @@ int main(int argc, char* argv[])
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
 
   aligned_measurements = temporalAlign(measurements);
-
+  
+  if (using_groundtruth)
+    rejectOutliers(aligned_measurements[0]);
+  
   std::vector<Eigen::Quaterniond> rotations;
   rotations.push_back(Eigen::Quaterniond(1,0,0,0));
   for (int i = 1; i < num_topics; i++)
