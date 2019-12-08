@@ -1,6 +1,7 @@
 #define PCL_NO_PRECOMPILE
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/highgui.hpp>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
@@ -56,10 +57,27 @@ public:
     image_frame_ = img->header.frame_id;
     radar_frame_ = pcl->header.frame_id;
 
-    D_ << cam_info->D[0],cam_info->D[1],cam_info->D[2];
-    K_ << cam_info->K[0],cam_info->K[1],cam_info->K[2],
-          cam_info->K[3],cam_info->K[4],cam_info->K[5],
-          cam_info->K[6],cam_info->K[7],cam_info->K[8];
+    K_ = new cv::Mat(3,3,CV_32F);
+    D_ = new cv::Mat(5,1,CV_32F); // assuming plumb-bob for now
+
+    K_->at<double>(0,0) = cam_info->K[0];
+    K_->at<double>(0,1) = 0.0;
+    K_->at<double>(0,2) = cam_info->K[2];
+    K_->at<double>(1,0) = 0.0;
+    K_->at<double>(1,1) = cam_info->K[4];
+    K_->at<double>(1,2) = cam_info->K[5];
+    K_->at<double>(2,0) = 0.0;
+    K_->at<double>(2,1) = 0.0;
+    K_->at<double>(2,2) = 1.0;
+
+    D_->at<double>(0,0) = cam_info->D[0];
+    D_->at<double>(1,0) = cam_info->D[1];
+    D_->at<double>(2,0) = cam_info->D[2];
+    D_->at<double>(3,1) = cam_info->D[3];
+    D_->at<double>(4,1) = cam_info->D[4];
+
+    im_height_ = cam_info->height;
+    im_width_ = cam_info->width;
 
     listener_.waitForTransform(image_frame_, 
                                radar_frame_, 
@@ -98,7 +116,7 @@ public:
                               world_frame_, 
                               ros::Time(0), 
                               world_to_radar);
-    std::vector<pcl::PointCloud<RadarPoint>> cam_frame_scans;
+    pcl::PointCloud<RadarPoint> cam_frame_scans;
     tf::Transform radar_to_world = world_to_radar.inverse();
     for (size_t i = 0; i < scan_deque_.size(); i++)
     {
@@ -106,7 +124,7 @@ public:
       tf::Transform cloud_to_cam = radar_to_cam_ * radar_to_world * scan_deque_[i].first;
 
       pcl_ros::transformPointCloud(scan_deque_[i].second, cam_frame_cloud, cloud_to_cam);  
-      cam_frame_scans.push_back(cam_frame_cloud);
+      cam_frame_scans += cam_frame_cloud;
     }
 
     // extract image from message
@@ -121,9 +139,32 @@ public:
       return;
     }
 
+    // convert pcl to inputarray
+    std::vector<cv::Point3d> input_points;
+    for (size_t i = 0; i < cam_frame_scans.size(); i++)
+    {
+      cv::Point3d radar_point;
+      radar_point.x = cam_frame_scans[i].x;
+      radar_point.y  = cam_frame_scans[i].y;
+      radar_point.z = cam_frame_scans[i].z;
+    }
+
     // project radar points into the camera
+    std::vector<cv::Point2d> projected_points;
+    cv::Mat t_vec(3,1,CV_32F);
+    t_vec.at<double>(0) = 0.0;
+    t_vec.at<double>(1) = 0.0;
+    t_vec.at<double>(3) = 0.0;
+    cv::Mat r_vec(3,1,CV_32F);
+    r_vec.at<double>(0) = 0.0;
+    r_vec.at<double>(1) = 0.0;
+    r_vec.at<double>(3) = 0.0;
+    cv::projectPoints(input_points, r_vec, t_vec, *K_, *D_, projected_points);
 
     // add radar map to input image
+    // if using heat map
+
+    // if just projecting points
 
     // publish message
     image_pub_.publish(cv_ptr->toImageMsg());
@@ -141,8 +182,10 @@ protected:
   std::string world_frame_;
 
   size_t scans_to_display_;
-  Eigen::Vector3d D_; // camera distortion parameters
-  Eigen::Matrix<double,3,3,Eigen::RowMajor> K_; // camera intrinsic parameters
+  size_t im_height_;
+  size_t im_width_;
+  cv::Mat *D_; // camera distortion parameters
+  cv::Mat *K_; // camera intrinsic parameters
   std::deque<std::pair<tf::StampedTransform,pcl::PointCloud<RadarPoint>>> scan_deque_;
 };
 
