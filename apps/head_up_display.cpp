@@ -46,7 +46,7 @@ public:
     nh_.getParam("cam_info_topic", cam_info_topic);
     nh_.getParam("min_range", min_range_);
     nh_.getParam("max_range", max_range_);
-    ros::Duration(2.0).sleep();
+    ros::Duration(0.1).sleep();
 
     sensor_msgs::ImageConstPtr img = 
       ros::topic::waitForMessage<sensor_msgs::Image>(in_image_topic, 
