@@ -95,14 +95,14 @@ public:
     im_width_ = cam_info->width;
     */
     LOG(ERROR) << "setting parameters";
-    K_.reset(new cv::Mat(3,3,CV_32F));
+    K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
     
-    K_->at<float>(0,0) = 284.5;
+    K_->at<float>(0,0) = 284.47;
     K_->at<float>(0,1) = 0.0;
-    K_->at<float>(0,2) = 421.9;
+    K_->at<float>(0,2) = 426.27;
     K_->at<float>(1,0) = 0.0;
-    K_->at<float>(1,1) = 282.9;
-    K_->at<float>(1,2) = 398.1;
+    K_->at<float>(1,1) = 285.47;
+    K_->at<float>(1,2) = 404.12;
     K_->at<float>(2,0) = 0.0;
     K_->at<float>(2,1) = 0.0;
     K_->at<float>(2,2) = 1.0;
@@ -111,10 +111,10 @@ public:
     LOG(ERROR) << "K: " << *K_.get();
 
     D_ = std::make_shared<cv::Mat>(5,1,CV_32F);
-    D_->at<float>(0) = 0.0;
-    D_->at<float>(1) = 0.0;
-    D_->at<float>(2) = 0.0;
-    D_->at<float>(3) = 0.0;
+    D_->at<float>(0) = -0.00272;
+    D_->at<float>(1) = 0.03641;
+    D_->at<float>(2) = -0.03515;
+    D_->at<float>(3) = 0.005939;
     D_->at<float>(4) = 0.0;
 
     t_ = std::make_shared<cv::Mat>(3,1,CV_32F);
@@ -159,6 +159,7 @@ public:
     image_sub_ = nh_.subscribe(in_image_topic, 1, &RadarHud::ImageCallback, this);
 
     image_pub_ = nh_.advertise<sensor_msgs::Image>(out_image_topic,1);
+    pcl_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("out_cloud",1);
     LOG(ERROR) << "done initializing";
   }
 
@@ -185,16 +186,6 @@ public:
     */
     pcl::PointCloud<RadarPoint> point_cloud;
     pcl::fromROSMsg(*msg, point_cloud);
-    pcl::PointCloud<RadarPoint>::iterator it = point_cloud.begin();
-    while (it != point_cloud.end())
-    {
-      Eigen::Vector3d point(it->x, it->y, it->z);
-      double range = point.norm();
-      if (range > max_range_ || range < min_range_)
-        point_cloud.erase(it);
-      else
-        it++;
-    }
     scan_deque_.push_front(point_cloud);
     tf_deque_.push_front(world_to_radar);
     if (scan_deque_.size() > scans_to_display_)
@@ -204,15 +195,16 @@ public:
     }
   }
 
-  void AddPointToImg(cv::Mat img, cv::Point2d center, double weight)
+  void AddPointToImg(cv::Mat img, cv::Point2d center, double range)
   {
-    double radius = weight * 20.0;
+    double radius = (K_->at<float>(0,0) / range) * 0.1;
     cv::circle( img, center, radius, cv::Scalar(0,0,255),cv::FILLED,cv::LINE_8);
   }
 
   void ImageCallback(const sensor_msgs::ImageConstPtr& msg)
   {
     pcl::PointCloud<RadarPoint> cam_frame_scans;
+    pcl::PointCloud<RadarPoint> radar_frame_scans;
     {
       std::lock_guard<std::mutex> lck(scan_mutex_);
       if (scan_deque_.size() == 0)
@@ -232,24 +224,37 @@ public:
         ROS_ERROR("image transform exception: %s", e.what());
         return;
       }
-
-      tf::Transform radar_to_world = world_to_radar.inverse();
       for (size_t i = 0; i < scan_deque_.size(); i++)
       {
         pcl::PointCloud<RadarPoint> cam_frame_cloud;
-        tf::Transform relative_tf = radar_to_world * tf_deque_[i];
-        tf::Transform cloud_to_cam = relative_tf * radar_to_cam_;
+        pcl::PointCloud<RadarPoint> radar_frame_cloud;
+        tf::Transform relative_tf = world_to_radar * tf_deque_[i].inverse();
+        tf::Transform cloud_to_cam = radar_to_cam_;
         /*
         Eigen::Matrix3d tf_mat;
         tf::matrixTFToEigen(relative_tf.getBasis(), tf_mat);
         LOG(ERROR) << "relative tf:\n " << tf_mat;
         */
-        pcl_ros::transformPointCloud(scan_deque_[i], cam_frame_cloud, cloud_to_cam);  
+        pcl_ros::transformPointCloud(scan_deque_[i], radar_frame_cloud, relative_tf);
+        pcl_ros::transformPointCloud(radar_frame_cloud, cam_frame_cloud, cloud_to_cam);  
         cam_frame_scans += cam_frame_cloud;
+        radar_frame_scans += radar_frame_cloud;
       }
     }
     if (cam_frame_scans.size() == 0)
       return;
+
+    // apply max and min range check
+    pcl::PointCloud<RadarPoint>::iterator it = cam_frame_scans.begin();
+    while (it != cam_frame_scans.end())
+    {
+      Eigen::Vector3d point(it->x, it->y, it->z);
+      double range = point.norm();
+      if (range > max_range_ || range < min_range_ || point.z() < 0.0)
+        cam_frame_scans.erase(it);
+      else
+        it++;
+    }
 
     // extract image from message
     cv_bridge::CvImagePtr cv_ptr;
@@ -266,7 +271,7 @@ public:
     // convert pcl to inputarray
     // and calculate weights (inverse ranges)
     std::vector<cv::Point3f> input_points;
-    std::vector<double> weights;
+    std::vector<double> ranges;
     for (size_t i = 0; i < cam_frame_scans.size(); i++)
     {
       cv::Point3f radar_point;
@@ -274,7 +279,7 @@ public:
       radar_point.y  = float(cam_frame_scans[i].y);
       radar_point.z = float(cam_frame_scans[i].z);
       input_points.push_back(radar_point);
-      weights.push_back(1.0 / cv::norm(radar_point));
+      ranges.push_back(cv::norm(radar_point));
     }
 
     // project radar points into the camera
@@ -288,11 +293,11 @@ public:
       if (projected_points[i].x < im_width_ && projected_points[i].x >= 0
         && projected_points[i].y < im_height_ && projected_points[i].y >=0)
       {
-        AddPointToImg(overlay, projected_points[i], weights[i]);
+        AddPointToImg(overlay, projected_points[i], ranges[i]);
       }
     }
     cv::Mat in_img = cv_ptr->image.clone();
-    double alpha = 0.375;
+    double alpha = 0.5;
     cv::addWeighted(overlay, alpha, in_img, 1.0-alpha, 0, cv_ptr->image);
 
     std::string caption = "num radar points: ";
@@ -316,11 +321,19 @@ public:
 
     // publish message
     image_pub_.publish(cv_ptr->toImageMsg());
+
+    pcl::PCLPointCloud2 out_cloud2;
+    pcl::toPCLPointCloud2(cam_frame_scans, out_cloud2);
+    sensor_msgs::PointCloud2 out_cloud_msg;
+    pcl_conversions::fromPCL(out_cloud2, out_cloud_msg);
+    out_cloud_msg.header.frame_id = image_frame_;
+    pcl_pub_.publish(out_cloud_msg);
   }
 
 protected:
   ros::NodeHandle nh_;
   ros::Publisher image_pub_;
+  ros::Publisher pcl_pub_;
   ros::Subscriber radar_sub_;
   ros::Subscriber image_sub_;
   tf::StampedTransform radar_to_cam_;
