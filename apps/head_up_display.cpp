@@ -7,6 +7,8 @@
 #include <cv_bridge/cv_bridge.h>
 #include <ros/ros.h>
 #include <tf/transform_listener.h>
+#include <tf/transform_datatypes.h>
+#include <tf_conversions/tf_eigen.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/Image.h>
 #include <pcl_ros/point_cloud.h>
@@ -16,6 +18,7 @@
 #include <DataTypes.h>
 #include <glog/logging.h>
 #include <iostream>
+#include <string>
 #include <iomanip>
 #include <limits>
 #include <math.h>
@@ -57,9 +60,16 @@ public:
       ros::topic::waitForMessage<sensor_msgs::PointCloud2>(in_radar_topic, 
                                                            nh_, 
                                                            ros::Duration(1.0));
-    std::string radar_frame = pcl->header.frame_id;
+    char buffer[56];
+    size_t length = (pcl->header.frame_id).copy(buffer,56,0);
+    buffer[length] = '\0';
+    radar_frame_ = std::string(buffer);
+    length = (img->header.frame_id).copy(buffer,56,0);
+    buffer[length] = '\0';
+    image_frame_ = std::string(buffer);
     LOG(ERROR) << "image dims: " << im_width_ << ", " << im_height_;
-    LOG(ERROR) << "image frame id: " << image_frame;
+    LOG(ERROR) << "image frame id: " << image_frame_;
+    LOG(ERROR) << "radar frame id: " << radar_frame_;
 
     //sensor_msgs::CameraInfoConstPtr cam_info = 
     //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, nh_, ros::Duration(1.0));
@@ -116,12 +126,12 @@ public:
     r_->at<float>(0) = 0.0;
     r_->at<float>(1) = 0.0;
     r_->at<float>(3) = 0.0;
-    LOG(ERROR) << "waiting for transform from " << image_frame << " to " << radar_frame;
+    LOG(ERROR) << "waiting for transform from " << image_frame_ << " to " << radar_frame_;
     bool tf_found;
     try
     {
-      tf_found = listener_.waitForTransform(image_frame, 
-                               radar_frame, 
+      tf_found = listener_.waitForTransform(image_frame_, 
+                               radar_frame_, 
                                ros::Time(0), 
                                ros::Duration(10.0));
     }
@@ -134,8 +144,8 @@ public:
     LOG(ERROR) << "looking up transform";
     try
     {
-      listener_.lookupTransform(image_frame, 
-                                radar_frame, 
+      listener_.lookupTransform(image_frame_, 
+                                radar_frame_, 
                                 ros::Time(0), 
                                 radar_to_cam_);
     }
@@ -156,10 +166,9 @@ public:
   {
     std::lock_guard<std::mutex> lck(scan_mutex_);
     tf::StampedTransform world_to_radar;
-    std::string radar_frame = msg->header.frame_id;
     try
     {
-      listener_.lookupTransform(radar_frame, 
+      listener_.lookupTransform(radar_frame_, 
                                 world_frame_, 
                                 ros::Time(0), 
                                 world_to_radar);
@@ -169,6 +178,11 @@ public:
       ROS_ERROR("radar transform exception: %s", e.what());
       return;
     }
+    /*
+    Eigen::Matrix3d tf_mat;
+    tf::matrixTFToEigen(world_to_radar.getBasis(), tf_mat);
+    LOG(ERROR) << "radar tf:\n " << tf_mat;
+    */
     pcl::PointCloud<RadarPoint> point_cloud;
     pcl::fromROSMsg(*msg, point_cloud);
     pcl::PointCloud<RadarPoint>::iterator it = point_cloud.begin();
@@ -182,7 +196,7 @@ public:
         it++;
     }
     scan_deque_.push_front(point_cloud);
-    tf_deque_.push_back(world_to_radar);
+    tf_deque_.push_front(world_to_radar);
     if (scan_deque_.size() > scans_to_display_)
     {
       scan_deque_.pop_back();
@@ -192,7 +206,7 @@ public:
 
   void AddPointToImg(cv::Mat img, cv::Point2d center, double weight)
   {
-    double radius = weight * 5.0;
+    double radius = weight * 20.0;
     cv::circle( img, center, radius, cv::Scalar(0,0,255),cv::FILLED,cv::LINE_8);
   }
 
@@ -206,10 +220,9 @@ public:
 
       // transform all radar scans to current camera frame
       tf::StampedTransform world_to_radar;
-      std::string radar_frame = msg->header.frame_id;
       try
       {
-        listener_.lookupTransform(radar_frame, 
+        listener_.lookupTransform(radar_frame_, 
                                   world_frame_, 
                                   ros::Time(0), 
                                   world_to_radar);
@@ -224,8 +237,13 @@ public:
       for (size_t i = 0; i < scan_deque_.size(); i++)
       {
         pcl::PointCloud<RadarPoint> cam_frame_cloud;
-        tf::Transform cloud_to_cam = radar_to_cam_;
-
+        tf::Transform relative_tf = radar_to_world * tf_deque_[i];
+        tf::Transform cloud_to_cam = relative_tf * radar_to_cam_;
+        /*
+        Eigen::Matrix3d tf_mat;
+        tf::matrixTFToEigen(relative_tf.getBasis(), tf_mat);
+        LOG(ERROR) << "relative tf:\n " << tf_mat;
+        */
         pcl_ros::transformPointCloud(scan_deque_[i], cam_frame_cloud, cloud_to_cam);  
         cam_frame_scans += cam_frame_cloud;
       }
@@ -260,6 +278,7 @@ public:
     }
 
     // project radar points into the camera
+    cv::Mat overlay = cv_ptr->image.clone();
     std::vector<cv::Point2f> projected_points;
     cv::projectPoints(input_points, *r_.get(), *t_.get(), *K_.get(), *D_.get(), projected_points);
     for (size_t i = 0; i < projected_points.size(); i++)
@@ -269,9 +288,31 @@ public:
       if (projected_points[i].x < im_width_ && projected_points[i].x >= 0
         && projected_points[i].y < im_height_ && projected_points[i].y >=0)
       {
-        AddPointToImg(cv_ptr->image, projected_points[i], weights[i]);
+        AddPointToImg(overlay, projected_points[i], weights[i]);
       }
     }
+    cv::Mat in_img = cv_ptr->image.clone();
+    double alpha = 0.375;
+    cv::addWeighted(overlay, alpha, in_img, 1.0-alpha, 0, cv_ptr->image);
+
+    std::string caption = "num radar points: ";
+    caption += std::to_string(cam_frame_scans.size());
+    cv::putText(cv_ptr->image, 
+                caption, 
+                cv::Point2f(35, im_height_-30), 
+                cv::FONT_HERSHEY_PLAIN, 
+                2.0, 
+                cv::Scalar(255,255,255),
+                2);
+
+    caption = "radar points projected into camera";
+    cv::putText(cv_ptr->image, 
+                caption, 
+                cv::Point2f(35, 40), 
+                cv::FONT_HERSHEY_PLAIN, 
+                2.0, 
+                cv::Scalar(255,255,255),
+                2);
 
     // publish message
     image_pub_.publish(cv_ptr->toImageMsg());
@@ -286,6 +327,8 @@ protected:
   tf::TransformListener listener_;
   std::string world_frame_;
   std::mutex scan_mutex_;
+  std::string radar_frame_;
+  std::string image_frame_;
 
   int scans_to_display_;
   size_t im_height_;
