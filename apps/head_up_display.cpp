@@ -41,28 +41,27 @@ public:
     nh_.getParam("world_frame", world_frame_);
     nh_.getParam("scans_to_display", scans_to_display_);
     nh_.getParam("cam_info_topic", cam_info_topic);
-    LOG(ERROR) << "num scan string " << scans_to_display_;
-    LOG(ERROR) << "in image topic " << cam_info_topic;
-    /*
-    sensor_msgs::ImageConstPtr img;
-    while (img.get() == NULL) 
-    {
-      img = ros::topic::waitForMessage<sensor_msgs::Image>(in_image_topic, 
-                                                           ros::Duration(10.0));
-    }
-    sensor_msgs::PointCloud2ConstPtr pcl;
-    while (pcl.get() == NULL)
-    {
-      pcl = ros::topic::waitForMessage<sensor_msgs::PointCloud2>(in_radar_topic, 
-                                                                 ros::Duration(10.0));
-    }
+    ros::Duration(2.0).sleep();
+
+    sensor_msgs::ImageConstPtr img = 
+      ros::topic::waitForMessage<sensor_msgs::Image>(in_image_topic, 
+                                                     nh_, 
+                                                     ros::Duration(1.0));
+    im_height_ = img->height;
+    im_width_ = img->width;
+    std::string image_frame = img->header.frame_id;
+    
+    sensor_msgs::PointCloud2ConstPtr pcl =
+      ros::topic::waitForMessage<sensor_msgs::PointCloud2>(in_radar_topic, 
+                                                           nh_, 
+                                                           ros::Duration(1.0));
+    std::string radar_frame = pcl->header.frame_id;
+    LOG(ERROR) << "image dims: " << im_width_ << ", " << im_height_;
+    LOG(ERROR) << "image frame id: " << image_frame;
+
     //sensor_msgs::CameraInfoConstPtr cam_info = 
-    //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic);
-    image_frame_ = img->header.frame_id;
-    radar_frame_ = pcl->header.frame_id;
-    */
-    image_frame_ = "/camera_fisheye1_optical_frame";
-    radar_frame_ = "/base_radar_link";
+    //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, nh_, ros::Duration(1.0));
+    
     /*
     K_->at<double>(0,0) = cam_info->K[0];
     K_->at<double>(0,1) = 0.0;
@@ -111,12 +110,12 @@ public:
     r_->at<double>(0) = 0.0;
     r_->at<double>(1) = 0.0;
     r_->at<double>(3) = 0.0;
-    LOG(ERROR) << "waiting for transform from " << image_frame_ << " to " << radar_frame_;
+    LOG(ERROR) << "waiting for transform from " << image_frame << " to " << radar_frame;
     bool tf_found;
     try
     {
-      tf_found = listener_.waitForTransform(image_frame_, 
-                               radar_frame_, 
+      tf_found = listener_.waitForTransform(image_frame, 
+                               radar_frame, 
                                ros::Time(0), 
                                ros::Duration(10.0));
     }
@@ -129,8 +128,8 @@ public:
     LOG(ERROR) << "looking up transform";
     try
     {
-      listener_.lookupTransform(image_frame_, 
-                                radar_frame_, 
+      listener_.lookupTransform(image_frame, 
+                                radar_frame, 
                                 ros::Time(0), 
                                 radar_to_cam_);
     }
@@ -151,9 +150,10 @@ public:
   {
     std::lock_guard<std::mutex> lck(scan_mutex_);
     tf::StampedTransform world_to_radar;
+    std::string radar_frame = msg->header.frame_id;
     try
     {
-      listener_.lookupTransform(radar_frame_, 
+      listener_.lookupTransform(radar_frame, 
                                 world_frame_, 
                                 ros::Time(0), 
                                 world_to_radar);
@@ -190,9 +190,10 @@ public:
 
       // transform all radar scans to current camera frame
       tf::StampedTransform world_to_radar;
+      std::string radar_frame = msg->header.frame_id;
       try
       {
-        listener_.lookupTransform(radar_frame_, 
+        listener_.lookupTransform(radar_frame, 
                                   world_frame_, 
                                   ros::Time(0), 
                                   world_to_radar);
@@ -244,6 +245,7 @@ public:
     // project radar points into the camera
     std::vector<cv::Point2d> projected_points;
     cv::projectPoints(input_points, *r_.get(), *t_.get(), *K_.get(), *D_.get(), projected_points);
+    AddPointToImg(cv_ptr->image, cv::Point2d(285.0,285.0), 2);
     for (size_t i = 0; i < projected_points.size(); i++)
     {
       AddPointToImg(cv_ptr->image, projected_points[i], weights[i]);
@@ -260,8 +262,6 @@ protected:
   ros::Subscriber image_sub_;
   tf::StampedTransform radar_to_cam_;
   tf::TransformListener listener_;
-  std::string image_frame_;
-  std::string radar_frame_;
   std::string world_frame_;
   std::mutex scan_mutex_;
 
