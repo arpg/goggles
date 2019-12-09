@@ -41,6 +41,8 @@ public:
     nh_.getParam("world_frame", world_frame_);
     nh_.getParam("scans_to_display", scans_to_display_);
     nh_.getParam("cam_info_topic", cam_info_topic);
+    nh_.getParam("min_range", min_range_);
+    nh_.getParam("max_range", max_range_);
     ros::Duration(2.0).sleep();
 
     sensor_msgs::ImageConstPtr img = 
@@ -83,33 +85,37 @@ public:
     im_width_ = cam_info->width;
     */
     LOG(ERROR) << "setting parameters";
-    K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
-    K_->at<double>(0,0) = 284.5;
-    K_->at<double>(0,1) = 0.0;
-    K_->at<double>(0,2) = 421.9;
-    K_->at<double>(1,0) = 0.0;
-    K_->at<double>(1,1) = 282.9;
-    K_->at<double>(1,2) = 398.1;
-    K_->at<double>(2,0) = 0.0;
-    K_->at<double>(2,1) = 0.0;
-    K_->at<double>(2,2) = 1.0;
+    K_.reset(new cv::Mat(3,3,CV_32F));
+    
+    K_->at<float>(0,0) = 284.5;
+    K_->at<float>(0,1) = 0.0;
+    K_->at<float>(0,2) = 421.9;
+    K_->at<float>(1,0) = 0.0;
+    K_->at<float>(1,1) = 282.9;
+    K_->at<float>(1,2) = 398.1;
+    K_->at<float>(2,0) = 0.0;
+    K_->at<float>(2,1) = 0.0;
+    K_->at<float>(2,2) = 1.0;
+    
+
+    LOG(ERROR) << "K: " << *K_.get();
 
     D_ = std::make_shared<cv::Mat>(5,1,CV_32F);
-    D_->at<double>(0,0) = 0.0;
-    D_->at<double>(1,0) = 0.0;
-    D_->at<double>(2,0) = 0.0;
-    D_->at<double>(3,1) = 0.0;
-    D_->at<double>(4,1) = 0.0;
+    D_->at<float>(0) = 0.0;
+    D_->at<float>(1) = 0.0;
+    D_->at<float>(2) = 0.0;
+    D_->at<float>(3) = 0.0;
+    D_->at<float>(4) = 0.0;
 
     t_ = std::make_shared<cv::Mat>(3,1,CV_32F);
-    t_->at<double>(0) = 0.0;
-    t_->at<double>(1) = 0.0;
-    t_->at<double>(3) = 0.0;
+    t_->at<float>(0) = 0.0;
+    t_->at<float>(1) = 0.0;
+    t_->at<float>(3) = 0.0;
 
     r_ = std::make_shared<cv::Mat>(3,1,CV_32F);
-    r_->at<double>(0) = 0.0;
-    r_->at<double>(1) = 0.0;
-    r_->at<double>(3) = 0.0;
+    r_->at<float>(0) = 0.0;
+    r_->at<float>(1) = 0.0;
+    r_->at<float>(3) = 0.0;
     LOG(ERROR) << "waiting for transform from " << image_frame << " to " << radar_frame;
     bool tf_found;
     try
@@ -165,6 +171,16 @@ public:
     }
     pcl::PointCloud<RadarPoint> point_cloud;
     pcl::fromROSMsg(*msg, point_cloud);
+    pcl::PointCloud<RadarPoint>::iterator it = point_cloud.begin();
+    while (it != point_cloud.end())
+    {
+      Eigen::Vector3d point(it->x, it->y, it->z);
+      double range = point.norm();
+      if (range > max_range_ || range < min_range_)
+        point_cloud.erase(it);
+      else
+        it++;
+    }
     scan_deque_.push_front(point_cloud);
     tf_deque_.push_back(world_to_radar);
     if (scan_deque_.size() > scans_to_display_)
@@ -176,7 +192,7 @@ public:
 
   void AddPointToImg(cv::Mat img, cv::Point2d center, double weight)
   {
-    double radius = weight * 10.0;
+    double radius = weight * 5.0;
     cv::circle( img, center, radius, cv::Scalar(0,0,255),cv::FILLED,cv::LINE_8);
   }
 
@@ -208,7 +224,7 @@ public:
       for (size_t i = 0; i < scan_deque_.size(); i++)
       {
         pcl::PointCloud<RadarPoint> cam_frame_cloud;
-        tf::Transform cloud_to_cam = radar_to_cam_ * radar_to_world * tf_deque_[i];
+        tf::Transform cloud_to_cam = radar_to_cam_;
 
         pcl_ros::transformPointCloud(scan_deque_[i], cam_frame_cloud, cloud_to_cam);  
         cam_frame_scans += cam_frame_cloud;
@@ -231,24 +247,30 @@ public:
 
     // convert pcl to inputarray
     // and calculate weights (inverse ranges)
-    std::vector<cv::Point3d> input_points;
+    std::vector<cv::Point3f> input_points;
     std::vector<double> weights;
     for (size_t i = 0; i < cam_frame_scans.size(); i++)
     {
-      cv::Point3d radar_point;
-      radar_point.x = cam_frame_scans[i].x;
-      radar_point.y  = cam_frame_scans[i].y;
-      radar_point.z = cam_frame_scans[i].z;
+      cv::Point3f radar_point;
+      radar_point.x = float(cam_frame_scans[i].x);
+      radar_point.y  = float(cam_frame_scans[i].y);
+      radar_point.z = float(cam_frame_scans[i].z);
       input_points.push_back(radar_point);
       weights.push_back(1.0 / cv::norm(radar_point));
     }
+
     // project radar points into the camera
-    std::vector<cv::Point2d> projected_points;
+    std::vector<cv::Point2f> projected_points;
     cv::projectPoints(input_points, *r_.get(), *t_.get(), *K_.get(), *D_.get(), projected_points);
-    AddPointToImg(cv_ptr->image, cv::Point2d(285.0,285.0), 2);
     for (size_t i = 0; i < projected_points.size(); i++)
     {
-      AddPointToImg(cv_ptr->image, projected_points[i], weights[i]);
+      //LOG(ERROR) << "input point: " << input_points[i].x << ", " << input_points[i].y << ", " << input_points[i].z;
+      //LOG(ERROR) << "projected point: " << projected_points[i].x << ", " << projected_points[i].y << "\n\n";
+      if (projected_points[i].x < im_width_ && projected_points[i].x >= 0
+        && projected_points[i].y < im_height_ && projected_points[i].y >=0)
+      {
+        AddPointToImg(cv_ptr->image, projected_points[i], weights[i]);
+      }
     }
 
     // publish message
@@ -268,6 +290,8 @@ protected:
   int scans_to_display_;
   size_t im_height_;
   size_t im_width_;
+  double min_range_;
+  double max_range_;
   std::shared_ptr<cv::Mat> K_; // projection matrix
   std::shared_ptr<cv::Mat> D_; // distortion parameters
   std::shared_ptr<cv::Mat> r_; 
