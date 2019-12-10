@@ -80,7 +80,32 @@ Output altitude measurement.
 Run with the following command:<br/>
 ```rosrun goggles radar_altimeter _radar_topic:=<radar pointcloud topic> _min_range:=<min range> _max_range:=<max range>```
 
-## 3.4 alignAndEvaluate
+## 3.4 head_up_display
+
+Adds radar points colored by their doppler measurement into an image stream. Requires a valid transform from the camera's frame to the radar's frame.
+
+Subscribed Topics:<br/>
+ - ```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
+  Input radar measurements
+ - ```<image topic specified by user>``` (sensor_msgs/Image)<br/>
+  Input image measurements
+ - ```<camera info topic specified by user>``` (sensor_msgs/CameraInfo)<br/>
+  Camera calibration
+
+Published Topics:<br/>
+ - ```<output image topic specified by user>```(sensor_msgs/Image)<br/>
+  Output image.
+
+Parameters:<br/>
+ - min_range - minimum range of points to display
+ - max_range - maximum range of points to display
+ - in_image_topic - topic for raw image
+ - out_image_topic - topic for output image with added radar points
+ - in_radar_topic - topic for input radar scans
+ - scans_to_display - number of past scans to display
+ - cam_info_topic - topic for camera calibration parameters
+
+## 3.5 alignAndEvaluate
 
 Found in the ```eval_tools``` directory. Accepts a ros bag with one or more Odometry topic with the estimated velocities of a sensor platform from radar or other means and optionally one Pose topic with the groundtruth poses of the platform from motion capture. ```alignAndEvaluate``` calculates the rotation to align the coordinate frames of the Odometry and Pose topics and outputs the aligned velocity estimates from each topic to csv files. If a groundtruth topic is given, ```alignAndEvaluate``` also outputs the errors between the Odometry topics and groundtruth to csv files.
 
