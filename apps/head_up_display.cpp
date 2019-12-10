@@ -37,6 +37,7 @@ public:
     std::string out_image_topic;
     std::string in_radar_topic;
     std::string cam_info_topic;
+    bool use_cam_info;
 
     nh_.getParam("in_image_topic", in_image_topic);
     nh_.getParam("out_image_topic", out_image_topic);
@@ -46,6 +47,7 @@ public:
     nh_.getParam("cam_info_topic", cam_info_topic);
     nh_.getParam("min_range", min_range_);
     nh_.getParam("max_range", max_range_);
+    nh_.getParam("use_cam_info", use_cam_info);
     ros::Duration(0.1).sleep();
 
     sensor_msgs::ImageConstPtr img = 
@@ -71,48 +73,51 @@ public:
     min_doppler_ = std::numeric_limits<double>::max();
     max_doppler_ = 0.0;
 
-    //sensor_msgs::CameraInfoConstPtr cam_info = 
-    //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, nh_, ros::Duration(1.0));
     K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
     D_ = std::make_shared<cv::Mat>(5,1,CV_32F);
     t_ = std::make_shared<cv::Mat>(3,1,CV_32F);
     r_ = std::make_shared<cv::Mat>(3,1,CV_32F);
-    /*
-    K_->at<double>(0,0) = cam_info->K[0];
-    K_->at<double>(0,1) = 0.0;
-    K_->at<double>(0,2) = cam_info->K[2];
-    K_->at<double>(1,0) = 0.0;
-    K_->at<double>(1,1) = cam_info->K[4];
-    K_->at<double>(1,2) = cam_info->K[5];
-    K_->at<double>(2,0) = 0.0;
-    K_->at<double>(2,1) = 0.0;
-    K_->at<double>(2,2) = 1.0;
+    if (use_cam_info)
+    {
+      sensor_msgs::CameraInfoConstPtr cam_info = 
+        ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, 
+                                                            nh_, 
+                                                            ros::Duration(1.0));
 
-    D_->at<double>(0,0) = cam_info->D[0];
-    D_->at<double>(1,0) = cam_info->D[1];
-    D_->at<double>(2,0) = cam_info->D[2];
-    D_->at<double>(3,1) = cam_info->D[3];
-    D_->at<double>(4,1) = cam_info->D[4];
-    
-    im_height_ = cam_info->height;
-    im_width_ = cam_info->width;
-    */
-    K_->at<float>(0,0) = 284.47;
-    K_->at<float>(0,1) = 0.0;
-    K_->at<float>(0,2) = 426.27;
-    K_->at<float>(1,0) = 0.0;
-    K_->at<float>(1,1) = 285.47;
-    K_->at<float>(1,2) = 404.12;
-    K_->at<float>(2,0) = 0.0;
-    K_->at<float>(2,1) = 0.0;
-    K_->at<float>(2,2) = 1.0;
-    
-    D_->at<float>(0) = -0.00272;
-    D_->at<float>(1) = 0.03641;
-    D_->at<float>(2) = -0.03515;
-    D_->at<float>(3) = 0.005939;
-    D_->at<float>(4) = 0.0;
+      K_->at<double>(0,0) = cam_info->K[0];
+      K_->at<double>(0,1) = 0.0;
+      K_->at<double>(0,2) = cam_info->K[2];
+      K_->at<double>(1,0) = 0.0;
+      K_->at<double>(1,1) = cam_info->K[4];
+      K_->at<double>(1,2) = cam_info->K[5];
+      K_->at<double>(2,0) = 0.0;
+      K_->at<double>(2,1) = 0.0;
+      K_->at<double>(2,2) = 1.0;
 
+      D_->at<double>(0,0) = cam_info->D[0];
+      D_->at<double>(1,0) = cam_info->D[1];
+      D_->at<double>(2,0) = cam_info->D[2];
+      D_->at<double>(3,1) = cam_info->D[3];
+      D_->at<double>(4,1) = cam_info->D[4];
+    }
+    else
+    {
+      K_->at<float>(0,0) = 284.47;
+      K_->at<float>(0,1) = 0.0;
+      K_->at<float>(0,2) = 426.27;
+      K_->at<float>(1,0) = 0.0;
+      K_->at<float>(1,1) = 285.47;
+      K_->at<float>(1,2) = 404.12;
+      K_->at<float>(2,0) = 0.0;
+      K_->at<float>(2,1) = 0.0;
+      K_->at<float>(2,2) = 1.0;
+      
+      D_->at<float>(0) = -0.00272;
+      D_->at<float>(1) = 0.03641;
+      D_->at<float>(2) = -0.03515;
+      D_->at<float>(3) = 0.005939;
+      D_->at<float>(4) = 0.0;
+    }
     t_->at<float>(0) = 0.0;
     t_->at<float>(1) = 0.0;
     t_->at<float>(3) = 0.0;
