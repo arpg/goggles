@@ -68,6 +68,9 @@ public:
     buffer[length] = '\0';
     image_frame_ = std::string(buffer);
 
+    min_doppler_ = std::numeric_limits<double>::max();
+    max_doppler_ = 0.0;
+
     //sensor_msgs::CameraInfoConstPtr cam_info = 
     //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, nh_, ros::Duration(1.0));
     K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
@@ -183,10 +186,116 @@ public:
     }
   }
 
-  void AddPointToImg(cv::Mat img, cv::Point2d center, double range)
+  void GetColor(double input, int &red, int &green, int &blue)
+  {
+    // calculate color
+    double a = (1.0 - input) * 4.0;
+    int X = int(a);
+    int Y = int(255.0*(a-double(X)));
+    switch (X)
+    {
+    case 0:
+      red = 255;
+      green = Y;
+      blue = 0;
+      break;
+    case 1:
+      red = 255 - Y;
+      green = 255;
+      blue = 0;
+      break;
+    case 2:
+      red = 0;
+      green = 255;
+      blue = Y;
+      break;
+    case 3:
+      red = 0;
+      green = 255 - Y;
+      blue = 255;
+      break;
+    case 4:
+      red = 0; 
+      green = 0;
+      blue = 255;
+      break;
+    }
+  }
+
+  void AddPointToImg(cv::Mat img, cv::Point2d center, double range, double doppler)
   {
     double radius = (K_->at<float>(0,0) / range) * 0.05;
-    cv::circle( img, center, radius, cv::Scalar(0,0,255),cv::FILLED,cv::LINE_8);
+    int red, green, blue;
+    GetColor(doppler, red, green, blue);
+    cv::circle(img, 
+               center, 
+               radius, 
+               cv::Scalar(red,green,blue),
+               cv::FILLED,
+               cv::LINE_8);
+  }
+
+  void DrawLegend(cv::Mat img, cv::Point2i coordinate)
+  {
+    std::stringstream min_ss;
+    std::stringstream max_ss;
+    min_ss << std::fixed << std::setprecision(2) << min_doppler_;
+    max_ss << std::fixed << std::setprecision(2) << max_doppler_;
+    std::string min_doppler = min_ss.str();
+    std::string max_doppler = max_ss.str();
+    
+    int segment_x = coordinate.x;
+    int segment_y = coordinate.y;
+    int baseline;
+
+    cv::Size text_size = cv::getTextSize(min_doppler,
+                                         cv::FONT_HERSHEY_PLAIN, 
+                                         2.0,
+                                         2, 
+                                         &baseline);
+
+    int width = 2;
+    int height = text_size.height;
+    int num_segments = 200;
+
+    cv::putText(img,
+                "doppler measurement (m/s):",
+                cv::Point2i(segment_x, segment_y - 15),
+                cv::FONT_HERSHEY_PLAIN,
+                2.0,
+                cv::Scalar(255,255,255),
+                2);
+
+    cv::putText(img, 
+                min_doppler, 
+                cv::Point2i(segment_x, segment_y + height), 
+                cv::FONT_HERSHEY_PLAIN, 
+                2.0, 
+                cv::Scalar(255,255,255),
+                2);
+
+    segment_x += text_size.width + 5;
+
+    for (int i = 0; i < num_segments; i++)
+    {
+      double y = double(i) / double(num_segments);
+      int red, green, blue;
+      GetColor(y, red, green, blue);
+      cv::Point2i p1(segment_x, segment_y);
+      cv::Point2i p2(segment_x + width, segment_y + height);
+      cv::rectangle(img, p1, p2, cv::Scalar(red,green,blue),cv::FILLED,cv::LINE_8);
+      segment_x += width;
+    }
+
+    segment_x += 5;
+
+    cv::putText(img, 
+                max_doppler, 
+                cv::Point2i(segment_x, segment_y + height), 
+                cv::FONT_HERSHEY_PLAIN, 
+                2.0, 
+                cv::Scalar(255,255,255),
+                2);
   }
 
   void ImageCallback(const sensor_msgs::ImageConstPtr& msg)
@@ -257,9 +366,18 @@ public:
     }
 
     // convert pcl to inputarray
-    // and calculate weights (inverse ranges)
+    // and get ranges and doppler measurements
     std::vector<cv::Point3f> input_points;
-    std::vector<double> ranges;
+    std::vector<std::pair<size_t,double>> idx_range_pairs;
+    std::vector<double> dopplers;
+    
+    for (size_t i = 0; i < cam_frame_scans.size(); i++)
+    {
+      if (cam_frame_scans[i].doppler < min_doppler_)
+        min_doppler_ = cam_frame_scans[i].doppler;
+      if (cam_frame_scans[i].doppler > max_doppler_)
+        max_doppler_ = cam_frame_scans[i].doppler;
+    }
     for (size_t i = 0; i < cam_frame_scans.size(); i++)
     {
       cv::Point3f radar_point;
@@ -267,8 +385,16 @@ public:
       radar_point.y  = float(cam_frame_scans[i].y);
       radar_point.z = float(cam_frame_scans[i].z);
       input_points.push_back(radar_point);
-      ranges.push_back(cv::norm(radar_point));
+      double norm_doppler = (cam_frame_scans[i].doppler - min_doppler_) 
+                              / (max_doppler_ - min_doppler_);
+      dopplers.push_back(norm_doppler);
+      idx_range_pairs.push_back(std::make_pair(i,cv::norm(radar_point)));
     }
+
+    // sort by range, longest range first
+    std::sort(idx_range_pairs.begin(), 
+              idx_range_pairs.end(), 
+              [](const std::pair<size_t,double> i, std::pair<size_t,double> j)->bool{return i.second > j.second;});
 
     // project radar points into the camera
     cv::Mat overlay = cv_ptr->image.clone();
@@ -278,16 +404,20 @@ public:
     {
       //LOG(ERROR) << "input point: " << input_points[i].x << ", " << input_points[i].y << ", " << input_points[i].z;
       //LOG(ERROR) << "projected point: " << projected_points[i].x << ", " << projected_points[i].y << "\n\n";
-      if (projected_points[i].x < im_width_ && projected_points[i].x >= 0
-        && projected_points[i].y < im_height_ && projected_points[i].y >=0)
+      cv::Point2f point = projected_points[idx_range_pairs[i].first];
+      if (point.x < im_width_ && point.x >= 0
+        && point.y < im_height_ && point.y >=0)
       {
-        AddPointToImg(overlay, projected_points[i], ranges[i]);
+        AddPointToImg(overlay, 
+                      point, 
+                      idx_range_pairs[i].second,
+                      dopplers[idx_range_pairs[i].first]);
       }
     }
     cv::Mat in_img = cv_ptr->image.clone();
     double alpha = 0.375;
     cv::addWeighted(overlay, alpha, in_img, 1.0-alpha, 0, cv_ptr->image);
-
+    /*
     std::string caption = "num radar points: ";
     caption += std::to_string(cam_frame_scans.size());
     cv::putText(cv_ptr->image, 
@@ -297,8 +427,8 @@ public:
                 2.0, 
                 cv::Scalar(255,255,255),
                 2);
-
-    caption = "radar points projected into camera";
+    */
+    std::string caption = "radar points projected into camera";
     cv::putText(cv_ptr->image, 
                 caption, 
                 cv::Point2f(35, 40), 
@@ -306,6 +436,8 @@ public:
                 2.0, 
                 cv::Scalar(255,255,255),
                 2);
+    
+    DrawLegend(cv_ptr->image, cv::Point2i(35, im_height_-50));
 
     // publish message
     image_pub_.publish(cv_ptr->toImageMsg());
@@ -336,6 +468,8 @@ protected:
   size_t im_width_;
   double min_range_;
   double max_range_;
+  double max_doppler_;
+  double min_doppler_;
   std::shared_ptr<cv::Mat> K_; // projection matrix
   std::shared_ptr<cv::Mat> D_; // distortion parameters
   std::shared_ptr<cv::Mat> r_; 
