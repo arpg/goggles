@@ -67,13 +67,13 @@ public:
     length = (img->header.frame_id).copy(buffer,56,0);
     buffer[length] = '\0';
     image_frame_ = std::string(buffer);
-    LOG(ERROR) << "image dims: " << im_width_ << ", " << im_height_;
-    LOG(ERROR) << "image frame id: " << image_frame_;
-    LOG(ERROR) << "radar frame id: " << radar_frame_;
 
     //sensor_msgs::CameraInfoConstPtr cam_info = 
     //  ros::topic::waitForMessage<sensor_msgs::CameraInfo>(cam_info_topic, nh_, ros::Duration(1.0));
-    
+    K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
+    D_ = std::make_shared<cv::Mat>(5,1,CV_32F);
+    t_ = std::make_shared<cv::Mat>(3,1,CV_32F);
+    r_ = std::make_shared<cv::Mat>(3,1,CV_32F);
     /*
     K_->at<double>(0,0) = cam_info->K[0];
     K_->at<double>(0,1) = 0.0;
@@ -94,9 +94,6 @@ public:
     im_height_ = cam_info->height;
     im_width_ = cam_info->width;
     */
-    LOG(ERROR) << "setting parameters";
-    K_ = std::make_shared<cv::Mat>(3,3,CV_32F);
-    
     K_->at<float>(0,0) = 284.47;
     K_->at<float>(0,1) = 0.0;
     K_->at<float>(0,2) = 426.27;
@@ -107,26 +104,20 @@ public:
     K_->at<float>(2,1) = 0.0;
     K_->at<float>(2,2) = 1.0;
     
-
-    LOG(ERROR) << "K: " << *K_.get();
-
-    D_ = std::make_shared<cv::Mat>(5,1,CV_32F);
     D_->at<float>(0) = -0.00272;
     D_->at<float>(1) = 0.03641;
     D_->at<float>(2) = -0.03515;
     D_->at<float>(3) = 0.005939;
     D_->at<float>(4) = 0.0;
 
-    t_ = std::make_shared<cv::Mat>(3,1,CV_32F);
     t_->at<float>(0) = 0.0;
     t_->at<float>(1) = 0.0;
     t_->at<float>(3) = 0.0;
 
-    r_ = std::make_shared<cv::Mat>(3,1,CV_32F);
     r_->at<float>(0) = 0.0;
     r_->at<float>(1) = 0.0;
     r_->at<float>(3) = 0.0;
-    LOG(ERROR) << "waiting for transform from " << image_frame_ << " to " << radar_frame_;
+
     bool tf_found;
     try
     {
@@ -141,7 +132,6 @@ public:
     }
     if (!tf_found)
       LOG(FATAL) << "tf not found";
-    LOG(ERROR) << "looking up transform";
     try
     {
       listener_.lookupTransform(image_frame_, 
@@ -154,13 +144,11 @@ public:
       LOG(FATAL) << "failed to get cam to radar tf: " << e.what();
     }
 
-    LOG(ERROR) << "starting subscribers and publisher";
     radar_sub_ = nh_.subscribe(in_radar_topic, 1, &RadarHud::RadarCallback, this);
     image_sub_ = nh_.subscribe(in_image_topic, 1, &RadarHud::ImageCallback, this);
 
     image_pub_ = nh_.advertise<sensor_msgs::Image>(out_image_topic,1);
     pcl_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("out_cloud",1);
-    LOG(ERROR) << "done initializing";
   }
 
   void RadarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
@@ -197,7 +185,7 @@ public:
 
   void AddPointToImg(cv::Mat img, cv::Point2d center, double range)
   {
-    double radius = (K_->at<float>(0,0) / range) * 0.1;
+    double radius = (K_->at<float>(0,0) / range) * 0.05;
     cv::circle( img, center, radius, cv::Scalar(0,0,255),cv::FILLED,cv::LINE_8);
   }
 
@@ -297,7 +285,7 @@ public:
       }
     }
     cv::Mat in_img = cv_ptr->image.clone();
-    double alpha = 0.5;
+    double alpha = 0.375;
     cv::addWeighted(overlay, alpha, in_img, 1.0-alpha, 0, cv_ptr->image);
 
     std::string caption = "num radar points: ";
