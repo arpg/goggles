@@ -150,7 +150,7 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
                                      msg->pose.pose.orientation.y,
                                      msg->pose.pose.orientation.z);
 
-      Eigen::Vector3d twist_g = orientation.toRotationMatrix().inverse() * twist_s;
+      Eigen::Vector3d twist_g = orientation.toRotationMatrix() * twist_s;
       measurements[topic_index].push_back(std::make_pair(timestamp,twist_g));
     }
   }
@@ -232,7 +232,7 @@ void findRotations(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>& 
 {
   size_t num_topics = meas.size();
   QuaternionParameterization* qp = new QuaternionParameterization();
-  ceres::LossFunction* loss = new ceres::CauchyLoss(1.0);
+  ceres::LossFunction* loss = new ceres::CauchyLoss(10.0);
 
   ceres::Problem::Options prob_options;
   prob_options.local_parameterization_ownership =
