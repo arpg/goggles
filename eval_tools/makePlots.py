@@ -39,6 +39,14 @@ def loadData(directory, csv_file_names):
     data.append(np.loadtxt(open(directory + file_name, 'rb'), delimiter=','))
   return data
 
+def downSampleData(data):
+  max_len = 500
+  for i in range(0,len(data)):
+    if data[i].shape[0] > max_len:
+      keep_indices = np.linspace(0, data[i].shape[0] - 1, max_len);
+      data[i] = data[i][keep_indices.astype(int),:]
+
+
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
@@ -53,6 +61,7 @@ if __name__ == '__main__':
   topic_list = parseTopics(args.topics)
   csv_file_names = getOutputFileNames(topic_list, bag_filename, args.err_plot, '.csv')
   data = loadData(directory, csv_file_names)
+  downSampleData(data)
 
   for log in data:
     first_time = log[0,0]
