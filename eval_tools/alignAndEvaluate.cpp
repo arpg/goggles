@@ -191,7 +191,6 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
   for (size_t i = 0; i < num_topics; i++)
   {
     std::vector<std::pair<double,Eigen::Vector3d>>::iterator it = measurements[i].begin();
-    LOG(ERROR) << "initial size of topic " << topics[i] << " " << measurements[i].size();
     size_t num_erased = 0;
     while (it != measurements[i].end())
     {
@@ -206,8 +205,6 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
         it++;
       }
     }
-    LOG(ERROR) << "erased " << num_erased << " messages from " << topics[i];
-    LOG(ERROR) << "final size of " << measurements[i].size();
   }
 }
 
@@ -251,7 +248,7 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
       {
         continue;
       }
-      else
+      else if ((it1+1) != meas[i].end())
       {
         // interpolate measurement
         double ts1_pre = it1->first;
@@ -386,6 +383,48 @@ void writeToCsv(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &mea
   }
 }
 
+void writeToCsv(std::vector<Eigen::Quaterniond> &rotations,
+                std::string &filename_prefix,
+                std::vector<std::string> &topics)
+{
+  for (size_t i = 0; i < topics.size(); i++)
+  {
+    std::string filename = filename_prefix + replaceSlashes(topics[i]) + ".csv";
+    std::ofstream out_file(filename, std::ios_base::trunc);
+    out_file << rotations[i].w() << ',' << rotations[i].x() << ',' 
+             << rotations[i].y() << ',' << rotations[i].z();
+    out_file.close();
+  }
+}
+
+void loadRotations(std::vector<Eigen::Quaterniond> &rotations,
+                   std::string &filename_prefix,
+                   std::vector<std::string> &topics)
+{
+  for (size_t i = 0; i < topics.size(); i++)
+  {
+    std::string filename = filename_prefix + replaceSlashes(topics[i]) + ".csv";
+    std::ifstream in_file(filename);
+    if (in_file.is_open())
+    {
+      std::string token;
+      std::getline(in_file,token,',');
+      double w = std::stod(token);
+      std::getline(in_file,token,',');
+      double x = std::stod(token);
+      std::getline(in_file,token,',');
+      double y = std::stod(token);
+      std::getline(in_file,token,',');
+      double z = std::stod(token);
+      rotations[i] = Eigen::Quaterniond(w,x,y,z);
+    }
+    else
+    {
+      LOG(FATAL) << "rotation file " << filename << " not found";
+    }
+  }
+}
+
 std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
 getErrors(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
 {
@@ -442,7 +481,7 @@ int main(int argc, char* argv[])
   size_t num_pose_topics;
   bool using_groundtruth;
 
-  if (argc > 3)
+  if (argc > 4)
   {
     bagfile_name = std::string(argv[1]);
     using_groundtruth = std::string(argv[2]) == "true";
@@ -460,6 +499,7 @@ int main(int argc, char* argv[])
   }
 
   std::string name_prefix = bagfile_name.substr(0,bagfile_name.size()-4);
+  std::string directory = name_prefix.substr(0,name_prefix.find_last_of('/')+1);
 
   size_t num_topics = topics.size();
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
@@ -482,21 +522,38 @@ int main(int argc, char* argv[])
   rotations.push_back(Eigen::Quaterniond(1,0,0,0));
   for (int i = 1; i < num_topics; i++)
     rotations.push_back(Eigen::Quaterniond::UnitRandom());
-  
-  findRotations(aligned_measurements, rotations);
+
+  std::string optimize_rotations;
+  std::cout << "optimize rotations (y/n)?\n";
+  std::getline(std::cin, optimize_rotations);
+
+  std::string rotation_file_name = directory + "rotation";
+  if (optimize_rotations == "y")
+  {
+    findRotations(aligned_measurements, rotations);
+    writeToCsv(rotations, rotation_file_name, topics);
+  }
+  else
+  {
+    loadRotations(rotations, rotation_file_name, topics);
+  }
 
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> rotated_measurements;
-  rotated_measurements = spatialAlign(aligned_measurements, rotations);
   std::string meas_file_name = name_prefix + "_aligned";
   
   if (using_groundtruth)
   {
+    rotated_measurements = spatialAlign(aligned_measurements, rotations);
     std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> errors;
     errors = getErrors(rotated_measurements);
     std::string err_file_name = name_prefix + "_errors";
     writeToCsv(errors, err_file_name, topics);
   }
-  
+  else
+  {
+    rotated_measurements = spatialAlign(measurements,rotations);
+  }
+
   writeToCsv(rotated_measurements, meas_file_name, topics);
 
   return 0;

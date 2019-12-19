@@ -36,6 +36,11 @@ bool GlobalVelocityMeasCostFunction::EvaluateWithMinimalJacobians(
   Eigen::Map<Eigen::Matrix<double,3,1>> error(residuals);
   error = vicon_v_ - C_vr * radar_v_;
 
+  //LOG(ERROR) << "rotation: " << q_vr.coeffs().transpose();
+  //LOG(ERROR) << "vicon v: " << vicon_v_.transpose();
+  //LOG(ERROR) << "radar v: " << radar_v_.transpose();
+  //LOG(ERROR) << "residual: " << error.transpose() << "\n\n";
+
   if (jacobians != NULL)
   {
     if (jacobians[0] != NULL)
