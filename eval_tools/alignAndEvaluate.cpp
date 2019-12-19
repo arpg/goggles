@@ -52,7 +52,7 @@ smoothMeasurements(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
 // leaves gaps in the groundtrtuh data
 void rejectOutliers(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
 {
-  double threshold = 2.5;
+  double threshold = 0.5;
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_pre0 = meas.begin();
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it_pre1 = meas.begin() + 1;
   while (it_pre0 != meas.end() && it_pre1 != meas.end())
@@ -69,10 +69,10 @@ void rejectOutliers(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
       }
       LOG(ERROR) << "found outliers between " << std::fixed << std::setprecision(3) 
                  << it_pre0->first << " and " << it_post1->first;
-
+ 
       meas.erase(it_pre0,it_post1 + 1);
       it_pre0 = it_post1;
-      it_pre1 = it_post1 + 1;
+      it_pre1 = it_post1+1;
     }
     else
     {
@@ -85,6 +85,7 @@ void rejectOutliers(std::vector<std::pair<double,Eigen::Vector3d>> &meas)
 // pulls measurements from a rosbag for every topic listed in topics vector
 void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &measurements, 
                      std::vector<std::string> topics, 
+                     size_t num_pose_topics,
                      std::string bagfile_name, 
                      bool using_groundtruth)
 {
@@ -92,11 +93,14 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
   rosbag::Bag bag;
   bag.open(bagfile_name, rosbag::bagmode::Read);
   rosbag::View view(bag, rosbag::TopicQuery(topics));
+  size_t num_topics = topics.size();
 
   // containers for positions, and timestamps
-  // used for groundtruth only
-  std::vector<double> gt_timestamps;
-  std::vector<Eigen::Vector3d> gt_positions;
+  // used for pose only topics
+  std::vector<std::vector<double>> gt_timestamps;
+  gt_timestamps.resize(num_pose_topics);
+  std::vector<std::vector<Eigen::Vector3d>> gt_positions;
+  gt_positions.resize(num_pose_topics);
 
   // iterate through rosbag and transfer messages to their proper containers
   foreach(rosbag::MessageInstance const m, view)
@@ -108,28 +112,39 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
                                               topics.end(), 
                                               topic));
 
-    if (topic_index >= topics.size())
+    if (topic_index >= num_topics)
       LOG(FATAL) << "topic not found";
 
     double timestamp;
 
     // if the current message is for the groundtruth topic
-    if (using_groundtruth && topic_index == 0)
+    if (topic_index < num_pose_topics)
     {
       // assuming groundtruth message will be poseStamped
-      geometry_msgs::PoseStamped::ConstPtr msg
+      geometry_msgs::PoseStamped::ConstPtr pose_msg
         = m.instantiate<geometry_msgs::PoseStamped>();
 
-      if (msg == NULL)
-        LOG(FATAL) << "wrong message type for groundtruth message";
+      if (pose_msg != NULL)
+      {
+        double timestamp = pose_msg->header.stamp.toSec();
+        Eigen::Vector3d position(pose_msg->pose.position.x,
+                                 pose_msg->pose.position.y,
+                                 pose_msg->pose.position.z);
+        gt_positions[topic_index].push_back(position);
+        gt_timestamps[topic_index].push_back(timestamp);
+      }
+      else
+      {
+        nav_msgs::Odometry::ConstPtr odom_msg
+          = m.instantiate<nav_msgs::Odometry>();
 
-      double timestamp = msg->header.stamp.toSec();
-
-      Eigen::Vector3d position(msg->pose.position.x,
-                               msg->pose.position.y,
-                               msg->pose.position.z);
-      gt_positions.push_back(position);
-      gt_timestamps.push_back(timestamp);
+        double timestamp = odom_msg->header.stamp.toSec();
+        Eigen::Vector3d position(odom_msg->pose.pose.position.x,
+                                 odom_msg->pose.pose.position.y,
+                                 odom_msg->pose.pose.position.z);
+        gt_positions[topic_index].push_back(position);
+        gt_timestamps[topic_index].push_back(timestamp);
+      }
     }
     else
     {
@@ -157,15 +172,42 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
   bag.close();
 
   // if using groundtruth, need to calculate global twist via finite differences
-  if (using_groundtruth)
+  if (num_pose_topics > 0)
   {
-    for (size_t i = 1; i < gt_positions.size() - 1; i++)
+    for (size_t j = 0; j < num_pose_topics; j++)
     {
-      Eigen::Vector3d delta_p = gt_positions[i+1] - gt_positions[i-1];
-      double delta_t = gt_timestamps[i+1] - gt_timestamps[i-1];
-      measurements[0].push_back(std::make_pair(gt_timestamps[i], delta_p / delta_t));
+      for (size_t i = 1; i < gt_positions[j].size() - 1; i++)
+      {
+        Eigen::Vector3d delta_p = gt_positions[j][i+1] - gt_positions[j][i-1];
+        double delta_t = gt_timestamps[j][i+1] - gt_timestamps[j][i-1];
+        measurements[j].push_back(std::make_pair(gt_timestamps[j][i], delta_p / delta_t));
+      }
+      if (using_groundtruth)
+        measurements[0] = smoothMeasurements(measurements[0]);
     }
-    measurements[0] = smoothMeasurements(measurements[0]);
+  }
+
+  // check for invalid values
+  for (size_t i = 0; i < num_topics; i++)
+  {
+    std::vector<std::pair<double,Eigen::Vector3d>>::iterator it = measurements[i].begin();
+    LOG(ERROR) << "initial size of topic " << topics[i] << " " << measurements[i].size();
+    size_t num_erased = 0;
+    while (it != measurements[i].end())
+    {
+      Eigen::Vector3d vel = it->second;
+      if (vel.hasNaN())
+      {
+        num_erased++;
+        measurements[i].erase(it);
+      }
+      else
+      {
+        it++;
+      }
+    }
+    LOG(ERROR) << "erased " << num_erased << " messages from " << topics[i];
+    LOG(ERROR) << "final size of " << measurements[i].size();
   }
 }
 
@@ -185,9 +227,6 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
       meas[0].erase(meas[0].begin());
   }
 
-  // all measurements are aligned to those in index 0
-  result[0] = meas[0];
-
   // align measurements for each topic to those in index 0
   std::vector<std::pair<double,Eigen::Vector3d>>::iterator it0; 
   for (size_t i = 1; i < num_topics; i++)
@@ -206,20 +245,32 @@ temporalAlign(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
 
       if (it1->first > ts0)
         LOG(FATAL) << "timestamp from meas0 is greater than the timestamp from meas1";
+
+      // if reference topic has measurements past the end of the current topic
       if ((it1 + 1)->first < ts0)
-        LOG(FATAL) << "timestamp from meas0+1 is less than the timestamp from meas1";
+      {
+        continue;
+      }
+      else
+      {
+        // interpolate measurement
+        double ts1_pre = it1->first;
+        double ts1_post = (it1 + 1)->first;
+        double r = (ts0 - ts1_pre) / (ts1_post - ts1_pre);
+        Eigen::Vector3d v_interp = (1.0 - r) * it1->second + r * (it1 + 1)->second;
 
-      // interpolate measurement
-      double ts1_pre = it1->first;
-      double ts1_post = (it1 + 1)->first;
-      double r = (ts0 - ts1_pre) / (ts1_post - ts1_pre);
-      Eigen::Vector3d v_interp = (1.0 - r) * it1->second + r * (it1 + 1)->second;
-
-      result[i].push_back(std::make_pair(ts0,v_interp));
+        result[i].push_back(std::make_pair(ts0,v_interp));
+      }
     }
+  }
 
-    if (result[i].size() != result[0].size())
-      LOG(ERROR) << "size of resampled vector " << i << " not equal to reference vector";
+  // all measurements are aligned to those in index 0
+  result[0] = meas[0];
+
+  for (size_t i = 0; i < num_topics; i++)
+  {
+    while (result[0].size() < result[i].size())
+      result[i].erase(result[i].end() - 1);
   }
   
   return result;
@@ -232,7 +283,7 @@ void findRotations(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>& 
 {
   size_t num_topics = meas.size();
   QuaternionParameterization* qp = new QuaternionParameterization();
-  ceres::LossFunction* loss = new ceres::CauchyLoss(10.0);
+  ceres::LossFunction* loss = new ceres::CauchyLoss(1.0);
 
   ceres::Problem::Options prob_options;
   prob_options.local_parameterization_ownership =
@@ -362,8 +413,16 @@ getErrors(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> &meas)
           other_idx++;
         }
         Eigen::Vector3d error = meas[i][other_idx].second - meas[0][gt_idx].second;
+
+        if (other_idx > 0 && std::fabs(error.norm() - result[i].back().second.norm()) > 0.25)
+        {
+          meas[0].erase(meas[0].begin()+gt_idx);
+        }
+        else
+        {
         result[i].push_back(std::make_pair(timestamp,error.cwiseAbs()));
         gt_idx++;
+        }
         other_idx++;
       }
     }
@@ -380,13 +439,15 @@ int main(int argc, char* argv[])
 
   std::string bagfile_name;
   std::vector<std::string> topics;
+  size_t num_pose_topics;
   bool using_groundtruth;
 
   if (argc > 3)
   {
     bagfile_name = std::string(argv[1]);
     using_groundtruth = std::string(argv[2]) == "true";
-    for (int i = 3; i < argc; i++)
+    num_pose_topics = std::stoi(std::string(argv[3]));
+    for (int i = 4; i < argc; i++)
         topics.push_back(std::string(argv[i]));
   }
   else
@@ -394,7 +455,8 @@ int main(int argc, char* argv[])
     LOG(FATAL) << "wrong number of arguments\n" 
                << "argument 1: <filename for rosbag> \n"
                << "argument 2: true if using groundtruth, false if not \n"
-               << "arguments 3-n: list of topics to compare with groundtruth topic first if present";
+               << "argument 3: number of pose-only topics"
+               << "arguments 4-n: list of topics to compare with groundtruth topic first if present, pose-only topics first if present";
   }
 
   std::string name_prefix = bagfile_name.substr(0,bagfile_name.size()-4);
@@ -403,7 +465,11 @@ int main(int argc, char* argv[])
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> measurements;
   measurements.resize(num_topics);
 
-  getMeasurements(measurements, topics, bagfile_name, using_groundtruth);
+  getMeasurements(measurements,
+                  topics, 
+                  num_pose_topics, 
+                  bagfile_name, 
+                  using_groundtruth);
   
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
 
@@ -423,8 +489,6 @@ int main(int argc, char* argv[])
   rotated_measurements = spatialAlign(aligned_measurements, rotations);
   std::string meas_file_name = name_prefix + "_aligned";
   
-  writeToCsv(rotated_measurements, meas_file_name, topics);
-  
   if (using_groundtruth)
   {
     std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> errors;
@@ -433,5 +497,7 @@ int main(int argc, char* argv[])
     writeToCsv(errors, err_file_name, topics);
   }
   
+  writeToCsv(rotated_measurements, meas_file_name, topics);
+
   return 0;
 }
