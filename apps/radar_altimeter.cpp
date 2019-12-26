@@ -1,7 +1,7 @@
 #define PCL_NO_PRECOMPILE
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/Range.h>
+#include <nav_msgs/Odometry.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/segmentation/extract_clusters.h>
@@ -47,7 +47,7 @@ public:
 
     sub_ = nh_.subscribe(in_topic, 1, &RadarAltimeter::PointCloudCallback, this);
 
-    pub_ = nh_.advertise<sensor_msgs::Range>(
+    pub_ = nh_.advertise<nav_msgs::Odometry>(
       ns + "mmWaveDataHdl/altitude",1);
 
     point_pub_ = nh_.advertise<sensor_msgs::PointCloud2>(
@@ -108,7 +108,7 @@ public:
       if (updated) filterRange(altitude, timestamp);
     }
 
-    publishRange(msg);
+    publishAltitude(msg);
 
     // publish mean of selected point cluster for debugging purposes
     pcl::PointXYZ out_point(altitude_, 0.0, 0.0);
@@ -155,14 +155,13 @@ public:
     last_timestamp_ = timestamp;
   }
 
-  void publishRange(const sensor_msgs::PointCloud2ConstPtr& msg)
+  void publishAltitude(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-    sensor_msgs::Range out_range_msg;
-    out_range_msg.header = msg->header;
-    out_range_msg.min_range = min_range_;
-    out_range_msg.max_range = max_range_;
-    out_range_msg.range = altitude_;
-    pub_.publish(out_range_msg);
+    nav_msgs::Odometry out_altitude_msg;
+    out_altitude_msg.header = msg->header;
+    out_altitude_msg.pose.pose.position.z = altitude_;
+    out_altitude_msg.pose.covariance[14] = P_;
+    pub_.publish(out_altitude_msg);
   }
 
 protected:
