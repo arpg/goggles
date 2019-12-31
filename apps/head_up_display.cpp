@@ -38,7 +38,7 @@ public:
     std::string in_radar_topic;
     std::string cam_info_topic;
     bool use_cam_info;
-
+    
     nh_.getParam("in_image_topic", in_image_topic);
     nh_.getParam("out_image_topic", out_image_topic);
     nh_.getParam("in_radar_topic", in_radar_topic);
@@ -49,7 +49,7 @@ public:
     nh_.getParam("max_range", max_range_);
     nh_.getParam("use_cam_info", use_cam_info);
     ros::Duration(0.1).sleep();
-
+    
     sensor_msgs::ImageConstPtr img = 
       ros::topic::waitForMessage<sensor_msgs::Image>(in_image_topic, 
                                                      nh_, 
@@ -84,24 +84,25 @@ public:
                                                             nh_, 
                                                             ros::Duration(1.0));
 
-      K_->at<double>(0,0) = cam_info->K[0];
-      K_->at<double>(0,1) = 0.0;
-      K_->at<double>(0,2) = cam_info->K[2];
-      K_->at<double>(1,0) = 0.0;
-      K_->at<double>(1,1) = cam_info->K[4];
-      K_->at<double>(1,2) = cam_info->K[5];
-      K_->at<double>(2,0) = 0.0;
-      K_->at<double>(2,1) = 0.0;
-      K_->at<double>(2,2) = 1.0;
+      K_->at<float>(0,0) = cam_info->K[0];
+      K_->at<float>(0,1) = 0.0;
+      K_->at<float>(0,2) = cam_info->K[2];
+      K_->at<float>(1,0) = 0.0;
+      K_->at<float>(1,1) = cam_info->K[4];
+      K_->at<float>(1,2) = cam_info->K[5];
+      K_->at<float>(2,0) = 0.0;
+      K_->at<float>(2,1) = 0.0;
+      K_->at<float>(2,2) = 1.0;
 
-      D_->at<double>(0,0) = cam_info->D[0];
-      D_->at<double>(1,0) = cam_info->D[1];
-      D_->at<double>(2,0) = cam_info->D[2];
-      D_->at<double>(3,1) = cam_info->D[3];
-      D_->at<double>(4,1) = cam_info->D[4];
+      D_->at<float>(0,0) = cam_info->D[0];
+      D_->at<float>(1,0) = cam_info->D[1];
+      D_->at<float>(2,0) = cam_info->D[2];
+      D_->at<float>(3,0) = cam_info->D[3];
+      D_->at<float>(4,0) = cam_info->D[4];
     }
     else
     {
+      
       K_->at<float>(0,0) = 284.47;
       K_->at<float>(0,1) = 0.0;
       K_->at<float>(0,2) = 426.27;
@@ -127,6 +128,7 @@ public:
     r_->at<float>(3) = 0.0;
 
     bool tf_found;
+    
     try
     {
       tf_found = listener_.waitForTransform(image_frame_, 
@@ -157,6 +159,7 @@ public:
 
     image_pub_ = nh_.advertise<sensor_msgs::Image>(out_image_topic,1);
     pcl_pub_ = nh_.advertise<sensor_msgs::PointCloud2>("out_cloud",1);
+
   }
 
   void RadarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)

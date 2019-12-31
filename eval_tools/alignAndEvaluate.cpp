@@ -182,9 +182,9 @@ void getMeasurements(std::vector<std::vector<std::pair<double,Eigen::Vector3d>>>
         double delta_t = gt_timestamps[j][i+1] - gt_timestamps[j][i-1];
         measurements[j].push_back(std::make_pair(gt_timestamps[j][i], delta_p / delta_t));
       }
-      if (using_groundtruth)
-        measurements[0] = smoothMeasurements(measurements[0]);
     }
+    if (using_groundtruth)
+      measurements[0] = smoothMeasurements(measurements[0]);
   }
 
   // check for invalid values
@@ -510,13 +510,13 @@ int main(int argc, char* argv[])
                   num_pose_topics, 
                   bagfile_name, 
                   using_groundtruth);
+
+  if (using_groundtruth)
+    rejectOutliers(measurements[0]);
   
   std::vector<std::vector<std::pair<double,Eigen::Vector3d>>> aligned_measurements;
 
   aligned_measurements = temporalAlign(measurements);
-  
-  if (using_groundtruth)
-    rejectOutliers(aligned_measurements[0]);
   
   std::vector<Eigen::Quaterniond> rotations;
   rotations.push_back(Eigen::Quaterniond(1,0,0,0));
