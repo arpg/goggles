@@ -520,7 +520,7 @@ private:
 
     double start_t = imu_buffer_.GetStartTime();
     double t1 = imu_buffer_.GetEndTime();
-    double duration = 0.2;
+    double duration = 0.5;
     if (t1 - start_t < duration)
 	    return false;
 
@@ -534,7 +534,6 @@ private:
     int num_to_delete = 0;
     for (int i = 1; i < measurements.size(); i++)
     {
-      LOG(ERROR) << std::fabs((measurements[i].t_ - measurements[i-1].t_)) - imu_period;
       if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period)
       {
         delete_end_time = measurements[i].t_;
