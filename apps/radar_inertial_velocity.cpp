@@ -64,17 +64,18 @@ public:
 		tf::TransformListener tf_listener;
     ros::Duration(0.5).sleep();
     ros::Time now = ros::Time::now();
+    LOG(ERROR) << "getting transform";
 		tf_listener.waitForTransform(imu_frame,
 																 radar_frame,
 																 now,
 																 ros::Duration(1.0));
 		tf_listener.lookupTransform(imu_frame,
 																radar_frame,
-																now,
+																ros::Time(0.0),
 																radar_to_imu_);
     tf_listener.lookupTransform(radar_frame,
                                 imu_frame,
-                                now,
+                                ros::Time(0.0),
                                 imu_to_radar_);
     ros::Duration(0.5).sleep();
     //if (!tf_listener.getParent(pose_frame_id_,now,odom_frame_id_))
@@ -190,7 +191,6 @@ public:
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-
 	  double timestamp = msg->header.stamp.toSec();
 
 		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
@@ -523,8 +523,9 @@ private:
     double duration = 0.2;
     if (t1 - start_t < duration)
 	    return false;
+
     std::vector<ImuMeasurement> measurements =
-          imu_buffer_.GetRange(t1 - 0.2, t1, false);
+          imu_buffer_.GetRange(t1 - duration, t1, false);
 
     // some IMUs give erratic readings when they're first starting
     // check for these and throw them out if found
@@ -533,7 +534,8 @@ private:
     int num_to_delete = 0;
     for (int i = 1; i < measurements.size(); i++)
     {
-      if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period / 2.0)
+      LOG(ERROR) << std::fabs((measurements[i].t_ - measurements[i-1].t_)) - imu_period;
+      if (std::fabs((measurements[i].t_ - measurements[i-1].t_) - imu_period) > imu_period)
       {
         delete_end_time = measurements[i].t_;
         num_to_delete++;
