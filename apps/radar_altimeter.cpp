@@ -28,8 +28,8 @@ public:
     min_range_(0.0),
     max_range_(std::numeric_limits<double>::max()),
     initialized_(false),
-    Q_(0.2),
-    R_(0.025),
+    Q_(0.1),
+    R_(0.05),
     P_(0.05)
   {
     InitializeNode();
