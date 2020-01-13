@@ -159,6 +159,8 @@ public:
   {
     nav_msgs::Odometry out_altitude_msg;
     out_altitude_msg.header = msg->header;
+    out_altitude_msg.header.frame_id = "radar_odom_frame";
+    out_altitude_msg.child_frame_id = "base_link";
     out_altitude_msg.pose.pose.position.z = altitude_;
     out_altitude_msg.pose.covariance[14] = P_;
     pub_.publish(out_altitude_msg);
