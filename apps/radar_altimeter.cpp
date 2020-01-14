@@ -28,8 +28,8 @@ public:
     min_range_(0.0),
     max_range_(std::numeric_limits<double>::max()),
     initialized_(false),
-    Q_(0.1),
-    R_(0.05),
+    Q_(0.05),
+    R_(0.1),
     P_(0.05)
   {
     InitializeNode();
@@ -39,9 +39,13 @@ public:
   void InitializeNode()
   {
     std::string in_topic = "/mmWaveDataHdl/RScan";
+    frame_id_ = "map";
+    child_frame_id_ = "base_link";
     nh_.param("radar_topic", in_topic, in_topic);
     nh_.param("min_range", min_range_, min_range_);
     nh_.param("max_range", max_range_, max_range_);
+    nh_.param("frame_id", frame_id_, frame_id_);
+    nh_.param("child_frame_id", child_frame_id_, child_frame_id_);
 
     std::string ns = ros::this_node::getNamespace();
 
@@ -159,8 +163,8 @@ public:
   {
     nav_msgs::Odometry out_altitude_msg;
     out_altitude_msg.header = msg->header;
-    out_altitude_msg.header.frame_id = "radar_odom_frame";
-    out_altitude_msg.child_frame_id = "base_link";
+    out_altitude_msg.header.frame_id = frame_id_;
+    out_altitude_msg.child_frame_id = child_frame_id_;
     out_altitude_msg.pose.pose.position.z = altitude_;
     out_altitude_msg.pose.covariance[14] = P_;
     pub_.publish(out_altitude_msg);
@@ -175,6 +179,8 @@ protected:
   double R_; // measurement noise
   double P_; // range variance
   double last_timestamp_; // timestamp of previous measurement
+  std::string frame_id_;
+  std::string child_frame_id_;
 
   bool initialized_;
 
