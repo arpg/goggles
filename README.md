@@ -77,6 +77,12 @@ Published Topics:<br/>
  - ```mmWaveDataHdl/altitude```(sensor_msgs/Range<br/>
 Output altitude measurement.
 
+Parameters:<br/>
+ - min_range - minimum altitude in meters
+ - max_range - maximum altitude in meters
+ - frame_id - defaults to ```map```
+ - child_frame_id - defaults to ```base_link```
+
 Run with the following command:<br/>
 ```rosrun goggles radar_altimeter _radar_topic:=<radar pointcloud topic> _min_range:=<min range> _max_range:=<max range>```
 
