@@ -31,7 +31,7 @@ public:
 
   }
 private:
-
+  std::shared_ptr<Map> map_ptr_;
 };
 
 int main(int argc, char** argv)
