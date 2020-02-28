@@ -74,6 +74,8 @@ set( HEADERS
   ${INC_DIR}/ImuIntegrator.h
   ${INC_DIR}/MarginalizationError.h
 	${INC_DIR}/QuaternionParameterization.h
+  ${INC_DIR}/PoseParameterization.h
+  ${INC_DIR}/HomogeneousPointParameterization.h
 	${INC_DIR}/DataTypes.h
   ${INC_DIR}/BodyDopplerSacModel.h
   ${INC_DIR}/ParameterBlock.h
@@ -82,8 +84,11 @@ set( HEADERS
   ${INC_DIR}/BiasParameterBlock.h
   ${INC_DIR}/DeltaParameterBlock.h
   ${INC_DIR}/OrientationParameterBlock.h
+  ${INC_DIR}/PoseParameterBlock.h
+  ${INC_DIR}/HomogeneousPointParameterBlock.h
   ${INC_DIR}/Map.h
   ${INC_DIR}/IdProvider.h
+  ${INC_DIR}/Transformation.h
 )
 
 set( SOURCES 
@@ -99,10 +104,14 @@ set( SOURCES
   ${SRC_DIR}/ImuIntegrator.cpp
   ${SRC_DIR}/MarginalizationError.cpp
   ${SRC_DIR}/QuaternionParameterization.cpp
+  ${SRC_DIR}/PoseParameterization.cpp
+  ${SRC_DIR}/HomogeneousPointParameterization.cpp
   ${SRC_DIR}/VelocityParameterBlock.cpp
   ${SRC_DIR}/BiasParameterBlock.cpp
   ${SRC_DIR}/DeltaParameterBlock.cpp
   ${SRC_DIR}/OrientationParameterBlock.cpp
+  ${SRC_DIR}/PoseParameterBlock.cpp
+  ${SRC_DIR}/HomogeneousPointParameterBlock.cpp
   ${SRC_DIR}/Map.cpp
   ${SRC_DIR}/IdProvider.cpp
   )
@@ -117,6 +126,10 @@ set( RAD_IN_VEL_SRCS
 
 set( RAD_ALT_SRCS
   ${APP_DIR}/radar_altimeter.cpp
+  )
+
+set( RAD_ODOM_TEST_SRCS
+  ${APP_DIR}/radar_odom_test.cpp
   )
 
 set( HUD_SRCS
@@ -177,6 +190,9 @@ add_executable(radar_altimeter ${RAD_ALT_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_altimeter
    ${LINK_LIBS}
 )
+
+add_executable(radar_odom_test ${RAD_ODOM_TEST_SRCS} ${SOURCES} ${HEADERS})
+target_link_libraries(radar_odom_test ${LINK_LIBS})
 
 if (OpenCV_FOUND)
   add_executable(head_up_display ${HUD_SRCS} ${SOURCES} ${HEADERS})
