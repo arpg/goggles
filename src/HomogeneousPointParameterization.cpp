@@ -1,5 +1,8 @@
 #include<HomogeneousPointParameterization.h>
 
+HomogeneousPointParameterization::HomogeneousPointParameterization(){}
+HomogeneousPointParameterization::~HomogeneousPointParameterization(){}
+
 bool HomogeneousPointParameterization::Plus(const double* x, 
                                             const double* delta,
                                             double* x_plus_delta) const
