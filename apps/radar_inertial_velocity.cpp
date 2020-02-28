@@ -8,7 +8,6 @@
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/impl/transforms.hpp>
 #include <pcl/point_types.h>
-#include <boost/foreach.hpp>
 #include <pcl_conversions/pcl_conversions.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -33,7 +32,6 @@
 #include "yaml-cpp/yaml.h"
 #include <pcl/sample_consensus/impl/mlesac.hpp>
 #include <boost/foreach.hpp>
-#include <pcl_conversions/pcl_conversions.h>
 #include <BodyDopplerSacModel.h>
 #include <chrono>
 
