@@ -71,14 +71,14 @@ bool Map::AddParameterBlock(std::shared_ptr<ParameterBlock> parameter_block,
     }
     case Parameterization::HomogeneousPoint:
     {
-      problem_->AddParametBlock(parameter_block->GetParameters(),
+      problem_->AddParameterBlock(parameter_block->GetParameters(),
                                 parameter_block->GetDimension(),
                                 &homogeneous_point_parameterization_);
       break;
     }
     case Parameterization::Pose:
     {
-      problem_->AddParametBlock(parameter_block->GetParameters(),
+      problem_->AddParameterBlock(parameter_block->GetParameters(),
                                 parameter_block->GetDimension(),
                                 &pose_parameterization_);
       break;
