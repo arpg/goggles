@@ -27,6 +27,8 @@
 #include <ceres/ceres.h>
 #include <ParameterBlock.h>
 #include <QuaternionParameterization.h>
+#include <HomogeneousPointParameterization.h>
+#include <PoseParameterization.h>
 #include <unordered_map>
 #include <ErrorInterface.h>
 #include <DataTypes.h>
@@ -69,6 +71,8 @@ public:
   enum Parameterization
   {
     Orientation,
+    Pose,
+    HomogeneousPoint,
     Trivial
   };
 
@@ -301,6 +305,8 @@ protected:
 
   /// \brief Store parameterization locally
   QuaternionParameterization quaternion_parameterization_;
+  HomogeneousPointParameterization homogeneous_point_parameterization_;
+  PoseParameterization pose_parameterization_;
 };
 
 #endif
