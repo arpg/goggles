@@ -5,6 +5,9 @@
 #include <Eigen/Core>
 #include "DataTypes.h"
 #include <ErrorInterface.h>
+#include <Transformation.h>
+#include <HomogeneousPointParameterization.h>
+#include <PoseParameterization.h>
 #include <ceres/ceres.h>
 
 class PointClusterCostFunction : public ceres::CostFunction, public ErrorInterface
