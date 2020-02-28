@@ -46,8 +46,8 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
 
   // transform target from sensor frame to global frame
   Eigen::Vector4d target_s = Eigen::Vector4d(target_[0],
-                                             target[1],
-                                             target[2],
+                                             target_[1],
+                                             target_[2],
                                              1.0);
   Eigen::Vector4d target_w = T_WS_mat * target_s;
 
@@ -72,7 +72,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
       Eigen::Matrix<double,6,7,Eigen::RowMajor> J_lift;
       p.ComputeLiftJacobian(parameters[0], J_lift.data());
 
-      Eigen::Map<Eigen::Matrix<double,3,7,Eigen::RowMajor> 
+      Eigen::Map<Eigen::Matrix<double,3,7,Eigen::RowMajor>> 
         J0_mapped(jacobians[0]); 
       J0_mapped = J0_minimal * J_lift;
 
