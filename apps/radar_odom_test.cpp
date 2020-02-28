@@ -19,6 +19,7 @@
 #include <PoseParameterization.h>
 #include <HomogeneousPointParameterBlock.h>
 #include <HomogeneousPointParameterization.h>
+#include <PointClusterCostFunction.h>
 #include <IdProvider.h>
 #include "DataTypes.h"
 
