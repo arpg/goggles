@@ -177,6 +177,8 @@ target_link_libraries(testGlobalDoppler ${LINK_LIBS})
 #target_link_libraries(testBodyDopplerSacProblem ${LINK_LIBS})
 #catkin_add_gtest(testGlobalVelocityMeas test/testGlobalVelocityMeas.cpp ${SOURCES} ${HEADERS})
 #target_link_libraries(testGlobalVelocityMeas ${LINK_LIBS})
+catkin_add_gtest(testPointCluster test/testPointCluster.cpp ${SOURCES} ${HEADERS})
+target_link_libraries(testPointCluster ${LINK_LIBS})
 
 add_executable(radar_velocity ${RAD_VEL_SRCS} ${SOURCES} ${HEADERS})
 target_link_libraries(radar_velocity

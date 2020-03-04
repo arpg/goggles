@@ -18,10 +18,10 @@ TEST(googleTests, testPointCluster)
   // generate fake pose
   Eigen::Quaterniond q_ws = Eigen::Quaterniond::UnitRandom();
   Eigen::Vector3d t_w(0.0,0.0,0.0);
-  Transform T_WS(t_w, q_ws);
+  Transformation T_WS(t_w, q_ws);
 
   // generate landmark
-  Eigen::Vector4d h_pw(5.0,1.0,-0.5);
+  Eigen::Vector4d h_pw(5.0,1.0,-0.5,1.0);
 
   // get landmark in sensor frame
   Eigen::Vector4d h_ps = T_WS.inverse().T() * h_pw;
@@ -51,7 +51,7 @@ TEST(googleTests, testPointCluster)
   {
     std::shared_ptr<ceres::CostFunction> point_cost_func =
       std::make_shared<PointClusterCostFunction>(targets[i], weight);
-    ceres::ResidualBlock id = map_ptr->AddResidualBlock(point_cost_func,
+    ceres::ResidualBlockId id = map_ptr->AddResidualBlock(point_cost_func,
                                                         NULL,
                                                         T_WS_est,
                                                         h_pw_est);
@@ -86,9 +86,22 @@ TEST(googleTests, testPointCluster)
 
   double dx = 1.0e-6;
   Eigen::Matrix<double,3,6> J0_min_numDiff;
-  for (size_t i = 0; i < 3; i++)
+  for (size_t i = 0; i < 6; i++)
   {
-    // need to fill this in
+    Eigen::Matrix<double,6,1> dp_0;
+    Eigen::Vector3d residuals_p;
+    Eigen::Vector3d residuals_m;
+    dp_0.setZero();
+    dp_0[i] = dx;
+    Transformation T_WS_temp = T_WS_est->GetEstimate();
+    T_WS_est->Plus(parameters[0],dp_0.data(),parameters[0]);
+    p_cost_func->Evaluate(parameters,residuals_p.data(),NULL);
+    T_WS_est->SetEstimate(T_WS_temp);
+    dp_0[i] = -dx;
+    T_WS_est->Plus(parameters[0],dp_0.data(),parameters[0]);
+    p_cost_func->Evaluate(parameters,residuals_m.data(),NULL);
+    T_WS_est->SetEstimate(T_WS_temp);
+    J0_min_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
   Eigen::Matrix<double,6,7,Eigen::RowMajor> J0_lift;
   T_WS_est->LiftJacobian(parameters[0], J0_lift.data());
@@ -102,7 +115,20 @@ TEST(googleTests, testPointCluster)
   Eigen::Matrix<double,3,3> J1_min_numDiff;
   for (size_t i = 0; i < 3; i++)
   {
-    // need to fill this in
+    Eigen::Vector3d dp_1;
+    Eigen::Vector3d residuals_p;
+    Eigen::Vector3d residuals_m;
+    dp_1.setZero();
+    dp_1[i] = dx;
+    Eigen::Vector4d h_pw_temp = h_pw_est->GetEstimate();
+    h_pw_est->Plus(parameters[1],dp_1.data(),parameters[1]);
+    p_cost_func->Evaluate(parameters,residuals_p.data(),NULL);
+    h_pw_est->SetEstimate(h_pw_temp);
+    dp_1[i] = -dx;
+    h_pw_est->Plus(parameters[1],dp_1.data(),parameters[1]);
+    p_cost_func->Evaluate(parameters,residuals_m.data(),NULL);
+    h_pw_est->SetEstimate(h_pw_temp);
+    J1_min_numDiff.col(i) = (residuals_p - residuals_m) / (2.0 * dx);
   }
   if ((J1_min - J1_min_numDiff ).norm() > jacobianTolerance)
   {
