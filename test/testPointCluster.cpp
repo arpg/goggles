@@ -151,7 +151,30 @@ TEST(googleTests, testPointCluster)
   map_ptr->Solve();
   LOG(ERROR) << map_ptr->summary.FullReport();
 
-  // still need to evaluate error in pose and homogeneous point
+  // check pose error
+  Transformation T_WS_err = T_WS.inverse() * T_WS_est->GetEstimate();
+
+  double err_lim = 1.0e-2;
+
+  ASSERT_TRUE(T_WS_err.r().norm() < err_lim) << "position error of "
+    << T_WS_err.r().norm() << " is greater than error tolerance of " << err_lim << "\n"
+    << "  estimated: " << T_WS_est->GetEstimate().r().transpose() << "\n"
+    << "groundtruth: " << T_WS.r().transpose();
+
+  ASSERT_TRUE(T_WS_err.q().coeffs().head(3).norm() < err_lim) << "orientation error of "
+    << T_WS_err.q().coeffs().head(3).norm() 
+    << " is greater than the error tolerance of " << err_lim << "\n"
+    << "  estimated: " << T_WS_est->GetEstimate().q().coeffs().transpose() << "\n"
+    << "groundtruth: " << T_WS.q().coeffs().transpose();
+
+  for (size_t i = 0; i < num_lmrks; i++)
+  {
+    Eigen::Vector3d h_pw_err = h_pw_est[i]->GetEstimate().head(3) - h_pw[i].head(3);
+    ASSERT_TRUE(h_pw_err.norm() < err_lim) << "landmark " << i << " error of " 
+      << h_pw_err.norm() << " is greater than the error tolerance of " << err_lim << "\n"
+      << "  estimated: " << h_pw_est[i]->GetEstimate().head(3).transpose() << "\n"
+      << "groundtruth: " << h_pw[i].head(3).transpose();
+  }
 }
 
 int main(int argc, char **argv)
