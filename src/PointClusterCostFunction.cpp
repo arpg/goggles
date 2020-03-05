@@ -66,7 +66,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
 
       PoseParameterization p;
       J0_minimal.topLeftCorner(3,3) = Eigen::Matrix3d::Identity();
-      Eigen::Matrix3d p_cross;
+      Eigen::Matrix3d tw_cross;
       tw_cross << 0,          -target_w[2], target_w[1],
                   target_w[2], 0,          -target_w[0],
                  -target_w[1], target_w[0], 0;
