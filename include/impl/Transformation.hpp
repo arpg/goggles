@@ -80,6 +80,15 @@ __inline__ Eigen::Matrix3d rightJacobian(const Eigen::Vector3d &PhiVec)
   return retMat;
 }
 
+inline Transformation::Transformation()
+  : r_(&coefficients_[0]),
+    q_(&coefficients_[3]),
+    C_(Eigen::Matrix3d::Identity())
+{
+  r_ = Eigen::Vector3d(0.0,0.0,0.0);
+  q_ = Eigen::Quaterniond(1.0,0.0,0.0,0.0);
+}
+
 inline Transformation::Transformation(const Transformation &other)
   : coefficients_(other.coefficients_),
     r_(&coefficients_[0]),
