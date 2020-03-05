@@ -22,6 +22,7 @@
 #include <PointClusterCostFunction.h>
 #include <Transformation.h>
 #include <IdProvider.h>
+#include <condition_variable>
 #include "DataTypes.h"
 
 class ClusterOdometryTester
@@ -80,12 +81,18 @@ public:
 
       // get last optimized pose, if available
       Transformation T_WS_prev;
+      double timestamp_prev = 0.0;
       if (!poses_.empty())
+      {
         T_WS_prev = poses_.front()->GetEstimate();
+        timestamp_prev = poses_.front()->GetTimestamp();
+      }
 
-      // get relative transform between current and last optimized pose
+      // get relative transform between current and last optimized pose from odometry
+      Transformation T_01;
+      GetRelativePose(timestamp, timestamp_prev, T_01);
 
-      // get current pose
+      // get current pose guess
 
       // transform pointcloud to world frame
 
@@ -121,6 +128,46 @@ private:
   std::deque<std::shared_ptr<PoseParameterBlock>> poses_;
   std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::deque<std::pair<double,Transformation>> odom_buffer;
+  std::mutex odom_mtx_;
+  std::condition_variable cv_;
+
+  void GetRelativePose(double t1, double t0, Transformation &T_rel)
+  {
+    Transformation T_WS_1;
+    Transformation T_WS_0;
+    GetOdom(t1, T_WS_1);
+    GetOdom(t0, T_WS_0);
+    T_rel = T_WS_1 * T_WS_0.inverse();
+  }
+
+  bool GetOdom(double t, Transformation &T)
+  {
+    // wait for up-to-date odom data
+    std::unique_lock<std::mutex> lk(odom_mtx_);
+    if (!cv_.wait_for(lk,
+                      std::chrono::milliseconds(1000),
+                      []{return odom_buffer.front().first > t;}))
+    {
+      LOG(ERROR) << "waiting for odom measurements has failed";
+      return false;
+    }
+
+    Transformation T_before;
+    Transformation T_after;
+    size_t odom_idx = 0;
+    while (odom_idx < odom_buffer.size() && odom_buffer[odom_idx].first > t)
+      odom_idx++;
+
+    double t_before = odom_buffer[odom_idx].first;
+    double t_after = odom_buffer[odom_idx-1].first;
+
+    double r = (t - t_before) / (t_after - t_before);
+
+    // TODO: finish interpolation!!!
+
+    return true;
+  }
+
 };
 
 int main(int argc, char** argv)
