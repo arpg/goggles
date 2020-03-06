@@ -162,7 +162,7 @@ public:
           map_ptr_->AddParameterBlock(scatterers_.back());
           matches[i] = scatterers_.size() - 1;
         }
-          
+        
         double weight = 1.0;
         std::shared_ptr<ceres::CostFunction> cost_func = 
           std::make_shared<PointClusterCostFunction>(target,weight);
@@ -175,6 +175,7 @@ public:
 
       // solve problem
       map_ptr_->Solve();
+      //LOG(ERROR) << map_ptr_->summary.FullReport();
       PublishOdom();
       PublishScatterers();
 
@@ -280,8 +281,8 @@ private:
 
     // convert to ros message
     sensor_msgs::PointCloud2 out_cloud;
-    out_cloud.header.stamp = ros::Time(poses_.front()->GetTimestamp());
     pcl_conversions::fromPCL(scatterer_cloud2, out_cloud);
+    out_cloud.header.stamp = ros::Time(poses_.front()->GetTimestamp());
     out_cloud.header.frame_id = "map";
 
     scatterer_publisher_.publish(out_cloud);
