@@ -37,16 +37,19 @@ public:
     nh_.getParam("pcl_topic", pcl_topic);
     nh_.getParam("odom_topic", odom_topic);
 
+    LOG(ERROR) << "odometry topic: " << odom_topic;
+    LOG(ERROR) << "pointcloud topic: " << pcl_topic;
+
     odom_publisher_ = nh_.advertise<nav_msgs::Odometry>("/mmWaveDataHdl/odom", 1);
-    lmrk_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
-      "/mmWaveDataHdl/odom/landmarks",1);
+    scatterer_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
+      "/mmWaveDataHdl/odom/scatterers",1);
 
     odom_sub_ = nh_.subscribe(odom_topic,
-                              1,
+                              0,
                               &ClusterOdometryTester::odomCallback,
                               this);
     pcl_sub_ = nh_.subscribe(pcl_topic,
-                             1,
+                             0,
                              &ClusterOdometryTester::pclCallback,
                              this);
 
@@ -124,8 +127,8 @@ public:
         for (size_t j = 0; j < scatterers_.size(); j++)
         {
           Eigen::Vector3d point(cloud_w->at(i).x, cloud_w->at(i).y, cloud_w->at(i).z);
-          Eigen::Vector3d scatterer = scatterers_[i]->GetEstimate().head(3) 
-            / scatterers_[i]->GetEstimate()[3];
+          Eigen::Vector3d scatterer = scatterers_[j]->GetEstimate().head(3) 
+            / scatterers_[j]->GetEstimate()[3];
           double dist = (point - scatterer).norm();
           if (dist < min_dist)
           {
@@ -140,34 +143,13 @@ public:
       }
 
       // create cost functions for each associated point and add to map
-      std::vector<ceres::ResidualBlockId> residuals;
-      residual_blks_.push_front(residuals);
       for (size_t i = 0; i < matches.size(); i++)
       {
-        if (matches[i] >= 0)
-        {
-          Eigen::Vector3d target(cloud_s->at(i).x,
-                                 cloud_s->at(i).y,
-                                 cloud_s->at(i).z);
-          double weight = 1.0;
-          std::shared_ptr<ceres::CostFunction> cost_func = 
-            std::make_shared<PointClusterCostFunction>(target,weight);
-          ceres::ResidualBlockId res_id = 
-            map_ptr_->AddResidualBlock(cost_func,
-                                       point_loss_,
-                                       poses_.front(),
-                                       scatterers_[matches[i]]);
-          residual_blks_.front().push_back(res_id);
-        }
-      }
+        Eigen::Vector3d target(cloud_s->at(i).x,
+                               cloud_s->at(i).y,
+                               cloud_s->at(i).z);
 
-      // solve problem
-      map_ptr_->Solve();
-      PublishOdom();
-
-      // add unassociated points as new scatterers
-      for (size_t i = 0; i < matches.size(); i++)
-      {
+        // add target as new scatterer
         if (matches[i] < 0)
         {
           id = IdProvider::instance().NewId();
@@ -178,16 +160,33 @@ public:
           scatterers_.push_back(
             std::make_shared<HomogeneousPointParameterBlock>(scatterer,id));
           map_ptr_->AddParameterBlock(scatterers_.back());
+          matches[i] = scatterers_.size() - 1;
         }
+          
+        double weight = 1.0;
+        std::shared_ptr<ceres::CostFunction> cost_func = 
+          std::make_shared<PointClusterCostFunction>(target,weight);
+        map_ptr_->AddResidualBlock(cost_func,
+                                   point_loss_,
+                                   poses_.front(),
+                                   scatterers_[matches[i]]);
+        scatterers_[matches[i]]->AddObservation(timestamp);
       }
+
+      // solve problem
+      map_ptr_->Solve();
+      PublishOdom();
+      PublishScatterers();
 
       // remove old states and residuals
       if (poses_.size() > window_size_)
       {
         // remove residuals
-        for (size_t i = 0; i < residual_blks_.back().size(); i++)
-          map_ptr_->RemoveResidualBlock(residual_blks_.back()[i]);
-        residual_blks_.pop_back();
+        Map::ResidualBlockCollection res_blks = 
+          map_ptr_->GetResidualBlocks(poses_.back()->GetId());
+
+        for (size_t i = 0; i < res_blks.size(); i++)
+          map_ptr_->RemoveResidualBlock(res_blks[i].residual_block_id);
 
         // remove pose
         map_ptr_->RemoveParameterBlock(poses_.back());
@@ -195,6 +194,24 @@ public:
       }
 
       // remove old scatterers with only one observation
+      for (size_t i = 0; i < scatterers_.size(); i++)
+      {
+        std::vector<double> observations = scatterers_[i]->GetObservations();
+        double time_since_last_obs = timestamp - observations.back();
+
+        Map::ResidualBlockCollection res_blks = 
+          map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
+
+        if ((time_since_last_obs > 0.5 && res_blks.size() == 1) || 
+          res_blks.size() == 0)
+        {
+          for (size_t j = 0; j < res_blks.size(); j++) 
+            map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
+          map_ptr_->RemoveParameterBlock(scatterers_[i]);
+          scatterers_.erase(scatterers_.begin() + i);
+          i--;
+        }
+      }
     }
   }
 
@@ -202,7 +219,7 @@ private:
   // ros-related objects
   ros::NodeHandle nh_;
   ros::Publisher odom_publisher_;
-  ros::Publisher lmrk_publisher_;
+  ros::Publisher scatterer_publisher_;
   ros::Subscriber odom_sub_;
   ros::Subscriber pcl_sub_;
 
@@ -214,14 +231,58 @@ private:
   // state and residual containers
   std::vector<std::shared_ptr<HomogeneousPointParameterBlock>> scatterers_;
   std::deque<std::shared_ptr<PoseParameterBlock>> poses_;
-  std::deque<std::vector<ceres::ResidualBlockId>> residual_blks_;
   std::deque<std::pair<double,Transformation>> odom_buffer_;
   std::mutex odom_mtx_;
   std::condition_variable cv_;
 
   void PublishOdom()
   {
-    // TODO
+    nav_msgs::Odometry odom_out;
+    odom_out.header.stamp = ros::Time(poses_.front()->GetTimestamp());
+    Eigen::Vector3d position = poses_.front()->GetEstimate().r();
+    Eigen::Quaterniond orientation = poses_.front()->GetEstimate().q();
+    odom_out.pose.pose.position.x = position.x();
+    odom_out.pose.pose.position.y = position.y();
+    odom_out.pose.pose.position.z = position.z();
+    odom_out.pose.pose.orientation.w = orientation.w();
+    odom_out.pose.pose.orientation.x = orientation.x();
+    odom_out.pose.pose.orientation.y = orientation.y();
+    odom_out.pose.pose.orientation.z = orientation.z();
+    odom_publisher_.publish(odom_out);
+  }
+
+  void PublishScatterers()
+  {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr scatterer_cloud(
+      new pcl::PointCloud<pcl::PointXYZ>);
+
+    for (size_t i = 0; i < scatterers_.size(); i++)
+    {
+      // get residuals connected with current scatterer
+      Map::ResidualBlockCollection res_blks = 
+        map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
+
+      // only display if current scatterer has more than one connected residual
+      // (this indicates it is observed more than once)
+      if (res_blks.size() > 1)
+      {
+        Eigen::Vector4d h_pw = scatterers_[i]->GetEstimate();
+        Eigen::Vector3d point = h_pw.head(3) / h_pw[3];
+        scatterer_cloud->push_back(pcl::PointXYZ(point.x(),point.y(),point.z()));
+      }
+    }
+
+    // convert to pcl2
+    pcl::PCLPointCloud2 scatterer_cloud2;
+    pcl::toPCLPointCloud2(*scatterer_cloud, scatterer_cloud2);
+
+    // convert to ros message
+    sensor_msgs::PointCloud2 out_cloud;
+    out_cloud.header.stamp = ros::Time(poses_.front()->GetTimestamp());
+    pcl_conversions::fromPCL(scatterer_cloud2, out_cloud);
+    out_cloud.header.frame_id = "map";
+
+    scatterer_publisher_.publish(out_cloud);
   }
 
   void GetRelativePose(double t1, double t0, Transformation &T_rel)
@@ -229,11 +290,16 @@ private:
     Transformation T_WS_1;
     Transformation T_WS_0;
     GetOdom(t1, T_WS_1);
-    GetOdom(t0, T_WS_0);
+    int idx0 = GetOdom(t0, T_WS_0);
     T_rel = T_WS_1 * T_WS_0.inverse();
+
+    // erase old odom messages
+    int num_to_save = 10;
+    if (odom_buffer_.size()-idx0 > num_to_save)
+      odom_buffer_.erase(odom_buffer_.begin()+idx0+num_to_save, odom_buffer_.end());
   }
 
-  bool GetOdom(double t, Transformation &T)
+  int GetOdom(double t, Transformation &T)
   {
     // wait for up-to-date odom data
     std::unique_lock<std::mutex> lk(odom_mtx_);
@@ -242,7 +308,7 @@ private:
                       [&, this]{return odom_buffer_.front().first > t;}))
     {
       LOG(ERROR) << "waiting for odom measurements has failed";
-      return false;
+      return -1;
     }
 
     size_t odom_idx = 0;
@@ -266,7 +332,7 @@ private:
 
     T = Transformation(r,q);
 
-    return true;
+    return odom_idx;
   }
 
 };
