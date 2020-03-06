@@ -239,6 +239,8 @@ private:
   {
     nav_msgs::Odometry odom_out;
     odom_out.header.stamp = ros::Time(poses_.front()->GetTimestamp());
+    odom_out.header.frame_id = "map";
+    odom_out.child_frame_id = "base_link";
     Eigen::Vector3d position = poses_.front()->GetEstimate().r();
     Eigen::Quaterniond orientation = poses_.front()->GetEstimate().q();
     odom_out.pose.pose.position.x = position.x();
