@@ -160,17 +160,21 @@ public:
           scatterers_.push_back(
             std::make_shared<HomogeneousPointParameterBlock>(scatterer,id));
           map_ptr_->AddParameterBlock(scatterers_.back());
-          matches[i] = scatterers_.size() - 1;
+          scatterers_.back()->AddObservation(timestamp);
         }
-        
-        double weight = 1.0;
-        std::shared_ptr<ceres::CostFunction> cost_func = 
-          std::make_shared<PointClusterCostFunction>(target,weight);
-        map_ptr_->AddResidualBlock(cost_func,
-                                   point_loss_,
-                                   poses_.front(),
-                                   scatterers_[matches[i]]);
-        scatterers_[matches[i]]->AddObservation(timestamp);
+        else
+        {
+          double weight = 1.0;
+          std::shared_ptr<ceres::CostFunction> cost_func = 
+            std::make_shared<PointClusterCostFunction>(target,weight);
+          map_ptr_->AddResidualBlock(cost_func,
+                                     point_loss_,
+                                     poses_.front(),
+                                     scatterers_[matches[i]]);
+          scatterers_[matches[i]]->AddObservation(timestamp);
+          if (!scatterers_[matches[i]]->IsInitialized())
+            scatterers_[matches[i]]->SetInitialized(true);
+        }
       }
 
       // solve problem
@@ -203,8 +207,7 @@ public:
         Map::ResidualBlockCollection res_blks = 
           map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
 
-        if ((time_since_last_obs > 0.5 && res_blks.size() == 1) || 
-          res_blks.size() == 0)
+        if ((time_since_last_obs > 0.5 && res_blks.size() == 0))
         {
           for (size_t j = 0; j < res_blks.size(); j++) 
             map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
