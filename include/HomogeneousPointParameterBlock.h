@@ -29,6 +29,10 @@ public:
 
   bool IsInitialized() const {return initialized_;}
 
+  bool AddObservation(double t);
+
+  std::vector<double> GetObservations() {return observation_times_;}
+
   /** \brief Generalization of the plus operation
     * @param[in] x0 The variable
     * @param[in] delta The perturbation
@@ -77,6 +81,7 @@ public:
 
 private:
   bool initialized_;
+  std::vector<double> observation_times_;
 };
 
 #endif
