@@ -61,6 +61,7 @@ public:
 
   void odomCallback(const nav_msgs::OdometryConstPtr& msg)
   {
+    std::lock_guard<std::mutex> lck(odom_mtx_);
     double timestamp = msg->header.stamp.toSec();
     Eigen::Quaterniond orientation(msg->pose.pose.orientation.w,
                                    msg->pose.pose.orientation.x,
@@ -71,151 +72,149 @@ public:
                              msg->pose.pose.position.z);
     Transformation T(position, orientation);
     odom_buffer_.push_front(std::make_pair(timestamp,T));
+    cv_.notify_one();
   }
 
   void pclCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-    if (!odom_buffer_.empty())
+    // extract pointcloud from msg
+    double timestamp = msg->header.stamp.toSec();
+    pcl::PointCloud<RadarPoint>::Ptr cloud_s(new pcl::PointCloud<RadarPoint>);
+    pcl::fromROSMsg(*msg, *cloud_s);
+
+    // get current pose guess
+    Transformation T_WS_guess;
+    if (!poses_.empty())
     {
-      // extract pointcloud from msg
-      double timestamp = msg->header.stamp.toSec();
-      pcl::PointCloud<RadarPoint>::Ptr cloud_s(new pcl::PointCloud<RadarPoint>);
-      pcl::fromROSMsg(*msg, *cloud_s);
+      // get last optimized pose
+      Transformation T_WS_prev = poses_.front()->GetEstimate();
+      double timestamp_prev = poses_.front()->GetTimestamp();
+
+      // get relative transform between current and last optimized pose from odometry
+      Transformation T_01;
+      GetRelativePose(timestamp, timestamp_prev, T_01);
 
       // get current pose guess
-      Transformation T_WS_guess;
-      if (!poses_.empty())
+      T_WS_guess = T_WS_prev * T_01;
+      //LOG(ERROR) << "T_WS_guess:\n" << T_WS_guess.T() << "\n\n"; 
+    }
+    else
+    {
+      GetOdom(timestamp, T_WS_guess);
+    }
+
+    // add pose to map
+    uint64_t id = IdProvider::instance().NewId();
+    poses_.push_front(std::make_shared<PoseParameterBlock>(T_WS_guess, id, timestamp));
+    map_ptr_->AddParameterBlock(poses_.front(),Map::Parameterization::Pose);
+
+    // transform pointcloud to world frame
+    pcl::PointCloud<RadarPoint>::Ptr cloud_w(new pcl::PointCloud<RadarPoint>);
+    Eigen::Quaterniond q_ws = T_WS_guess.q();
+    Eigen::Vector3d r_ws = T_WS_guess.r();
+    pcl::transformPointCloud(*cloud_s,
+                             *cloud_w, 
+                             r_ws.cast<float>(), 
+                             q_ws.cast<float>(), 
+                             true);
+
+    // associate points in current cloud to nearest point scatterers
+    double dist_threshold = 0.10;
+    std::vector<int> matches;
+    for (size_t i = 0; i < cloud_w->size(); i++)
+    {
+      double min_dist = 1.0;
+      size_t scatterer_idx = scatterers_.size();
+      for (size_t j = 0; j < scatterers_.size(); j++)
       {
-        // get last optimized pose
-        Transformation T_WS_prev = poses_.front()->GetEstimate();
-        double timestamp_prev = poses_.front()->GetTimestamp();
+        Eigen::Vector3d point(cloud_w->at(i).x, cloud_w->at(i).y, cloud_w->at(i).z);
+        Eigen::Vector3d scatterer = scatterers_[j]->GetEstimate().head(3) 
+          / scatterers_[j]->GetEstimate()[3];
+        double dist = (point - scatterer).norm();
+        if (dist < min_dist)
+        {
+          min_dist = dist;
+          scatterer_idx = j;
+        }
+      }
+      if (min_dist < dist_threshold)
+        matches.push_back(scatterer_idx);
+      else
+        matches.push_back(-1);
+    }
 
-        // get relative transform between current and last optimized pose from odometry
-        Transformation T_01;
-        GetRelativePose(timestamp, timestamp_prev, T_01);
+    // create cost functions for each associated point and add to map
+    for (size_t i = 0; i < matches.size(); i++)
+    {
+      Eigen::Vector3d target(cloud_s->at(i).x,
+                             cloud_s->at(i).y,
+                             cloud_s->at(i).z);
 
-        // get current pose guess
-        T_WS_guess = T_WS_prev * T_01;
-        //LOG(ERROR) << "T_WS_guess:\n" << T_WS_guess.T() << "\n\n"; 
+      // add target as new scatterer
+      if (matches[i] < 0)
+      {
+        id = IdProvider::instance().NewId();
+        Eigen::Vector4d scatterer(cloud_w->at(i).x,
+                                  cloud_w->at(i).y,
+                                  cloud_w->at(i).z,
+                                  1.0);
+        scatterers_.push_back(
+          std::make_shared<HomogeneousPointParameterBlock>(scatterer,id));
+        map_ptr_->AddParameterBlock(scatterers_.back());
+        scatterers_.back()->AddObservation(timestamp);
       }
       else
       {
-        GetOdom(timestamp, T_WS_guess);
+        double weight = 1.0;
+        std::shared_ptr<ceres::CostFunction> cost_func = 
+          std::make_shared<PointClusterCostFunction>(target,weight);
+        map_ptr_->AddResidualBlock(cost_func,
+                                   point_loss_,
+                                   poses_.front(),
+                                   scatterers_[matches[i]]);
+        scatterers_[matches[i]]->AddObservation(timestamp);
+        if (!scatterers_[matches[i]]->IsInitialized())
+          scatterers_[matches[i]]->SetInitialized(true);
       }
+    }
 
-      // add pose to map
-      uint64_t id = IdProvider::instance().NewId();
-      poses_.push_front(std::make_shared<PoseParameterBlock>(T_WS_guess, id, timestamp));
-      map_ptr_->AddParameterBlock(poses_.front(),Map::Parameterization::Pose);
+    // solve problem
+    map_ptr_->Solve();
+    //LOG(ERROR) << map_ptr_->summary.FullReport();
+    PublishOdom();
+    PublishScatterers();
 
-      // transform pointcloud to world frame
-      pcl::PointCloud<RadarPoint>::Ptr cloud_w(new pcl::PointCloud<RadarPoint>);
-      Eigen::Quaterniond q_ws = T_WS_guess.q();
-      Eigen::Vector3d r_ws = T_WS_guess.r();
-      pcl::transformPointCloud(*cloud_s,
-                               *cloud_w, 
-                               r_ws.cast<float>(), 
-                               q_ws.cast<float>(), 
-                               true);
+    // remove old states and residuals
+    if (poses_.size() > window_size_)
+    {
+      // remove residuals
+      Map::ResidualBlockCollection res_blks = 
+        map_ptr_->GetResidualBlocks(poses_.back()->GetId());
 
-      // associate points in current cloud to nearest point scatterers
-      double dist_threshold = 0.2;
-      std::vector<int> matches;
-      for (size_t i = 0; i < cloud_w->size(); i++)
+      for (size_t i = 0; i < res_blks.size(); i++)
+        map_ptr_->RemoveResidualBlock(res_blks[i].residual_block_id);
+
+      // remove pose
+      map_ptr_->RemoveParameterBlock(poses_.back());
+      poses_.pop_back();
+    }
+
+    // remove old scatterers with only one observation
+    for (size_t i = 0; i < scatterers_.size(); i++)
+    {
+      std::vector<double> observations = scatterers_[i]->GetObservations();
+      double time_since_last_obs = timestamp - observations.back();
+
+      Map::ResidualBlockCollection res_blks = 
+        map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
+
+      if ((time_since_last_obs > 0.25 && res_blks.size() < 2))
       {
-        double min_dist = 1.0;
-        size_t scatterer_idx = scatterers_.size();
-        for (size_t j = 0; j < scatterers_.size(); j++)
-        {
-          Eigen::Vector3d point(cloud_w->at(i).x, cloud_w->at(i).y, cloud_w->at(i).z);
-          Eigen::Vector3d scatterer = scatterers_[j]->GetEstimate().head(3) 
-            / scatterers_[j]->GetEstimate()[3];
-          double dist = (point - scatterer).norm();
-          if (dist < min_dist)
-          {
-            min_dist = dist;
-            scatterer_idx = j;
-          }
-        }
-        if (min_dist < dist_threshold)
-          matches.push_back(scatterer_idx);
-        else
-          matches.push_back(-1);
-      }
-
-      // create cost functions for each associated point and add to map
-      for (size_t i = 0; i < matches.size(); i++)
-      {
-        Eigen::Vector3d target(cloud_s->at(i).x,
-                               cloud_s->at(i).y,
-                               cloud_s->at(i).z);
-
-        // add target as new scatterer
-        if (matches[i] < 0)
-        {
-          id = IdProvider::instance().NewId();
-          Eigen::Vector4d scatterer(cloud_w->at(i).x,
-                                    cloud_w->at(i).y,
-                                    cloud_w->at(i).z,
-                                    1.0);
-          scatterers_.push_back(
-            std::make_shared<HomogeneousPointParameterBlock>(scatterer,id));
-          map_ptr_->AddParameterBlock(scatterers_.back());
-          scatterers_.back()->AddObservation(timestamp);
-        }
-        else
-        {
-          double weight = 1.0;
-          std::shared_ptr<ceres::CostFunction> cost_func = 
-            std::make_shared<PointClusterCostFunction>(target,weight);
-          map_ptr_->AddResidualBlock(cost_func,
-                                     point_loss_,
-                                     poses_.front(),
-                                     scatterers_[matches[i]]);
-          scatterers_[matches[i]]->AddObservation(timestamp);
-          if (!scatterers_[matches[i]]->IsInitialized())
-            scatterers_[matches[i]]->SetInitialized(true);
-        }
-      }
-
-      // solve problem
-      //map_ptr_->Solve();
-      //LOG(ERROR) << map_ptr_->summary.FullReport();
-      PublishOdom();
-      PublishScatterers();
-
-      // remove old states and residuals
-      if (poses_.size() > window_size_)
-      {
-        // remove residuals
-        Map::ResidualBlockCollection res_blks = 
-          map_ptr_->GetResidualBlocks(poses_.back()->GetId());
-
-        for (size_t i = 0; i < res_blks.size(); i++)
-          map_ptr_->RemoveResidualBlock(res_blks[i].residual_block_id);
-
-        // remove pose
-        map_ptr_->RemoveParameterBlock(poses_.back());
-        poses_.pop_back();
-      }
-
-      // remove old scatterers with only one observation
-      for (size_t i = 0; i < scatterers_.size(); i++)
-      {
-        std::vector<double> observations = scatterers_[i]->GetObservations();
-        double time_since_last_obs = timestamp - observations.back();
-
-        Map::ResidualBlockCollection res_blks = 
-          map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
-
-        if ((time_since_last_obs > 0.5 && res_blks.size() == 0))
-        {
-          for (size_t j = 0; j < res_blks.size(); j++) 
-            map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
-          map_ptr_->RemoveParameterBlock(scatterers_[i]);
-          scatterers_.erase(scatterers_.begin() + i);
-          i--;
-        }
+        for (size_t j = 0; j < res_blks.size(); j++) 
+          map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
+        map_ptr_->RemoveParameterBlock(scatterers_[i]);
+        scatterers_.erase(scatterers_.begin() + i);
+        i--;
       }
     }
   }
@@ -303,6 +302,7 @@ private:
     //LOG(ERROR) << "T_WS_1:\n" << T_WS_1.T();
 
     // erase old odom messages
+    std::lock_guard<std::mutex> lk(odom_mtx_);
     int num_to_save = 10; // number of messages to save past T_WS_0
     if (odom_buffer_.size()-idx0 > num_to_save)
       odom_buffer_.erase(odom_buffer_.begin()+idx0+num_to_save, odom_buffer_.end());
@@ -313,7 +313,7 @@ private:
     // wait for up-to-date odom data
     std::unique_lock<std::mutex> lk(odom_mtx_);
     if (!cv_.wait_for(lk,
-                      std::chrono::milliseconds(1000),
+                      std::chrono::milliseconds(500),
                       [&, this]{return odom_buffer_.front().first > t;}))
     {
       LOG(ERROR) << "waiting for odom measurements has failed";
@@ -340,6 +340,9 @@ private:
     Eigen::Quaterniond q = q_before.slerp(c, q_after);
 
     T = Transformation(r,q);
+
+    lk.unlock();
+    cv_.notify_one();
 
     return odom_idx;
   }
