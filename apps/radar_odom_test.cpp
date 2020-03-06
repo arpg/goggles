@@ -96,6 +96,7 @@ public:
 
         // get current pose guess
         T_WS_guess = T_WS_prev * T_01;
+        //LOG(ERROR) << "T_WS_guess:\n" << T_WS_guess.T() << "\n\n"; 
       }
       else
       {
@@ -178,7 +179,7 @@ public:
       }
 
       // solve problem
-      map_ptr_->Solve();
+      //map_ptr_->Solve();
       //LOG(ERROR) << map_ptr_->summary.FullReport();
       PublishOdom();
       PublishScatterers();
@@ -297,10 +298,12 @@ private:
     Transformation T_WS_0;
     GetOdom(t1, T_WS_1);
     int idx0 = GetOdom(t0, T_WS_0);
-    T_rel = T_WS_1 * T_WS_0.inverse();
+    T_rel = T_WS_0.inverse() * T_WS_1;
+
+    //LOG(ERROR) << "T_WS_1:\n" << T_WS_1.T();
 
     // erase old odom messages
-    int num_to_save = 10;
+    int num_to_save = 10; // number of messages to save past T_WS_0
     if (odom_buffer_.size()-idx0 > num_to_save)
       odom_buffer_.erase(odom_buffer_.begin()+idx0+num_to_save, odom_buffer_.end());
   }
