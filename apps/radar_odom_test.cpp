@@ -53,9 +53,9 @@ public:
                              &ClusterOdometryTester::pclCallback,
                              this);
 
-    window_size_ = 10;
+    window_size_ = 20;
 
-    point_loss_ = new ceres::CauchyLoss(1.0);
+    point_loss_ = new ceres::CauchyLoss(0.1);
     map_ptr_->options.num_threads = 4;
   }
 
@@ -131,7 +131,8 @@ public:
         Eigen::Vector3d scatterer = scatterers_[j]->GetEstimate().head(3) 
           / scatterers_[j]->GetEstimate()[3];
         double dist = (point - scatterer).norm();
-        if (dist < min_dist)
+        double sensor_dist = (scatterer - T_WS_guess.r()).norm();
+        if (dist < min_dist && sensor_dist < 6.0 && sensor_dist > 2.0)
         {
           min_dist = dist;
           scatterer_idx = j;
@@ -161,6 +162,7 @@ public:
         scatterers_.push_back(
           std::make_shared<HomogeneousPointParameterBlock>(scatterer,id));
         map_ptr_->AddParameterBlock(scatterers_.back());
+        //matches[i] = scatterers_.size() - 1;
         scatterers_.back()->AddObservation(timestamp);
       }
       else
@@ -173,7 +175,9 @@ public:
                                    poses_.front(),
                                    scatterers_[matches[i]]);
         scatterers_[matches[i]]->AddObservation(timestamp);
-        if (!scatterers_[matches[i]]->IsInitialized())
+
+        if (scatterers_[matches[i]]->GetObservations().size() > 1
+          && !scatterers_[matches[i]]->IsInitialized())
           scatterers_[matches[i]]->SetInitialized(true);
       }
     }
@@ -208,7 +212,7 @@ public:
       Map::ResidualBlockCollection res_blks = 
         map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
 
-      if ((time_since_last_obs > 0.25 && res_blks.size() < 2))
+      if ((time_since_last_obs > 0.5 && res_blks.size() < 3))
       {
         for (size_t j = 0; j < res_blks.size(); j++) 
           map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
