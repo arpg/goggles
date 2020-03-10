@@ -119,7 +119,7 @@ public:
                              true);
 
     // associate points in current cloud to nearest point scatterers
-    double dist_threshold = 0.10;
+    double dist_threshold = 0.20;
     std::vector<int> matches;
     for (size_t i = 0; i < cloud_w->size(); i++)
     {
@@ -211,7 +211,7 @@ public:
       Map::ResidualBlockCollection res_blks = 
         map_ptr_->GetResidualBlocks(scatterers_[i]->GetId());
 
-      if ((time_since_last_obs > 0.5 && res_blks.size() < 3))
+      if ((time_since_last_obs > 0.5 && res_blks.size() < 4))
       {
         for (size_t j = 0; j < res_blks.size(); j++) 
           map_ptr_->RemoveResidualBlock(res_blks[j].residual_block_id);
