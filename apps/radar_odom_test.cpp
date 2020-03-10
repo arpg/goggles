@@ -167,9 +167,8 @@ public:
       }
       else
       {
-        double weight = 1.0;
         std::shared_ptr<ceres::CostFunction> cost_func = 
-          std::make_shared<PointClusterCostFunction>(target,weight);
+          std::make_shared<PointClusterCostFunction>(target);
         map_ptr_->AddResidualBlock(cost_func,
                                    point_loss_,
                                    poses_.front(),

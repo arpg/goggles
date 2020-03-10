@@ -15,8 +15,7 @@ class PointClusterCostFunction : public ceres::CostFunction, public ErrorInterfa
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  PointClusterCostFunction(Eigen::Vector3d &target,
-                           double weight);
+  PointClusterCostFunction(Eigen::Vector3d &target);
 
   ~PointClusterCostFunction();
 
@@ -34,7 +33,7 @@ public:
 
 protected:
   Eigen::Vector3d target_;
-  double weight_;
+  Eigen::Matrix3d weight_;
 };
 
 #endif

@@ -1,14 +1,18 @@
 #include <PointClusterCostFunction.h>
 
 PointClusterCostFunction::PointClusterCostFunction(
-  Eigen::Vector3d &target,
-  double weight) 
-  : target_(target),
-    weight_(weight)
+  Eigen::Vector3d &target) 
+  : target_(target)
 {
   set_num_residuals(3);
   mutable_parameter_block_sizes()->push_back(7); // pose
   mutable_parameter_block_sizes()->push_back(4); // homogeneous point
+
+  // calculate weight
+  Eigen::Vector3d unit_ray = target_.normalized().cwiseAbs();
+  unit_ray[1] *= 0.5;
+  unit_ray[2] *= 0.1;
+  weight_ = unit_ray.asDiagonal();
 }
 
 PointClusterCostFunction::~PointClusterCostFunction(){}
@@ -43,6 +47,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
 
   // get transformation matrix
   Eigen::Matrix4d T_WS_mat = T_WS.T();
+  Eigen::Matrix4d T_SW_mat = T_WS.inverse().T();
 
   // transform target from sensor frame to global frame
   Eigen::Vector4d target_s = Eigen::Vector4d(target_[0],
@@ -50,11 +55,14 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
                                              target_[2],
                                              1.0);
   Eigen::Vector4d target_w = T_WS_mat * target_s;
+  Eigen::Vector4d hp_s = T_SW_mat * h_p;
 
   // get residual as the distance between the target and the landmark
-  residuals[0] = weight_ * (target_w[0] - h_p[0]);
-  residuals[1] = weight_ * (target_w[1] - h_p[1]);
-  residuals[2] = weight_ * (target_w[2] - h_p[2]);
+  Eigen::Vector3d error;
+  error = (target_s.head(3) / target_s[3]) - (hp_s.head(3) / hp_s[3]);
+
+  Eigen::Map<Eigen::Vector3d> weighted_error(residuals);
+  weighted_error = weight_ * error;
 
   if (jacobians != NULL)
   {
@@ -65,13 +73,20 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
       J0_minimal.setZero();
 
       PoseParameterization p;
-      J0_minimal.topLeftCorner(3,3) = Eigen::Matrix3d::Identity();
-      Eigen::Matrix3d tw_cross;
-      tw_cross << 0,          -target_w[2], target_w[1],
-                  target_w[2], 0,          -target_w[0],
-                 -target_w[1], target_w[0], 0;
-      J0_minimal.topRightCorner(3,3) = -tw_cross;
-      J0_minimal *= weight_;
+      J0_minimal.topLeftCorner(3,3) = weight_ * T_WS.inverse().C();
+      //Eigen::Matrix3d tw_cross;
+      Eigen::Matrix3d hp_cross;
+      Eigen::Vector3d hp_point = h_p.head(3) / h_p[3];
+      //Eigen::Vector3d tw_point = target_w.head(3) / target_w[3];
+      //tw_cross << 0,          -tw_point[2], tw_point[1],
+      //            tw_point[2], 0,          -tw_point[0],
+      //           -tw_point[1], tw_point[0], 0;
+      hp_cross << 0, -hp_point[2], hp_point[1],
+                  hp_point[2], 0, -hp_point[0],
+                  -hp_point[1], hp_point[0], 0;
+      J0_minimal.topRightCorner(3,3) = -weight_ * T_WS.inverse().C() * hp_cross;
+      
+      //r = T_WS * target_s - hp_w;
 
       Eigen::Matrix<double,6,7,Eigen::RowMajor> J_lift;
       p.ComputeLiftJacobian(parameters[0], J_lift.data());
@@ -97,8 +112,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
         J1_mapped(jacobians[1]);
 
       J1_mapped.setZero();
-      J1_mapped.topLeftCorner(3,3) = Eigen::Matrix3d::Identity();
-      J1_mapped *= -weight_;
+      J1_mapped.topLeftCorner(3,3) = -weight_ * T_WS.inverse().C();
 
       if (jacobians_minimal != NULL)
       {
@@ -106,7 +120,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
         {
           Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>>
             J1_minimal_mapped(jacobians_minimal[1]);
-          J1_minimal_mapped = -weight_ * Eigen::Matrix3d::Identity();
+          J1_minimal_mapped = -weight_ * T_WS.inverse().C();
         }
       }
     }

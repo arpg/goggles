@@ -51,6 +51,7 @@ TEST(googleTests, testPointCluster)
   }
 
   std::shared_ptr<Map> map_ptr = std::make_shared<Map>();
+  //map_ptr->options.check_gradients = true;
   map_ptr->AddParameterBlock(T_WS_est, Map::Parameterization::Pose);
 
   for(size_t i = 0; i < num_lmrks; i++)
@@ -58,11 +59,10 @@ TEST(googleTests, testPointCluster)
     map_ptr->AddParameterBlock(h_pw_est[i], Map::Parameterization::HomogeneousPoint);
   }
 
-  double weight = 1.0 / double(targets.size());
   for (size_t i = 0; i < num_lmrks; i++)
   {
     std::shared_ptr<ceres::CostFunction> point_cost_func =
-      std::make_shared<PointClusterCostFunction>(targets[i], weight);
+      std::make_shared<PointClusterCostFunction>(targets[i]);
     ceres::ResidualBlockId id = map_ptr->AddResidualBlock(point_cost_func,
                                                         NULL,
                                                         T_WS_est,
@@ -70,7 +70,7 @@ TEST(googleTests, testPointCluster)
   }
 
   PointClusterCostFunction* p_cost_func = 
-    new PointClusterCostFunction(targets[0], weight);
+    new PointClusterCostFunction(targets[0]);
 
   // check jacobians by finite differences
   double* parameters[2];
