@@ -87,6 +87,11 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
     {
       Eigen::Matrix<double,3,6> J0_minimal;
       J0_minimal.setZero();
+      // e = r - ((x-tx)^2+(y-ty)^2+(z-tz)^2)^0.5
+      //   = r - (x^2-2xtx+tx^2 +(y-ty)^2+(z-tz)^2)^0.5
+      // de/dx = (2x-2tx) * 0.5*
+      Eigen::Vector3d r = T_WS.r() - (h_p.head(3) / h_p[3]);
+      J0_minimal.topLeftCorner(1,3) = r.transpose() * pow(r.squaredNorm(),-0.5);
       PoseParameterization p;
 
       Eigen::Matrix<double,6,7,Eigen::RowMajor> J_lift;
@@ -109,8 +114,21 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
     // jacobian w.r.t. scatterer location
     if (jacobians[1] != NULL)
     {
+      Eigen::Matrix3d J1_minimal;
+      J1_minimal.setZero();
+      Eigen::Vector3d r = (h_p.head(3) / h_p[3]) - T_WS.r();
+      J1_minimal.topLeftCorner(1,3) = r.transpose() * pow(r.squaredNorm(),-0.5);
+      // e = az - atan2((T_SW * hp)[1],(T_SW * hp)[0])
+      Eigen::Vector3d temp(0,0,0);
+      temp[0] = -r[1] / (r[0]*r[0] + r[1]*r[1]);
+      temp[1] = r[0] / (r[0]*r[0] + r[1]*r[1]);
+      J1_minimal.block<1,3>(1,0) = (T_WS.C() * temp).eval().transpose();
+      HomogeneousPointParameterization h;
+      Eigen::Matrix<double,3,4,Eigen::RowMajor> J_lift;
+      h.ComputeLiftJacobian(parameters[1], J_lift.data());
       Eigen::Map<Eigen::Matrix<double,3,4,Eigen::RowMajor>> 
         J1_mapped(jacobians[1]);
+      J1_mapped = J1_minimal * J_lift;
 
       J1_mapped.setZero();
 
@@ -120,7 +138,7 @@ bool PointClusterCostFunction::EvaluateWithMinimalJacobians(
         {
           Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor>>
             J1_minimal_mapped(jacobians_minimal[1]);
-          J1_minimal_mapped.setZero();
+          J1_minimal_mapped = J1_minimal;
         }
       }
     }

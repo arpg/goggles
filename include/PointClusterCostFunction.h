@@ -9,6 +9,7 @@
 #include <HomogeneousPointParameterization.h>
 #include <PoseParameterization.h>
 #include <ceres/ceres.h>
+#include <math.h>
 
 class PointClusterCostFunction : public ceres::CostFunction, public ErrorInterface
 {
