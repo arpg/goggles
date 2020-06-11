@@ -9,7 +9,7 @@
 template <typename PointT>
 void pcl::BodyDopplerSacModel<PointT>::getSamplePoints(
   std::vector<Eigen::Vector3d> &points, 
-  std::vector<double> &dopplers)
+  std::vector<double> &dopplers) const
 {
   for (int i = 0; i < indices_->size(); i++)
   {
@@ -94,7 +94,7 @@ bool pcl::BodyDopplerSacModel<PointT>::computeModelCoefficients (
 template <typename PointT>
 void pcl::BodyDopplerSacModel<PointT>::getDistancesToModel(
   const Eigen::VectorXf &model_coefficients,
-  std::vector<double> &distances) 
+  std::vector<double> &distances) const
 {
   if (!isModelValid(model_coefficients))
   {
@@ -155,9 +155,9 @@ void pcl::BodyDopplerSacModel<PointT>::selectWithinDistance(
 }
 
 template <typename PointT> 
-int pcl::BodyDopplerSacModel<PointT>::countWithinDistance (
+std::size_t pcl::BodyDopplerSacModel<PointT>::countWithinDistance (
   const Eigen::VectorXf &model_coefficients,
-  const double threshold) 
+  const double threshold) const
 {
   if (!isModelValid(model_coefficients))
     return 0;
@@ -176,10 +176,10 @@ template <typename PointT>
 void pcl::BodyDopplerSacModel<PointT>::optimizeModelCoefficients(
   const std::vector<int> &inliers, 
   const Eigen::VectorXf &model_coefficients,
-  Eigen::VectorXf &optimized_coefficients)
+  Eigen::VectorXf &optimized_coefficients) const
 {
   optimized_coefficients = model_coefficients;
-  tmp_inliers_ = &inliers;
+  //tmp_inliers_ = &inliers;
 }
 
 
@@ -187,7 +187,7 @@ template <typename PointT>
 bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
   const std::set<int> &indices, 
   const Eigen::VectorXf &model_coefficients,
-  const double threshold)
+  const double threshold) const
 {
   if (model_coefficients.size() != model_size_)
   {
@@ -214,7 +214,7 @@ bool pcl::BodyDopplerSacModel<PointT>::doSamplesVerifyModel(
 
 template <typename PointT> 
 bool pcl::BodyDopplerSacModel<PointT>::isModelValid(
-  const Eigen::VectorXf &model_coefficients) 
+  const Eigen::VectorXf &model_coefficients) const
 {
   if (!SampleConsensusModel<PointT>::isModelValid(model_coefficients))
     return false;
@@ -227,7 +227,7 @@ void pcl::BodyDopplerSacModel<PointT>::projectPoints(
   const std::vector<int> &inliers,
   const Eigen::VectorXf &model_coefficients,
   PointCloud &projected_points,
-  bool copy_data_fields)
+  bool copy_data_fields) const
 {
 
 }

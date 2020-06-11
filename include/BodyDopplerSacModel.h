@@ -92,7 +92,7 @@ namespace pcl
       * \param[out] distances the resultant estimated distances
       */
     void getDistancesToModel (const Eigen::VectorXf &model_coefficients,
-                              std::vector<double> &distances);
+                              std::vector<double> &distances) const;
 
     /** \brief Compute all distances from the cloud data to a given model
       * \param[in] model_coefficients the coefficients of the body doppler model
@@ -109,8 +109,8 @@ namespace pcl
       * \param[in] threshold maximum admissible distance threshold for inliers
       * \return the resultant number of inliers
       */
-    int countWithinDistance (const Eigen::VectorXf &model_coefficients,
-                             const double threshold);
+    std::size_t countWithinDistance (const Eigen::VectorXf &model_coefficients,
+                             const double threshold) const;
 
     /** \brief Recompute the body doppler model coefficients using the given inlier set
       * \param[in] inliers the inlier points found as supporting the model
@@ -120,7 +120,7 @@ namespace pcl
     
     void optimizeModelCoefficients (const std::vector<int> &inliers,
                                     const Eigen::VectorXf &model_coefficients,
-                                    Eigen::VectorXf &optimized_coefficients);
+                                    Eigen::VectorXf &optimized_coefficients) const;
     
     /** \brief Create a new point cloud with inliers projected to the body doppler model
       * \param[in] inliers the data inliers that we want to project
@@ -131,7 +131,7 @@ namespace pcl
     void projectPoints(const std::vector<int> &inliers,
                        const Eigen::VectorXf &model_coefficients,
                        PointCloud &projected_points,
-                       bool copy_data_fields = true);
+                       bool copy_data_fields = true) const;
     
     /** \brief Verify whether a subset of indices verifies the given model coefficients
       * \param[in] indices the data indices that need to be tested against the model
@@ -140,7 +140,7 @@ namespace pcl
       */
     bool doSamplesVerifyModel (const std::set<int> &indices,
                                const Eigen::VectorXf &model_coefficients,
-                               const double threshold);
+                               const double threshold) const;
 
     /** \brief Return a unique id for this model */
     inline pcl::SacModel getModelType() const {return (SACMODEL_PLANE);};
@@ -152,7 +152,7 @@ namespace pcl
     /** \brief Check whether a model is valid given the user constraints
       * \param[in] model_coefficents the set of model coefficients
       */
-    bool isModelValid (const Eigen::VectorXf &model_coefficients);
+    bool isModelValid (const Eigen::VectorXf &model_coefficients) const;
 
     /** \brief Check if a sample of indices results in a good sample of indices
       * \param[in] samples the resultant index samples
@@ -160,7 +160,7 @@ namespace pcl
     bool isSampleGood (const std::vector<int> &samples) const;
 
     void getSamplePoints(std::vector<Eigen::Vector3d> &points, 
-                         std::vector<double> &dopplers);
+                         std::vector<double> &dopplers) const;
 
   private:
 
