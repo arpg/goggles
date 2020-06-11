@@ -57,7 +57,7 @@ bool pcl::BodyDopplerSacModel<PointT>::isSampleGood(
 template <typename PointT> 
 bool pcl::BodyDopplerSacModel<PointT>::computeModelCoefficients (
   const std::vector<int> &samples, 
-  Eigen::VectorXf &model_coefficients)
+  Eigen::VectorXf &model_coefficients) const
 {
   if (samples.size() != sample_size_)
   {

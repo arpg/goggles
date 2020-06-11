@@ -85,7 +85,7 @@ namespace pcl
       * \param[out] model_coefficients the resultant model coefficients
       */
     bool computeModelCoefficients (const std::vector<int> &samples,
-                                   Eigen::VectorXf &model_coefficients);
+                                   Eigen::VectorXf &model_coefficients) const;
 
     /** \brief Compute all distances from the cloud data to a given doppler body model
       * \param[in] model_coefficients the coefficients of the body doppler model
