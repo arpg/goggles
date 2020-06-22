@@ -44,47 +44,25 @@ public:
   RadarInertialVelocityReader(ros::NodeHandle nh) : map_ptr_(new Map())
   {
     nh_ = nh;
-		std::string radar_topic;
+		std::string radar_topics;
     std::string imu_topic;
 		std::string imu_frame;
 		std::string radar_frame;
 		std::string config;
-    nh_.getParam("radar_topic", radar_topic);
+    nh_.getParam("radar_topics", radar_topics); // comma-separated list of topics
     nh_.getParam("imu_topic", imu_topic);
-		nh_.getParam("imu_frame", imu_frame);
-		nh_.getParam("radar_frame", radar_frame);
 		nh_.getParam("config", config);
     nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
     nh_.getParam("publish_inliers", publish_inliers_);
-    pose_frame_id_ = imu_frame;
+    imu_frame_ = "";
 
-		// get imu params and extrinsics
+		// get imu params
 		LoadParams(config);
     imu_buffer_.SetTimeout(params_.frequency_);
-		tf::TransformListener tf_listener;
+		
     ros::Duration(0.5).sleep();
-    ros::Time now = ros::Time::now();
-    LOG(ERROR) << "getting transform";
-		tf_listener.waitForTransform(imu_frame,
-																 radar_frame,
-																 now,
-																 ros::Duration(1.0));
-		tf_listener.lookupTransform(imu_frame,
-																radar_frame,
-																ros::Time(0.0),
-																radar_to_imu_);
-    tf_listener.lookupTransform(radar_frame,
-                                imu_frame,
-                                ros::Time(0.0),
-                                imu_to_radar_);
-    ros::Duration(0.5).sleep();
-    //if (!tf_listener.getParent(pose_frame_id_,now,odom_frame_id_))
-      //LOG(FATAL) << "parent frame not found";
-    odom_frame_id_ = "radar_odom_frame";
 
-    Eigen::Quaterniond radar_to_imu_quat;
-    tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
-    radar_to_imu_mat_ = radar_to_imu_quat.toRotationMatrix();
+    odom_frame_id_ = "radar_odom_frame";
 
 		// get node namespace
     std::string ns = ros::this_node::getNamespace();
@@ -95,10 +73,18 @@ public:
       inlier_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
         ns + "/mmWaveDataHdl/inlier_set",1);
 
-		radar_sub_ = nh_.subscribe(radar_topic, 
-                               1, 
-                               &RadarInertialVelocityReader::radarCallback, 
-                               this);
+    // split radar subscriber list and create subscribers
+    std::stringstream ss(radar_topics);
+    std::string topic;
+    while (std::getline(ss,topic,','))
+    {
+      radar_subs_.push_back(
+        nh_.subscribe(topic,
+                      1,
+                      &RadarInertialVelocityReader::radarCallback,
+                      this));
+    }
+
 		imu_sub_ = nh_.subscribe(imu_topic, 
                              1, 
                              &RadarInertialVelocityReader::imuCallback, 
@@ -154,6 +140,7 @@ public:
 		ImuMeasurement new_meas;
 
 		new_meas.t_ = msg->header.stamp.toSec();
+    imu_frame_ = msg->header.frame_id;
 
 		new_meas.g_ << msg->angular_velocity.x,
 									 msg->angular_velocity.y,
@@ -191,45 +178,60 @@ public:
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
-	  double timestamp = msg->header.stamp.toSec();
-
-		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
-	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
-	  pcl::fromROSMsg(*msg, *raw_cloud);
-
-		// Reject clutter
-    Declutter(raw_cloud);
-		bool no_doppler = true;
-		for (int i = 0; i < raw_cloud->size(); i++)
-		{
-			if (raw_cloud->at(i).doppler > 0)
-				no_doppler = false;
-		}
-		// transform to imu frame
-		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu_);
-
-		if (cloud->size() < 10)
-			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
-
-    // Get velocity measurements
-    auto start = std::chrono::high_resolution_clock::now();
-    GetVelocity(cloud, timestamp);
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    sum_time_ += elapsed.count();
-    num_iter_++;
-    LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
-
-    if (!publish_imu_propagated_state_)
+	  if (imu_frame_ != "")
     {
-      nav_msgs::Odometry odom_out;
-      odom_out.header.stamp = msg->header.stamp;
-      Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
-      populateMessage(speeds_.front()->GetEstimate(),
-                      orientations_.front()->GetEstimate(),
-                      odom_out,
-                      covariance_matrix);
-      velocity_publisher_.publish(odom_out);
+      double timestamp = msg->header.stamp.toSec();
+
+  		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
+  	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
+  	  pcl::fromROSMsg(*msg, *raw_cloud);
+
+  		// Reject clutter
+      Declutter(raw_cloud);
+  		bool no_doppler = true;
+  		for (int i = 0; i < raw_cloud->size(); i++)
+  		{
+  			if (raw_cloud->at(i).doppler > 0)
+  				no_doppler = false;
+  		}
+      std::string cloud_frame = msg->header.frame_id;
+
+      // get radar to imu transform
+      tf::StampedTransform radar_to_imu;
+      tf_listener_.lookupTransform(imu_frame,
+                                   radar_frame,
+                                   ros::Time(0.0),
+                                   radar_to_imu);
+      Eigen::Quaterniond radar_to_imu_quat;
+      tf::quaternionTFToEigen(radar_to_imu_.getRotation(),radar_to_imu_quat);
+      Eigen::Matrix3d radar_to_imu_mat = radar_to_imu_quat.toRotationMatrix();
+
+  		// transform to imu frame
+  		pcl_ros::transformPointCloud(*raw_cloud, *cloud, radar_to_imu);
+
+  		if (cloud->size() < 10)
+  			LOG(ERROR) << "input cloud has less than 10 points, output will be unreliable";
+
+      // Get velocity measurements
+      auto start = std::chrono::high_resolution_clock::now();
+      GetVelocity(cloud, timestamp, radar_to_imu_mat);
+      auto finish = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = finish - start;
+      sum_time_ += elapsed.count();
+      num_iter_++;
+      LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
+
+      if (!publish_imu_propagated_state_)
+      {
+        nav_msgs::Odometry odom_out;
+        odom_out.header.stamp = msg->header.stamp;
+        Eigen::Matrix3d covariance_matrix = Eigen::Matrix3d::Identity();
+        populateMessage(speeds_.front()->GetEstimate(),
+                        orientations_.front()->GetEstimate(),
+                        odom_out,
+                        covariance_matrix);
+        velocity_publisher_.publish(odom_out);
+      }
     }
 	}
 
@@ -238,12 +240,8 @@ private:
   ros::NodeHandle nh_;
   ros::Publisher velocity_publisher_;
   ros::Publisher inlier_publisher_;
-  ros::Subscriber radar_sub_;
+  std::vector<ros::Subscriber> radar_subs_;
 	ros::Subscriber imu_sub_;
-	tf::StampedTransform radar_to_imu_;
-  tf::StampedTransform imu_to_radar_;
-  Eigen::Matrix3d radar_to_imu_mat_;
-
   // ceres objects
   std::shared_ptr<Map> map_ptr_;
   ceres::LossFunction *doppler_loss_;
@@ -286,9 +284,9 @@ private:
   int num_iter_;
   double sum_time_;
   bool publish_inliers_;
-  std::string pose_frame_id_;
   std::string odom_frame_id_;
-
+  std::string imu_frame_;
+  tf::TransformListener tf_listener_;
 
 
   /** \brief Clean up radar point cloud prior to processing
@@ -312,7 +310,9 @@ private:
     * \param[in] raw_cloud the new pointcloud from the radar sensor
     * \param[in] timestamp the timestamp of the new point cloud
     */
-  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud, double timestamp)
+  void GetVelocity(pcl::PointCloud<RadarPoint>::Ptr raw_cloud, 
+                   double timestamp,
+                   Eigen::Matrix3d &radar_to_imu_mat)
   {
     std::lock_guard<std::mutex> optimization_lock(optimization_mutex_);
 		// if imu is not initialized, run initialization
@@ -385,7 +385,7 @@ private:
       std::shared_ptr<ceres::CostFunction> doppler_cost_function =
       std::make_shared<GlobalDopplerCostFunction>(cloud->at(i).doppler,
         target,
-        radar_to_imu_mat_,
+        radar_to_imu_mat,
         weight,
         d);
       uint64_t id = IdProvider::instance().NewId();
@@ -772,7 +772,7 @@ private:
     out_cloud.header.stamp = ros::Time(timestamp);
     
     pcl_conversions::fromPCL(radar_frame_cloud2, out_cloud);
-    out_cloud.header.frame_id = pose_frame_id_;
+    out_cloud.header.frame_id = imu_frame_;
     inlier_publisher_.publish(out_cloud);
   }
 
@@ -792,7 +792,7 @@ private:
 		if(ns.compare("/") == 0) {
     	// single radar frame_id to comply with TI naming convention
       odom.header.frame_id = odom_frame_id_;
-      odom.child_frame_id = pose_frame_id_;
+      odom.child_frame_id = imu_frame_;
     }
     else {
       // multi-radar frame_id
