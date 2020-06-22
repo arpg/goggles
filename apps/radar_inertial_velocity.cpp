@@ -786,18 +786,10 @@ private:
                        nav_msgs::Odometry &odom,
                        Eigen::Matrix3d &covariance)
   {
-		// get node namespace
-    std::string ns = ros::this_node::getNamespace();
+   	// set frame id
+    odom.header.frame_id = odom_frame_id_;
+    odom.child_frame_id = imu_frame_;
 
-		if(ns.compare("/") == 0) {
-    	// single radar frame_id to comply with TI naming convention
-      odom.header.frame_id = odom_frame_id_;
-      odom.child_frame_id = imu_frame_;
-    }
-    else {
-      // multi-radar frame_id
-    	odom.header.frame_id = ns.erase(0,1) + "_link";
-    }
     Eigen::Vector3d v_s = orientation.toRotationMatrix().inverse() * velocity;
     odom.twist.twist.linear.x = v_s.x();
     odom.twist.twist.linear.y = v_s.y();
