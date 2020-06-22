@@ -47,7 +47,7 @@ Subscribed Topics:<br/>
  - ```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
   Input IMU measurements
   
- - ```<radar pointcloud topic specified by user>```(sensor_msgs/PointCloud2)<br/>
+ - ```<radar pointcloud topics specified by user>```(sensor_msgs/PointCloud2)<br/>
   Input radar measurements, must have doppler field
 
 Published Topics:<br/>
@@ -55,7 +55,7 @@ Published Topics:<br/>
 Output velocity and orientation estimates.
 
 Run with the following command:<br/>
-```rosrun goggles radar_inertial_velocity _radar_topic:=<radar pointcloud topic> _imu_topic:=<imu topic> _config:=<config file for imu> _imu_ref_frame:=<coordinate frame for the imu> _radar_ref_frame:=<coordinate frame for the radar board>```
+```rosrun goggles radar_inertial_velocity _radar_topics:=<comma-delimited list of radar pointcloud topics> _imu_topic:=<imu topic> _config:=<config file for imu>```
 
 The radar-inertial node requires a config file for the IMU containing priors on the IMU noise and biases. An example config file for the LORD Microstrain 3DM-GX5-25 can be found in the config directory.
 
