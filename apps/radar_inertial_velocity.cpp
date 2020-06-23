@@ -44,13 +44,9 @@ public:
   RadarInertialVelocityReader(ros::NodeHandle nh) : map_ptr_(new Map())
   {
     nh_ = nh;
-		std::string radar_topics;
-    std::string imu_topic;
-		std::string imu_frame;
-		std::string radar_frame;
+		int num_radar = 1;
 		std::string config;
-    nh_.getParam("radar_topics", radar_topics); // comma-separated list of topics
-    nh_.getParam("imu_topic", imu_topic);
+    nh_.param("num_radar", num_radar, num_radar); // number of radar boards used
 		nh_.getParam("config", config);
     nh_.getParam("publish_imu_state", publish_imu_propagated_state_);
     nh_.getParam("publish_inliers", publish_inliers_);
@@ -74,18 +70,18 @@ public:
         ns + "/mmWaveDataHdl/inlier_set",1);
 
     // split radar subscriber list and create subscribers
-    std::stringstream ss(radar_topics);
-    std::string topic;
-    while (std::getline(ss,topic,','))
+    std::string base_radar_topic = "/radar_";
+    for (int i = 0; i < num_radar; i++)
     {
+      std::string radar_topic = base_radar_topic + std::to_string(i);
       radar_subs_.push_back(
-        nh_.subscribe(topic,
+        nh_.subscribe(radar_topic,
                       1,
                       &RadarInertialVelocityReader::radarCallback,
                       this));
     }
 
-		imu_sub_ = nh_.subscribe(imu_topic, 
+		imu_sub_ = nh_.subscribe("/imu_data", 
                              1, 
                              &RadarInertialVelocityReader::imuCallback, 
                              this);

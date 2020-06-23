@@ -44,18 +44,18 @@ The launch file ```radar_velocity.launch``` also launches the TI AWR1843 sensor 
 ## 3.2 radar\_inertial\_velocity
 
 Subscribed Topics:<br/>
- - ```<imu topic specified by user>```(sensor_msgs/Imu)<br/>
+ - ```/imu_data```(sensor_msgs/Imu)<br/>
   Input IMU measurements
   
- - ```<radar pointcloud topics specified by user>```(sensor_msgs/PointCloud2)<br/>
-  Input radar measurements, must have doppler field
+ - ```/radar_<n>```(sensor_msgs/PointCloud2)<br/>
+  Input radar measurements, must have doppler field. Able to accept an arbitrary number of radar input topics. Number of topics is specified in the ```num_radar``` parameter. Radar topic names have the form ```/radar_0```, ```/radar_1```, etc.
 
 Published Topics:<br/>
  - ```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<br/>
 Output velocity and orientation estimates.
 
 Run with the following command:<br/>
-```rosrun goggles radar_inertial_velocity _radar_topics:=<comma-delimited list of radar pointcloud topics> _imu_topic:=<imu topic> _config:=<config file for imu>```
+```rosrun goggles radar_inertial_velocity _num_radar:=<number of radar boards used> _config:=<config file for imu>```
 
 The radar-inertial node requires a config file for the IMU containing priors on the IMU noise and biases. An example config file for the LORD Microstrain 3DM-GX5-25 can be found in the config directory.
 

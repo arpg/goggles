@@ -7,8 +7,6 @@
   <arg name="data_port" default="/dev/ttyACM1"/>
   <arg name="mmwave_topic" default="/mmWaveDataHdl/RScan"/>
   <arg name="imu_topic" default="/imu/data_raw"/>
-  <arg name="imu_ref_frame" default="imu_frame"/>
-  <arg name="radar_ref_frame" default="radar_frame"/>
   <arg name="config_file" default="/home/akramer/code/radar_ws/src/goggles/config/microstrain.yaml"/>
   <arg name="publish_imu_state" default="false"/>
   <arg name="publish_inliers" default="false"/>
@@ -39,7 +37,9 @@
 
   <!-- launch goggles velocity estimation node -->
   <node pkg="goggles" type="radar_inertial_velocity" name="goggles">
-      <param name="radar_topics" value="$(arg mmwave_topic)"/>
+      <remap from="$(imu_topic)" to="/imu_data" />
+      <remap from="$(radar_topic)" to="/radar_0" />
+      <param name="num_radar" value="1"/>
       <param name="imu_topic" value="$(arg imu_topic)"/>
       <param name="config" value="$(arg config_file)"/>
       <param name="publish_imu_state" value="$(arg publish_imu_state)"/>
