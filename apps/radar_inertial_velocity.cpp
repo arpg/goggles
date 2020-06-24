@@ -217,7 +217,7 @@ public:
       num_iter_++;
       LOG(INFO) << "execution time: " << sum_time_ / double(num_iter_);
 
-      if (!publish_imu_propagated_state_)
+      if (!publish_imu_propagated_state_ && initialized_)
       {
         nav_msgs::Odometry odom_out;
         odom_out.header.stamp = msg->header.stamp;
