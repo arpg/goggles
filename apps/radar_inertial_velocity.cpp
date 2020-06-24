@@ -411,7 +411,7 @@ private:
     ImuMeasurement before, after;
     while ((it + 1) != imu_measurements.end())
     {
-      if (it->t_ < timestamps_[0] && (it + 1)->t_ > timestamps_[0])
+      if (it->t_ <= timestamps_[0] && (it + 1)->t_ >= timestamps_[0])
       {
         before = *it;
         after = *(it + 1);
