@@ -418,7 +418,7 @@ private:
       }
       it++;
     }
-    if (before.t_ >= timestamps_[0] || after.t_ <= timestamps_[0])
+    if (before.t_ > timestamps_[0] || after.t_ < timestamps_[0])
       LOG(FATAL) << "imu measurements do not bracket current time";
 
     // use slerp to interpolate orientation at current timestep
