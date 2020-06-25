@@ -180,6 +180,10 @@ public:
     {
       double timestamp = msg->header.stamp.toSec();
 
+      // if the current measurement is out of sequence, discard it
+      if (!timestamps_.empty() && timestamp < timestamps_[0])
+        return;
+
   		pcl::PointCloud<RadarPoint>::Ptr raw_cloud(new pcl::PointCloud<RadarPoint>);
   	  pcl::PointCloud<RadarPoint>::Ptr cloud(new pcl::PointCloud<RadarPoint>);
   	  pcl::fromROSMsg(*msg, *raw_cloud);
