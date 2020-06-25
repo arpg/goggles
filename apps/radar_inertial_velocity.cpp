@@ -174,6 +174,8 @@ public:
 
   void radarCallback(const sensor_msgs::PointCloud2ConstPtr& msg)
   {
+    std::lock_guard<std::mutex> optimization_lock(optimization_mutex_);
+
 	  if (imu_frame_ != "")
     {
       double timestamp = msg->header.stamp.toSec();
@@ -310,7 +312,6 @@ private:
                    double timestamp,
                    Eigen::Matrix3d &radar_to_imu_mat)
   {
-    std::lock_guard<std::mutex> optimization_lock(optimization_mutex_);
 		// if imu is not initialized, run initialization
 		if (!initialized_)
 		{
