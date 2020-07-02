@@ -54,6 +54,12 @@ Published Topics:<br/>
  - ```mmWaveDataHdl/velocity```(nav_msgs/Odometry)<br/>
 Output velocity and orientation estimates.
 
+Parameters:<br/>
+ - ```num_radar``` - number of radar boards used
+ - ```config``` - yaml configuration file for the IMU
+ - ```publish_imu_state``` - true to publish odom messages at the IMU rate, false to publish at the radar board rate
+ - ```publish_inliers``` - true to publish radar points that pass the outlier rejection step in the radar-inertial node
+
 Run with the following command:<br/>
 ```rosrun goggles radar_inertial_velocity _num_radar:=<number of radar boards used> _config:=<config file for imu>```
 
