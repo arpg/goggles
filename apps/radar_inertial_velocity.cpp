@@ -66,8 +66,10 @@ public:
     velocity_publisher_ = nh_.advertise<nav_msgs::Odometry>(
       ns + "/mmWaveDataHdl/velocity",1);
     if (publish_inliers_) 
+    {
       inlier_publisher_ = nh_.advertise<sensor_msgs::PointCloud2>(
         ns + "/mmWaveDataHdl/inlier_set",1);
+    }
 
     // split radar subscriber list and create subscribers
     std::string base_radar_topic = "/radar_";
@@ -80,6 +82,7 @@ public:
                       &RadarInertialVelocityReader::radarCallback,
                       this));
     }
+    
 
 		imu_sub_ = nh_.subscribe("/imu_data", 
                              1, 
@@ -216,7 +219,7 @@ public:
 
       // Get velocity measurements
       auto start = std::chrono::high_resolution_clock::now();
-      GetVelocity(cloud, timestamp, radar_to_imu_mat);
+      if (true) GetVelocity(cloud, timestamp, radar_to_imu_mat);
       auto finish = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed = finish - start;
       sum_time_ += elapsed.count();
